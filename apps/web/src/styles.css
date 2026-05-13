@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+  body {
+    @apply bg-brand-50 text-brand-900 font-sans antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl bg-white shadow-sm ring-1 ring-brand-100 p-5;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-blue {
+    @apply badge bg-brand-100 text-brand-700;
+  }
+  .badge-green {
+    @apply badge bg-emerald-100 text-emerald-700;
+  }
+  .badge-amber {
+    @apply badge bg-amber-100 text-amber-800;
+  }
+}

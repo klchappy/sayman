@@ -1,0 +1,27 @@
+# Sayman lokal dev için Postgres (Damga: 5433, Sayman: 5434 — çakışmasın)
+# Çalıştır: docker compose -f infra/docker-compose.yml up -d
+#
+# Yalnız DB container'da çalışır; API ve Web kodu pnpm/Node native koşar
+# (Damga pattern'i — uygulamayı container'a kapatmayız).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sayman-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sayman
+      POSTGRES_PASSWORD: sayman
+      POSTGRES_DB: sayman
+    ports:
+      - '5434:5432'
+    volumes:
+      - sayman_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sayman -d sayman']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sayman_pg:

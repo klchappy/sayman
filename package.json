@@ -1,0 +1,25 @@
+{
+  "name": "sayman",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sayman — Multi-Tenant Muhasebe Operasyon Platformu",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "build": "pnpm -r --filter ./apps/* build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter @sayman/db generate",
+    "db:migrate": "pnpm --filter @sayman/db migrate",
+    "db:seed": "pnpm --filter @sayman/db seed",
+    "db:studio": "pnpm --filter @sayman/db studio",
+    "format": "prettier -w \"**/*.{ts,tsx,json,md}\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  }
+}

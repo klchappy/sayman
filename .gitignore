@@ -1,73 +1,45 @@
-# --- Sayman — Multi-Tenant Muhasebe SaaS .gitignore ---
+# Sayman — Multi-Tenant Muhasebe SaaS .gitignore
+# Stack: pnpm + Node + TS + Drizzle + Vite + React (Damga pattern'i)
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-.eggs/
-build/
-dist/
-
-# Virtualenv
-venv/
-.venv/
-env/
-ENV/
-
-# Django
-*.sqlite3
-*.sqlite3-journal
-db.sqlite3
-db.sqlite3.bak
-backend/db.sqlite3*
-staticfiles/
-backend/staticfiles/
-backend/media/
-backend/private_media/
-media/
-private_media/
-local_settings.py
-
-# Secrets
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-
-# Logs
-logs/
-*.log
-backend/logs/
-
-# Test / coverage
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-nosetests.xml
-coverage.xml
-
-# IDE / OS
-.vscode/
-.idea/
-*.swp
-*.swo
+node_modules
+dist
+build
+.next
+.cache
 .DS_Store
 Thumbs.db
 
-# Backups
-*.dump
-*.tar.gz
-*.bak
-backups/
-_local_backup/
+# env
+.env
+.env.local
+.env.*
+!.env.example
+*.local
 
-# Build
-node_modules/
-*.lock
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+preview.log
+web-dev.log
+api-dev.log
 
-# Source data (kaynak Excel/RAR/PDF — repo dışı)
-_source_data/
+# editor
+.vscode
+.idea
+
+# turbo / drizzle
+.turbo
+drizzle/
+
+# capacitor (eğer mobil app eklenirse)
+android/
+ios/
+
+# Test / coverage
+coverage/
+.nyc_output
+
+# OS
+*.swp
+*.swo

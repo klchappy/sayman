@@ -1,0 +1,22 @@
+import { sql } from 'drizzle-orm';
+import { Router } from 'express';
+import { getDb } from '@sayman/db';
+
+export const healthRouter = Router();
+
+healthRouter.get('/health', async (_req, res) => {
+  let db = 'unknown';
+  try {
+    const conn = getDb();
+    await conn.execute(sql`select 1`);
+    db = 'ok';
+  } catch {
+    db = 'error';
+  }
+
+  res.json({
+    status: 'ok',
+    db,
+    ts: new Date().toISOString(),
+  });
+});
