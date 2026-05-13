@@ -20,3 +20,11 @@ healthRouter.get('/health', async (_req, res) => {
     ts: new Date().toISOString(),
   });
 });
+
+/**
+ * /v1/health/healthz — Coolify healthcheck için ultra-light endpoint.
+ * DB'ye bakmaz; sadece process ayakta mı bilgisi.
+ */
+healthRouter.get('/health/healthz', (_req, res) => {
+  res.type('text/plain').send('ok\n');
+});
