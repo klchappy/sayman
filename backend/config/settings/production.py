@@ -28,10 +28,11 @@ else:
         if h and not h.startswith(".") and h not in {"localhost", "127.0.0.1", "0.0.0.0"}
     ]
 
-# --- Database ---------------------------------------------------------------
+# --- Database (django-tenants multi-tenant) ---------------------------------
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        # Schema-per-tenant için django-tenants postgresql_backend zorunlu.
+        "ENGINE": "django_tenants.postgresql_backend",
         "NAME": os.environ["DB_NAME"],
         "USER": os.environ["DB_USER"],
         "PASSWORD": os.environ["DB_PASSWORD"],
