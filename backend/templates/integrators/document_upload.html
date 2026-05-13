@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Belge Yükle · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div class="caption">Entegratör / Belge</div>
+<h1 style="margin:6px 0 14px;">Belge Bağla</h1>
+<div class="muted" style="margin-bottom:10px;">
+  {% if package %}{{ package.service.provider_name }} · {{ package.package_name }}
+  {% elif contract %}{{ contract.service.provider_name }} · {{ contract.title }}
+  {% elif service %}{{ service.provider_name }} · {{ service.title }}{% endif %}
+</div>
+
+<form method="post" class="card" style="padding:16px; max-width:560px;">
+  {% csrf_token %}
+  {% for f in form %}
+    <div style="margin-bottom:10px;">
+      <label style="display:block; font-weight:600; font-size:13px;">{{ f.label }}</label>
+      {{ f }}
+      {% if f.errors %}<div class="status-tag danger">{{ f.errors|join:", " }}</div>{% endif %}
+    </div>
+  {% endfor %}
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-primary" type="submit">Bağla</button>
+  </div>
+</form>
+{% endblock %}

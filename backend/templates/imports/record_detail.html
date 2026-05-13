@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Draft #{{ draft.source_row_number }}{% endblock %}
+
+{% block content %}
+<div class="caption">Operasyon / Import / {{ draft.batch.short_id }} / Satır #{{ draft.source_row_number }}</div>
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <h1 style="margin:6px 0 0;">{{ draft.display_title|default:"Draft Record" }}</h1>
+    <div class="muted" style="font-size:12px;">
+      Sheet: <b>{{ draft.source_file.sheet_name|default:"—" }}</b> ·
+      Validation:
+      {% if draft.validation_status == 'OK' %}<span class="status-tag success">OK</span>
+      {% elif draft.validation_status == 'WARNING' %}<span class="status-tag warning">UYARI</span>
+      {% elif draft.validation_status == 'ERROR' %}<span class="status-tag danger">HATA</span>
+      {% else %}<span class="status-tag purple">MANUEL</span>{% endif %}
+      · Durum:
+      {% if draft.status == 'APPROVED' %}<span class="status-tag success">Onaylı</span>
+      {% elif draft.status == 'REJECTED' %}<span class="status-tag neutral">Red</span>
+      {% else %}<span class="status-tag info">Taslak</span>{% endif %}
+    </div>
+  </div>
+  <div>
+    <a href="{% url 'imports:preview' batch_id=draft.batch.batch_id %}" class="btn btn-ghost">← Preview</a>
+  </div>
+</div>
+
+<div class="grid grid-cols-2">
+  <div class="card">
+    <div class="card-title">Ham Veri (raw_data)</div>
+    <pre style="background:var(--neutral-50); padding:12px; border-radius:8px; font-family:var(--font-mono); font-size:12px; overflow:auto; max-height:480px;">{{ draft.raw_data|pprint }}</pre>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Normalize Veri (normalized_data)</div>
+    {% if draft.normalized_data %}
+      <pre style="background:var(--neutral-50); padding:12px; border-radius:8px; font-family:var(--font-mono); font-size:12px;">{{ draft.normalized_data|pprint }}</pre>
+    {% else %}
+      <div class="muted">Henüz normalize edilmedi (Faz 4'te modül-spesifik validator).</div>
+    {% endif %}
+
+    <div class="card-title" style="margin-top:14px;">Validation Mesajları</div>
+    {% for m in draft.validation_messages %}
+      <div style="padding:8px; background:var(--{% if m.level == 'ERROR' %}danger{% elif m.level == 'WARNING' %}warning{% else %}info{% endif %}-100);
+                  color:var(--{% if m.level == 'ERROR' %}danger{% elif m.level == 'WARNING' %}warning{% else %}info{% endif %}-500);
+                  border-radius:6px; margin-bottom:6px; font-size:12px;">
+        <b>{{ m.code }}</b> · {{ m.msg }}
+      </div>
+    {% empty %}
+      <div class="muted">Mesaj yok.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Aksiyonlar</div>
+  <div style="display:flex; gap:8px; margin-top:8px;">
+    <form method="post" action="{% url 'imports:record_approve' batch_id=draft.batch.batch_id pk=draft.pk %}" style="margin:0;">
+      {% csrf_token %}<button type="submit" class="btn btn-success">✓ Onayla</button>
+    </form>
+    <form method="post" action="{% url 'imports:record_reject' batch_id=draft.batch.batch_id pk=draft.pk %}" style="margin:0;">
+      {% csrf_token %}
+      <input type="hidden" name="reason" value="">
+      <button type="submit" class="btn btn-danger">✕ Reddet</button>
+    </form>
+    <form method="post" action="{% url 'imports:record_manual' batch_id=draft.batch.batch_id pk=draft.pk %}" style="margin:0;">
+      {% csrf_token %}<button type="submit" class="btn btn-secondary">🔎 Manuel İnceleme</button>
+    </form>
+  </div>
+  <div class="muted" style="font-size:11px; margin-top:8px;">
+    Faz 3 sınırı: Onaylanan satır henüz domain kaydına dönüşmez. Faz 4'te modül commit eklenecek.
+  </div>
+</div>
+{% endblock %}

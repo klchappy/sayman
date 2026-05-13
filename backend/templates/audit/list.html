@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}AuditLog · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<h1>İşlem Geçmişi (AuditLog)</h1>
+<div class="muted" style="font-size:13px; margin-bottom:14px;">
+  Anayasa Madde 3.5: tüm kritik işlemler kayıt altına alınır.
+</div>
+
+<div class="card" style="padding:0;">
+  {% if logs %}
+    <table class="kmt-table">
+      <thead>
+        <tr>
+          <th>Zaman</th>
+          <th>Aktör</th>
+          <th>İşlem</th>
+          <th>Modül</th>
+          <th>Kayıt</th>
+          <th>Özet</th>
+          <th>IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in logs %}
+          <tr>
+            <td class="mono" style="font-size:11px;">{{ a.created_at|date:"d.m.Y H:i:s" }}</td>
+            <td>{{ a.actor.username|default:"sistem" }}</td>
+            <td><span class="status-tag info">{{ a.get_action_display }}</span></td>
+            <td>{{ a.app_label }}.{{ a.model_name }}</td>
+            <td class="mono" style="font-size:11px;">{{ a.object_repr|truncatechars:40|default:"—" }}</td>
+            <td>{{ a.summary|default:"—" }}</td>
+            <td class="mono muted" style="font-size:11px;">{{ a.ip_address|default:"—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🛡</div>
+      <div>Henüz audit kaydı yok.</div>
+    </div>
+  {% endif %}
+</div>
+
+{% if is_paginated %}
+  <div style="margin-top:14px; display:flex; gap:6px; justify-content:center;">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn btn-secondary btn-sm">← Önceki</a>{% endif %}
+    <span class="muted" style="padding:8px 12px;">Sayfa {{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn btn-secondary btn-sm">Sonraki →</a>{% endif %}
+  </div>
+{% endif %}
+{% endblock %}

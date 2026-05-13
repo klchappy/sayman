@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% load chat_tags %}
+{% block title %}{{ task.title }} · {{ BRAND.name|default:BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; justify-content:space-between;">
+  <div>
+    <div class="muted" style="font-size:11px;">Görev #{{ task.pk }}</div>
+    <h1 style="margin:4px 0 8px 0;">{{ task.title }}</h1>
+    <div>
+      <span class="status-tag {% if task.priority == 'CRITICAL' %}danger{% elif task.priority == 'HIGH' %}orange{% elif task.priority == 'LOW' %}neutral{% else %}info{% endif %}">{{ task.get_priority_display }}</span>
+      <span class="status-tag {% if task.status == 'COMPLETED' %}success{% elif task.status == 'POSTPONED' %}warning{% elif task.status == 'CANCELLED' %}neutral{% elif task.status == 'IN_PROGRESS' %}info{% else %}info{% endif %}">{{ task.get_status_display }}</span>
+      {% if task.is_overdue %}<span class="status-tag danger">⚠ Gecikti</span>{% endif %}
+    </div>
+  </div>
+  <div style="display:flex; gap:6px; flex-wrap:wrap;">
+    {% if can_write and not task.is_terminal %}
+      <a class="btn" href="{% url 'tasks:edit' task.pk %}">Düzenle</a>
+    {% endif %}
+    {% if can_write and task.status == 'OPEN' %}
+      <form method="post" action="{% url 'tasks:start' task.pk %}" style="display:inline;">{% csrf_token %}<button class="btn">Başlat</button></form>
+    {% endif %}
+    {% if can_complete and not task.is_terminal %}
+      <form method="post" action="{% url 'tasks:complete' task.pk %}" style="display:inline;">{% csrf_token %}<button class="btn btn-primary">Tamamla</button></form>
+    {% endif %}
+    {% if can_approve and task.is_terminal %}
+      <form method="post" action="{% url 'tasks:reopen' task.pk %}" style="display:inline;">{% csrf_token %}<button class="btn">Yeniden Aç</button></form>
+    {% endif %}
+    {% if can_approve and not task.is_terminal %}
+      <form method="post" action="{% url 'tasks:cancel' task.pk %}" style="display:inline;" onsubmit="this.querySelector('input[name=reason]').value=prompt('İptal sebebi (opsiyonel):')||'';">
+        {% csrf_token %}<input type="hidden" name="reason" value="">
+        <button class="btn">İptal</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:8px; font-size:13px;">
+    <div><span class="muted">Atanan:</span> <b>{{ task.assigned_to.username|default:"—" }}</b></div>
+    <div><span class="muted">Oluşturan:</span> {{ task.created_by.username|default:"—" }}</div>
+    <div><span class="muted">Son Tarih:</span> <span class="mono">{% if task.due_date %}{{ task.due_date|date:"d.m.Y" }}{% else %}—{% endif %}</span></div>
+    <div><span class="muted">Saat:</span> <span class="mono">{% if task.due_time %}{{ task.due_time|time:"H:i" }}{% else %}—{% endif %}</span></div>
+    <div><span class="muted">Kaynak:</span> {{ task.get_source_display }}</div>
+    {% if task.completed_at %}<div><span class="muted">Tamamlandı:</span> {{ task.completed_at|date:"d.m.Y H:i" }} ({{ task.completed_by.username|default:"—" }})</div>{% endif %}
+    {% if task.cancelled_at %}<div><span class="muted">İptal:</span> {{ task.cancelled_at|date:"d.m.Y H:i" }}</div>{% endif %}
+    {% if task.postponed_until %}<div><span class="muted">Ertelendi →</span> <span class="mono">{{ task.postponed_until|date:"d.m.Y" }}</span></div>{% endif %}
+  </div>
+  {% if task.description %}
+    <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--neutral-200);">
+      <div class="muted" style="font-size:11px;">Açıklama</div>
+      <div style="white-space:pre-wrap;">{{ task.description }}</div>
+    </div>
+  {% endif %}
+  {% if task.related_app %}
+    <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--neutral-200);">
+      <div class="muted" style="font-size:11px;">Bağlı Kayıt</div>
+      <div class="mono" style="font-size:12px; color:var(--brand-700);">
+        📎 {{ task.related_app }}.{{ task.related_model }}#{{ task.related_object_id }}
+        {% if task.related_title %} · {{ task.related_title }}{% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{% if can_write and not task.is_terminal %}
+<div class="card">
+  <h3 style="margin-top:0;">Ertele</h3>
+  <form method="post" action="{% url 'tasks:postpone' task.pk %}" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+    {% csrf_token %}
+    {{ postpone_form.postponed_until }}
+    {{ postpone_form.reason }}
+    <button class="btn">Ertele</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-top:0;">💬 Yorumlar ({{ comments|length }})</h3>
+  {% for c in comments %}
+    <div style="padding:8px; border-bottom:1px solid var(--neutral-200);">
+      <div class="muted" style="font-size:11px;">
+        {% if c.is_system %}[Sistem]{% endif %}
+        <b>{{ c.author.username|default:"—" }}</b> · {{ c.created_at|date:"d.m.Y H:i" }}
+      </div>
+      <div style="white-space:pre-wrap;">{{ c.body }}</div>
+    </div>
+  {% empty %}
+    <div class="muted">Henüz yorum yok.</div>
+  {% endfor %}
+  <form method="post" action="{% url 'tasks:comment' task.pk %}" style="margin-top:10px;">
+    {% csrf_token %}
+    {{ comment_form.body }}
+    <button class="btn" style="margin-top:6px;">Yorum Ekle</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">📎 Belgeler ({{ attachments|length }})</h3>
+  {% for a in attachments %}
+    <div style="padding:6px 0; border-bottom:1px solid var(--neutral-200);">
+      <a href="{% url 'documents:download' a.document.pk %}">{{ a.document.title|default:a.document.original_filename }}</a>
+      <span class="muted mono" style="font-size:11px;"> · sha:{{ a.document.sha256|slice:":12" }}…</span>
+      <span class="muted" style="font-size:11px;"> · {{ a.uploaded_by.username|default:"—" }}</span>
+    </div>
+  {% empty %}
+    <div class="muted">Belge yok.</div>
+  {% endfor %}
+  {% if can_write and not task.is_terminal %}
+    <form method="post" action="{% url 'tasks:attach' task.pk %}" enctype="multipart/form-data" style="margin-top:10px;">
+      {% csrf_token %}
+      {{ attachment_form.file }} {{ attachment_form.title }}
+      <button class="btn" style="margin-top:6px;">Belge Ekle</button>
+    </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">🕒 Olay Akışı</h3>
+  <ul class="mono" style="font-size:11px; margin:0; padding-left:18px;">
+    {% for ev in events %}
+      <li>
+        <b>{{ ev.event_type }}</b> · {{ ev.created_at|date:"d.m.Y H:i" }} · {{ ev.actor.username|default:"sistem" }}
+        {% if ev.summary %}<span class="muted">— {{ ev.summary }}</span>{% endif %}
+      </li>
+    {% empty %}
+      <li class="muted">Olay yok.</li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% related_chat_panel task %}
+{% if can_write and not task.is_terminal %}
+  <a class="btn btn-sm" href="{% url 'chat:create_for_task' task.pk %}">💬 Görev için Chat Aç</a>
+{% endif %}
+{% endblock %}

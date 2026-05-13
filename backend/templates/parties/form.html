@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ master_name }} formu · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div class="caption">Master / {{ master_name }}</div>
+<h1 style="margin:6px 0 18px;">{% if object %}{{ object }} · Düzenle{% else %}Yeni {{ master_name }}{% endif %}</h1>
+
+<div class="card">
+  <form method="post" action="">
+    {% csrf_token %}
+    {% for field in form %}
+      <div class="form-group">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="form-hint">{{ field.help_text }}</div>{% endif %}
+        {% if field.errors %}<div class="form-error">{{ field.errors|join:" " }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+      <a href="{% url 'parties:list' slug=slug %}" class="btn btn-ghost">İptal</a>
+      <button type="submit" class="btn btn-primary">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

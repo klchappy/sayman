@@ -1,0 +1,18 @@
+{# Bottom-right widget partial — JSON poll, WebSocket YOK #}
+<div class="card" style="border-left:4px solid var(--brand-700);">
+  <div class="card-header">
+    <div class="card-title">💬 Mesajlar (okunmamış: {{ unread_count }})</div>
+    <a class="btn btn-sm" href="{% url 'chat:center' %}">Mesaj Merkezi</a>
+  </div>
+  <ul style="list-style:none; padding:0; margin:6px 0 0;">
+    {% for t in threads %}
+      <li style="font-size:12px; padding:4px 0; border-bottom:1px solid var(--gray-200);">
+        <a href="{% url 'chat:thread_detail' t.pk %}">{{ t.title|default:t }}</a>
+        <span class="muted">· {{ t.get_thread_type_display }}</span>
+        {% if t.last_message_preview %}<div class="muted" style="font-size:11px;">{{ t.last_message_preview|truncatechars:48 }}</div>{% endif %}
+      </li>
+    {% empty %}
+      <li class="muted" style="font-size:12px;">Konu yok.</li>
+    {% endfor %}
+  </ul>
+</div>

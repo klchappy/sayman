@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Entegratör & Kontör · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Şirket / Entegratör</div>
+    <h1 style="margin:6px 0 0;">Entegratör & Kontör</h1>
+    <div class="muted" style="font-size:13px;">
+      ETA · Papinet · EDM · Digital Planet · Sözleşme · Kontör Paketi
+      <span class="status-tag info" style="margin-left:6px;">Faz 9 · Manual MVP</span>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    {% if can_write %}<a href="{% url 'integrators:create' %}" class="btn btn-primary">+ Yeni Hizmet</a>{% endif %}
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:10px; margin-bottom:14px;">
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Aktif Hizmet</div>
+    <div style="font-size:22px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ kpis.active_services }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Yaklaşan Sözleşme</div>
+    <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if kpis.approaching_contracts %}var(--orange-600){% else %}inherit{% endif %};">{{ kpis.approaching_contracts }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Kritik Kontör</div>
+    <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if kpis.critical_credits %}var(--danger-600){% else %}inherit{% endif %};">{{ kpis.critical_credits }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Bu Yıl Bedel</div>
+    <div style="font-size:18px; font-weight:800; font-family:var(--font-mono);">{{ kpis.this_year_total|money_tr }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Eksik Sözleşme</div>
+    <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ kpis.missing_contract }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Kontrol</div>
+    <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ kpis.needs_review }}</div>
+  </div>
+</div>
+
+<form method="get" class="card" style="padding:10px; margin-bottom:14px; display:flex; gap:8px; flex-wrap:wrap;">
+  <select name="provider">
+    <option value="">— Sağlayıcı —</option>
+    {% for v,lbl in provider_choices %}<option value="{{ v }}" {% if filter_values.provider == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+  </select>
+  <select name="service_type">
+    <option value="">— Hizmet Tipi —</option>
+    {% for v,lbl in service_type_choices %}<option value="{{ v }}" {% if filter_values.service_type == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+  </select>
+  <select name="status">
+    <option value="">— Durum —</option>
+    {% for v,lbl in status_choices %}<option value="{{ v }}" {% if filter_values.status == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+  </select>
+  <label style="display:flex; align-items:center; gap:6px; padding:0 8px;">
+    <input type="checkbox" name="critical" value="1" {% if filter_values.critical %}checked{% endif %}> Yalnız Kritik Kontör
+  </label>
+  <button class="btn btn-ghost" type="submit">Filtrele</button>
+  <a class="btn btn-ghost" href="{% url 'integrators:list' %}">Temizle</a>
+</form>
+
+<div class="card" style="padding:14px;">
+  {% if services %}
+    <table class="kmt-table">
+      <thead><tr>
+        <th>Sağlayıcı</th><th>Başlık</th><th>Tip</th><th>Hizmet</th>
+        <th>Durum</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for s in services %}
+          <tr>
+            <td><strong>{{ s.provider_name }}</strong></td>
+            <td>{{ s.title|truncatechars:36 }}</td>
+            <td>{{ s.get_provider_type_display }}</td>
+            <td>{{ s.get_service_type_display }}</td>
+            <td>
+              {% if s.status == 'ACTIVE' %}<span class="status-tag success">{{ s.get_status_display }}</span>
+              {% elif s.status == 'PASSIVE' %}<span class="status-tag neutral">{{ s.get_status_display }}</span>
+              {% elif s.status == 'CANCELLED' %}<span class="status-tag neutral">{{ s.get_status_display }}</span>
+              {% elif s.status == 'RENEWED' %}<span class="status-tag info">{{ s.get_status_display }}</span>
+              {% elif s.status == 'NEEDS_REVIEW' %}<span class="status-tag purple">{{ s.get_status_display }}</span>
+              {% else %}<span class="status-tag warning">{{ s.get_status_display }}</span>{% endif %}
+            </td>
+            <td><a href="{% url 'integrators:detail' pk=s.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state"><div class="empty-icon">⚡</div><div>Entegratör/yazılım hizmeti yok</div></div>
+  {% endif %}
+</div>
+{% endblock %}

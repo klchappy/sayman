@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Giriş · {{ BRAND_NAME }}{% endblock %}
+
+{% block anon_content %}
+<div class="login-page">
+  <div class="login-card">
+    <div style="text-align:center; margin-bottom:16px;">
+      <div class="brand-logo" style="margin: 0 auto 12px; width:48px; height:48px; font-size:20px;">K</div>
+    </div>
+    <h1>{{ BRAND.short }}</h1>
+    <div class="login-sub">Muhasebe Operasyon Merkezi</div>
+
+    {% if form.errors %}
+      <div class="alert danger">Kullanıcı adı veya şifre hatalı.</div>
+    {% endif %}
+
+    <form method="post" action="">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label" for="id_username">Kullanıcı Adı</label>
+        <input type="text" name="username" id="id_username" required autofocus autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="id_password">Şifre</label>
+        <input type="password" name="password" id="id_password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg" style="width:100%;">Giriş Yap</button>
+      <input type="hidden" name="next" value="{{ next }}">
+    </form>
+
+    <div style="text-align:center; margin-top:20px; font-size:11px; color:var(--neutral-400);">
+      v{{ BRAND.version }} · Faz 2 Base Scaffold
+    </div>
+  </div>
+</div>
+{% endblock %}

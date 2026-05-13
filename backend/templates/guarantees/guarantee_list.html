@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Teminat Mektupları · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Resmi-Banka / Teminat</div>
+    <h1 style="margin:6px 0 0;">Teminat Mektupları & Komisyon</h1>
+    <div class="muted" style="font-size:13px;">
+      Banka mektupları · Komisyon dönemleri · İade / Yenileme.
+      <span class="status-tag info" style="margin-left:6px;">Faz 8 · Manual MVP</span>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    {% if can_write %}<a href="{% url 'guarantees:create' %}" class="btn btn-primary">+ Yeni Teminat</a>{% endif %}
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:10px; margin-bottom:14px;">
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Aktif Teminat</div>
+    <div style="font-size:22px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ kpis.active_count }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Toplam Tutar</div>
+    <div style="font-size:18px; font-weight:800; font-family:var(--font-mono);">{{ kpis.total_amount|money_tr }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Bu Ay Komisyon</div>
+    <div style="font-size:18px; font-weight:800; font-family:var(--font-mono);">{{ kpis.this_month_commission|money_tr }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Geciken Komisyon</div>
+    <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if kpis.overdue_commission %}var(--danger-600){% else %}inherit{% endif %};">{{ kpis.overdue_commission }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">İade Bekleyen</div>
+    <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ kpis.returning }}</div>
+  </div>
+  <div class="card" style="padding:10px;">
+    <div class="muted" style="font-size:11px; text-transform:uppercase;">Kontrol</div>
+    <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ kpis.needs_review }}</div>
+  </div>
+</div>
+
+<form method="get" class="card" style="padding:10px; margin-bottom:14px; display:flex; gap:8px; flex-wrap:wrap;">
+  <select name="bank">
+    <option value="">— Banka —</option>
+    {% for b in banks %}<option value="{{ b.pk }}" {% if filter_values.bank == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+  </select>
+  <select name="institution">
+    <option value="">— Lehdar Kurum —</option>
+    {% for i in institutions %}<option value="{{ i.pk }}" {% if filter_values.institution == i.pk|stringformat:"s" %}selected{% endif %}>{{ i.name }}</option>{% endfor %}
+  </select>
+  <select name="period">
+    <option value="">— Komisyon Periyodu —</option>
+    {% for v,lbl in period_choices %}<option value="{{ v }}" {% if filter_values.period == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+  </select>
+  <select name="status">
+    <option value="">— Durum —</option>
+    {% for v,lbl in status_choices %}<option value="{{ v }}" {% if filter_values.status == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-ghost" type="submit">Filtrele</button>
+  <a class="btn btn-ghost" href="{% url 'guarantees:list' %}">Temizle</a>
+</form>
+
+<div class="card" style="padding:14px;">
+  {% if guarantees %}
+    <table class="kmt-table">
+      <thead><tr>
+        <th>Mektup No</th><th>Başlık</th><th>Banka</th><th>Lehdar</th>
+        <th class="num">Tutar</th><th>Vade</th><th>Durum</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for g in guarantees %}
+          <tr>
+            <td><strong>{{ g.letter_no }}</strong></td>
+            <td>{{ g.title|truncatechars:36 }}</td>
+            <td>{{ g.bank.name|default:"—" }}</td>
+            <td>{{ g.beneficiary_institution.name|default:"—" }}</td>
+            <td class="num">{{ g.amount|money_tr }} {{ g.currency }}</td>
+            <td>{{ g.expiry_date|date:"d.m.Y"|default:"—" }}</td>
+            <td>
+              {% if g.status == 'ACTIVE' %}<span class="status-tag success">{{ g.get_status_display }}</span>
+              {% elif g.status == 'APPROACHING' %}<span class="status-tag orange">{{ g.get_status_display }}</span>
+              {% elif g.status == 'EXPIRED' %}<span class="status-tag danger">{{ g.get_status_display }}</span>
+              {% elif g.status == 'RETURNED' %}<span class="status-tag neutral">{{ g.get_status_display }}</span>
+              {% elif g.status == 'RENEWED' %}<span class="status-tag info">{{ g.get_status_display }}</span>
+              {% elif g.status == 'CANCELLED' %}<span class="status-tag neutral">{{ g.get_status_display }}</span>
+              {% elif g.status == 'NEEDS_REVIEW' %}<span class="status-tag purple">{{ g.get_status_display }}</span>
+              {% else %}<span class="status-tag warning">{{ g.get_status_display }}</span>{% endif %}
+            </td>
+            <td><a href="{% url 'guarantees:detail' pk=g.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state"><div class="empty-icon">📜</div><div>Teminat mektubu yok</div></div>
+  {% endif %}
+</div>
+{% endblock %}

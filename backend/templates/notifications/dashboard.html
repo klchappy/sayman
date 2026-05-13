@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Bildirim Merkezi · {{ BRAND.name|default:BRAND_NAME }}{% endblock %}
+{% block content %}
+<div class="caption" style="text-transform:uppercase;">Operasyon / Bildirimler</div>
+<h1>Bildirim Merkezi</h1>
+<div class="muted" style="font-size:13px;">Dry-run bildirimleri, kurallar ve Telegram simülasyonu. Gerçek gönderim KAPALI.</div>
+
+<div class="card" style="border-left:4px solid var(--warning-500); margin-top:10px;">
+  <div style="font-weight:700;">⚠ 4 Aşamalı Kapı</div>
+  <div style="font-size:12px; margin-top:4px;">
+    1) Dashboard aday · 2) Dry-run log · 3) Test simülasyon · 4) <b>Gerçek Telegram: KAPALI</b>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:14px;">
+  <div class="card"><div class="muted" style="font-size:12px;">Toplam</div><div style="font-size:22px; font-weight:700;">{{ total }}</div></div>
+  <div class="card"><div class="muted" style="font-size:12px;">Dry-run</div><div style="font-size:22px; font-weight:700;">{{ dry_run_count }}</div></div>
+  <div class="card"><div class="muted" style="font-size:12px;">Suppressed</div><div style="font-size:22px; font-weight:700;">{{ suppressed_count }}</div></div>
+  <div class="card"><div class="muted" style="font-size:12px;">Kritik</div><div style="font-size:22px; font-weight:700; color:var(--danger-500);">{{ critical_count }}</div></div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 320px; gap:14px; margin-top:14px;">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Son Bildirimler</div>
+      <div>
+        <a class="btn btn-sm" href="{% url 'notifications:dry_run' %}">Dry-run Çalıştır</a>
+        <a class="btn btn-sm" href="{% url 'notifications:log_list' %}">Tüm Loglar →</a>
+      </div>
+    </div>
+    {% if recent_logs %}
+    <table class="kmt-table" style="margin-top:8px;">
+      <thead><tr><th>Zaman</th><th>Kategori</th><th>Şiddet</th><th>Başlık</th><th>Durum</th></tr></thead>
+      <tbody>
+        {% for n in recent_logs %}
+          <tr>
+            <td class="mono" style="font-size:11px;">{{ n.created_at|date:"d.m.Y H:i" }}</td>
+            <td>{{ n.get_category_display }}</td>
+            <td><span class="status-tag {% if n.severity == 'CRITICAL' %}danger{% elif n.severity == 'WARNING' %}warning{% else %}info{% endif %}">{{ n.get_severity_display }}</span></td>
+            <td><a href="{% url 'notifications:log_detail' n.pk %}">{{ n.title }}</a></td>
+            <td><span class="status-tag {% if n.status == 'DRY_RUN' %}info{% elif n.status == 'SUPPRESSED' %}neutral{% elif n.status == 'READY' %}warning{% else %}neutral{% endif %}">{{ n.get_status_display }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty-state"><div class="empty-icon">🔔</div><div>Henüz bildirim yok.</div></div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Aktif Kurallar</div>
+      <a class="btn btn-sm" href="{% url 'notifications:rule_list' %}">Tümü →</a></div>
+    <ul style="list-style:none; padding:0; margin:6px 0 0 0;">
+      {% for r in rules %}
+        <li style="padding:6px 0; border-bottom:1px solid var(--neutral-200);">
+          <div style="font-weight:600;">{{ r.name }}</div>
+          <div class="mono muted" style="font-size:11px;">{{ r.code }} · {{ r.get_category_display }}</div>
+        </li>
+      {% empty %}
+        <li class="muted">Kural yok. <code>seed_notification_rules</code> komutunu çalıştırın.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class="muted" style="margin-top:14px; font-size:12px;">
+  Gerçek Telegram: <b style="color:var(--danger-500);">KAPALI</b> · token/chat-id raw görüntülenmez (maskeli).
+</div>
+{% endblock %}

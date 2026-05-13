@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ rule.code }} · {{ BRAND.name|default:BRAND_NAME }}{% endblock %}
+{% block content %}
+<div class="caption">Bildirim Kuralı</div>
+<h1>{{ rule.name }}</h1>
+<div class="mono muted">{{ rule.code }}</div>
+
+<div class="card" style="margin-top:10px;">
+  <div><b>Kategori:</b> {{ rule.get_category_display }}</div>
+  <div><b>Tetikleyici:</b> {{ rule.get_trigger_type_display }}</div>
+  <div><b>Kanal:</b> {{ rule.get_channel_display }}</div>
+  <div><b>Şiddet:</b> {{ rule.get_severity_display }}</div>
+  <div><b>days_before:</b> {{ rule.days_before|default:"—" }}</div>
+  <div><b>Aktif:</b> {{ rule.is_active|yesno:"Evet,Hayır" }}</div>
+  <div><b>Dry-run only:</b> {{ rule.dry_run_only|yesno:"Evet,Hayır" }}</div>
+</div>
+
+<div class="card" style="margin-top:10px;">
+  <div class="card-title">Şablon</div>
+  <pre class="mono" style="white-space:pre-wrap;">{{ rule.title_template }}
+
+{{ rule.message_template }}</pre>
+</div>
+
+<a class="btn btn-sm" href="{% url 'notifications:rule_edit' rule.pk %}">Düzenle</a>
+<a class="btn btn-sm btn-ghost" href="{% url 'notifications:rule_list' %}">← Geri</a>
+{% endblock %}

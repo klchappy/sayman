@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Manuel Dönem · {{ profile.title }}{% endblock %}
+
+{% block content %}
+<div class="caption">Operasyon / Düzenli Ödemeler / Manuel Dönem</div>
+<h1 style="margin:6px 0 18px;">Manuel Dönem: {{ profile.title }}</h1>
+
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    <div class="grid grid-cols-2">
+      {% for field in form %}
+        <div class="form-group" {% if field.name == 'notes' %}style="grid-column:span 2;"{% endif %}>
+          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+          {{ field }}
+          {% if field.errors %}<div class="form-error">{{ field.errors|join:" " }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <a href="{% url 'regular_payments:detail' pk=profile.pk %}" class="btn btn-ghost">İptal</a>
+      <button type="submit" class="btn btn-primary">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

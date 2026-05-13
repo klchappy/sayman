@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Export Geçmişi · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<h1>Export Geçmişi</h1>
+<table class="table">
+  <thead><tr><th>Tarih</th><th>Tip</th><th>Format</th><th>Durum</th><th>Satır</th><th>Kullanıcı</th><th></th></tr></thead>
+  <tbody>
+    {% for r in runs %}
+      <tr>
+        <td>{{ r.created_at|date:"d.m.Y H:i" }}</td>
+        <td>{{ r.get_report_type_display }}</td>
+        <td>{{ r.format }}</td>
+        <td><span class="status-tag {% if r.status == 'COMPLETED' %}success{% elif r.status == 'FAILED' %}danger{% elif r.status == 'CANCELLED' %}neutral{% else %}info{% endif %}">{{ r.get_status_display }}</span></td>
+        <td>{{ r.row_count }}</td>
+        <td>{{ r.created_by|default:"—" }}</td>
+        <td><a class="btn btn-sm" href="{% url 'reports:run_detail' r.pk %}">Detay</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="muted">Henüz export yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

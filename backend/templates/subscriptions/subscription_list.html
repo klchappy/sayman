@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Abonelikler · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Operasyon / Abonelik & Taahhüt</div>
+    <h1 style="margin:6px 0 0;">Abonelik & Taahhüt Takibi</h1>
+    <div class="muted" style="font-size:13px;">İnternet, telefon, GSM, elektrik, su, doğalgaz, yazılım, aidat. <span class="status-tag info" style="margin-left:6px;">Faz 5</span></div>
+  </div>
+  {% if can_write %}<a href="{% url 'subscriptions:create' %}" class="btn btn-primary">+ Yeni Abonelik</a>{% endif %}
+</div>
+
+{% if approaching_commitments %}
+<div class="card" style="border-left:4px solid var(--orange-500);">
+  <div class="card-title" style="color:var(--orange-500);">⚠ Yaklaşan Taahhütler ({{ approaching_commitments.count }})</div>
+  <table class="kmt-table">
+    <thead><tr><th>Abonelik</th><th>Kampanya</th><th>Bitiş</th><th class="num">Tutar</th></tr></thead>
+    <tbody>
+      {% for cm in approaching_commitments %}
+        <tr>
+          <td><a href="{% url 'subscriptions:detail' pk=cm.subscription.pk %}">{{ cm.subscription.title }}</a></td>
+          <td>{{ cm.campaign_name|default:"—" }}</td>
+          <td class="mono" style="color:var(--orange-500); font-weight:700;">{{ cm.end_date|date:"d.m.Y" }}</td>
+          <td class="num">{{ cm.committed_amount|money_tr }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card" style="padding:0;">
+  {% if subscriptions %}
+    <table class="kmt-table">
+      <thead><tr><th>Sahip</th><th>Başlık</th><th>Hizmet Tipi</th><th>Hesap No</th><th class="num">Aylık</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for s in subscriptions %}
+          <tr>
+            <td>{{ s.owner_label|truncatechars:24 }}</td>
+            <td>{{ s.title|truncatechars:48 }}</td>
+            <td><span class="status-tag info">{{ s.get_service_type_display }}</span></td>
+            <td class="mono" style="font-size:11px;">{{ s.account_no|default:"—" }}</td>
+            <td class="num">{{ s.expected_monthly_amount|money_tr }}</td>
+            <td>
+              {% if s.status == 'ACTIVE' %}<span class="status-tag success">{{ s.get_status_display }}</span>
+              {% elif s.status == 'NEEDS_REVIEW' %}<span class="status-tag purple">{{ s.get_status_display }}</span>
+              {% elif s.status == 'CANCELLED' %}<span class="status-tag neutral">{{ s.get_status_display }}</span>
+              {% else %}<span class="status-tag warning">{{ s.get_status_display }}</span>{% endif %}
+            </td>
+            <td><a href="{% url 'subscriptions:detail' pk=s.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📡</div>
+      <div style="font-weight:600;">Henüz abonelik yok</div>
+      {% if can_write %}<a href="{% url 'subscriptions:create' %}" class="btn btn-primary" style="margin-top:14px;">+ Yeni Abonelik</a>{% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Belediyeler · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Emlak Vergisi / Belediyeler</div>
+    <h1 style="margin:6px 0 0;">Belediyeler</h1>
+  </div>
+  {% if can_write %}<a href="{% url 'properties:municipality_create' %}" class="btn btn-primary">+ Yeni Belediye</a>{% endif %}
+</div>
+
+<div class="card" style="padding:14px;">
+  {% if municipalities %}
+    <table class="kmt-table">
+      <thead><tr><th>Ad</th><th>İl</th><th>İlçe</th><th>Web</th></tr></thead>
+      <tbody>
+        {% for m in municipalities %}
+          <tr>
+            <td><strong>{{ m.name }}</strong></td>
+            <td>{{ m.province }}</td>
+            <td>{{ m.district }}</td>
+            <td>{% if m.website %}<a href="{{ m.website }}" target="_blank" rel="noopener">{{ m.website }}</a>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state"><div class="empty-icon">🏛</div><div>Belediye yok</div></div>
+  {% endif %}
+</div>
+{% endblock %}

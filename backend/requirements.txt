@@ -1,0 +1,32 @@
+# Muhasebe Operasyonları — Production runtime requirements
+# Faz 15 Production Hardening Patch ile dondurulmuştur.
+#
+# Kuralları:
+# - Yalnız production runtime için gerekli paketler.
+# - Tüm sürümler dondurulmuş (==) — repro install için zorunlu.
+# - Selenium / playwright / docx2pdf gibi UI/scrape araçları YOK (production runtime'a gerek yok).
+# - Telegram bot kütüphanesi YOK (Faz 13 dry-run; gerçek gönderim Faz 16+ kararı).
+#
+# Yükleme:
+#   pip install -r requirements.txt
+
+# --- Django core ---
+Django==6.0.4
+asgiref==3.11.1
+sqlparse==0.5.5
+tzdata==2026.1                # Windows + bazı Linux dağıtımları için TZ veri tabanı
+
+# --- Excel export (reports / Faz 12) ---
+openpyxl==3.1.5
+et_xmlfile==2.0.0
+
+# --- Production-only (lokal Windows dev'de yüklü değil; canlı kuruluma gerekli) ---
+# psycopg birim hassasiyeti DB sürücü mevcut sürüm zinciriyle eşleşmelidir.
+psycopg[binary]>=3.1,<4
+gunicorn>=21.2,<24
+
+# --- Faz 15 risk notu ---
+# Django 6.0.4 sürümü mevcut ortamda dondurulmuştur.
+# Faz 14 W6 uyarısı: 6.x LTS değildir. İleride 5.2 LTS'e geri çekme veya 6.x bakımıyla devam
+# kararı _docs/PHASE15_PRODUCTION_HARDENING_REPORT.md "Django Version Decision" bölümünde
+# kayıtlıdır.

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}{{ tax_year }} · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Emlak Vergisi / Yıl</div>
+    <h1 style="margin:6px 0 0;">{{ tax_year.property_asset.name }} · {{ tax_year.tax_year }}</h1>
+    <div class="muted">
+      Belediye: {{ tax_year.municipality.name|default:"—" }} · Kaynak: {{ tax_year.get_source_display }} ·
+      Durum: <span class="status-tag info">{{ tax_year.get_status_display }}</span>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    {% if can_write %}
+      <a href="{% url 'properties:tax_year_update' pk=tax_year.pk %}" class="btn btn-ghost">Düzenle</a>
+      <form method="post" action="{% url 'properties:tax_year_generate_installments' pk=tax_year.pk %}" style="display:inline;">
+        {% csrf_token %}
+        <button class="btn btn-primary" type="submit">Varsayılan Taksitleri Üret</button>
+      </form>
+      <a href="{% url 'properties:installment_create' pk=tax_year.pk %}" class="btn btn-ghost">+ Manuel Taksit</a>
+      <form method="post" action="{% url 'properties:tax_year_cancel' pk=tax_year.pk %}" style="display:inline;">
+        {% csrf_token %}
+        <button class="btn btn-warning" type="submit"
+                onclick="return confirm('Yıl iptal edilsin mi? Bağlı taksitler de iptal olur.');">İptal</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px;">
+    <div><div class="caption">Tahakkuk</div><div style="font-size:18px; font-weight:600;">{{ tax_year.total_accrual_amount|money_tr }}</div></div>
+    <div><div class="caption">Ödenen</div><div style="font-size:18px; font-weight:600;">{{ tax_year.total_paid_amount|money_tr }}</div></div>
+    <div><div class="caption">Kalan</div><div style="font-size:18px; font-weight:600;">{{ tax_year.remaining_amount|money_tr }}</div></div>
+  </div>
+  {% if tax_year.notes %}<div class="muted" style="margin-top:10px;">📝 {{ tax_year.notes|linebreaksbr }}</div>{% endif %}
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Taksitler</div>
+  {% if installments %}
+    <table class="kmt-table">
+      <thead><tr><th>No</th><th>Son Ödeme</th><th class="num">Tutar</th><th>Durum</th><th>Ödeme Tarihi</th><th>PayableItem</th><th></th></tr></thead>
+      <tbody>
+        {% for i in installments %}
+          <tr>
+            <td><strong>{{ i.installment_no }}</strong></td>
+            <td>{{ i.due_date|date:"d.m.Y" }}</td>
+            <td class="num">{{ i.amount|money_tr }}</td>
+            <td>
+              {% if i.status == 'PAID' %}<span class="status-tag success">{{ i.get_status_display }}</span>
+              {% elif i.status == 'LINKED' %}<span class="status-tag info">{{ i.get_status_display }}</span>
+              {% elif i.status == 'OVERDUE' %}<span class="status-tag danger">{{ i.get_status_display }}</span>
+              {% elif i.status == 'CANCELLED' %}<span class="status-tag neutral">{{ i.get_status_display }}</span>
+              {% else %}<span class="status-tag warning">{{ i.get_status_display }}</span>{% endif %}
+            </td>
+            <td>{{ i.payment_date|date:"d.m.Y"|default:"—" }}</td>
+            <td>{% if i.payable %}<a href="{% url 'finance:detail' pk=i.payable.pk %}">#{{ i.payable.pk }}</a>{% else %}—{% endif %}</td>
+            <td><a href="{% url 'properties:installment_detail' pk=i.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<div class="muted">Bu yıl için taksit yok. "Varsayılan Taksitleri Üret" ile 1./2. taksiti otomatik yarat.</div>{% endif %}
+</div>
+
+<div class="card" style="padding:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Belgeler</div>
+  {% if documents %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for d in documents %}
+        <li>{{ d.created_at|date:"d.m.Y" }} · {{ d.get_document_role_display }} · {{ d.document.original_filename|default:d.document.title }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}<div class="muted">Belge yok.</div>{% endif %}
+
+  {% if can_write %}
+  <form method="post" enctype="multipart/form-data"
+        action="{% url 'properties:year_document_upload' year_pk=tax_year.pk %}"
+        style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+    {% csrf_token %}
+    {{ doc_form.document }} {{ doc_form.document_role }}
+    <button class="btn btn-primary" type="submit">Belge Bağla</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% load tasks_tags %}
+{% load chat_tags %}
+{% block title %}Taksit · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Emlak Vergisi / Taksit</div>
+    <h1 style="margin:6px 0 0;">{{ installment.tax_year.property_asset.name }} · {{ installment.tax_year.tax_year }} / {{ installment.installment_no }}. Taksit</h1>
+    <div class="muted">
+      Son ödeme: {{ installment.due_date|date:"d.m.Y" }} · Tutar: {{ installment.amount|money_tr }} ·
+      <span class="status-tag info">{{ installment.get_status_display }}</span>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    {% if can_write %}
+      <a href="{% url 'properties:installment_update' pk=installment.pk %}" class="btn btn-ghost">Düzenle</a>
+      {% if not installment.payable_id and installment.status != 'CANCELLED' %}
+        <form method="post" action="{% url 'properties:installment_create_payable' pk=installment.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button class="btn btn-primary" type="submit">PayableItem Yarat</button>
+        </form>
+      {% endif %}
+      {% if installment.status != 'CANCELLED' %}
+        <form method="post" action="{% url 'properties:installment_cancel' pk=installment.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button class="btn btn-warning" type="submit"
+                  onclick="return confirm('Taksit iptal edilsin mi?');">İptal</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div><strong>Yıl:</strong> <a href="{% url 'properties:tax_year_detail' pk=installment.tax_year.pk %}">{{ installment.tax_year }}</a></div>
+  <div><strong>PayableItem:</strong> {% if installment.payable %}<a href="{% url 'finance:detail' pk=installment.payable.pk %}">#{{ installment.payable.pk }}</a> · {{ installment.payable.get_status_display }}{% else %}—{% endif %}</div>
+  <div><strong>Ödeme tarihi:</strong> {{ installment.payment_date|date:"d.m.Y"|default:"—" }}</div>
+  {% if installment.notes %}<div class="muted" style="margin-top:8px;">📝 {{ installment.notes|linebreaksbr }}</div>{% endif %}
+</div>
+
+<div class="card" style="padding:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Belgeler</div>
+  {% if documents %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for d in documents %}
+        <li>{{ d.created_at|date:"d.m.Y" }} · {{ d.get_document_role_display }} · {{ d.document.original_filename|default:d.document.title }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}<div class="muted">Belge yok.</div>{% endif %}
+
+  {% if can_write %}
+  <form method="post" action="{% url 'properties:installment_document_upload' inst_pk=installment.pk %}"
+        style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+    {% csrf_token %}
+    {{ doc_form.document }} {{ doc_form.document_role }}
+    <button class="btn btn-primary" type="submit">Belge Bağla</button>
+  </form>
+  {% endif %}
+</div>
+
+{# Faz 10 — bağlı görevler #}
+{% related_tasks_panel installment %}
+{% related_chat_panel installment %}
+{% endblock %}

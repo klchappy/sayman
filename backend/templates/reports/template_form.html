@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Şablon · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<h1>{% if object %}Şablon Düzenle{% else %}Yeni Şablon{% endif %}</h1>
+<form method="post" class="card" style="max-width:600px;">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn" type="submit">Kaydet</button>
+  <a class="btn btn-sm" href="{% url 'reports:template_list' %}">İptal</a>
+</form>
+{% endblock %}

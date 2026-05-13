@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Bildirim Logları · {{ BRAND.name|default:BRAND_NAME }}{% endblock %}
+{% block content %}
+<div class="caption">Operasyon / Bildirimler / Loglar</div>
+<h1>Bildirim Logları</h1>
+<div class="muted" style="font-size:12px;">Gerçek Telegram gönderimi: <b style="color:var(--danger-500);">KAPALI</b></div>
+
+<div class="card" style="margin-top:10px; padding:0;">
+<table class="kmt-table">
+  <thead><tr><th>Zaman</th><th>Kategori</th><th>Şiddet</th><th>Kanal</th><th>Başlık</th><th>Durum</th><th>Dry-run</th></tr></thead>
+  <tbody>
+  {% for n in logs %}
+    <tr>
+      <td class="mono" style="font-size:11px;">{{ n.created_at|date:"d.m.Y H:i" }}</td>
+      <td>{{ n.get_category_display }}</td>
+      <td><span class="status-tag {% if n.severity == 'CRITICAL' %}danger{% elif n.severity == 'WARNING' %}warning{% else %}info{% endif %}">{{ n.get_severity_display }}</span></td>
+      <td>{{ n.get_channel_display }}</td>
+      <td><a href="{% url 'notifications:log_detail' n.pk %}">{{ n.title }}</a></td>
+      <td><span class="status-tag {% if n.status == 'DRY_RUN' %}info{% elif n.status == 'SUPPRESSED' %}neutral{% elif n.status == 'CANCELLED' %}neutral{% elif n.status == 'READY' %}warning{% else %}neutral{% endif %}">{{ n.get_status_display }}</span></td>
+      <td>{{ n.dry_run|yesno:"Evet,Hayır" }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7" class="muted">Log yok.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

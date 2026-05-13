@@ -1,0 +1,412 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Operasyon Merkezi · {{ BRAND.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header-wrap">
+  {% include "includes/page_header.html" with crumbs="OPERASYON / DASHBOARD" title="Operasyon Merkezi" subtitle=greeting_text %}
+</div>
+
+{# 4 KPI #}
+<div class="grid grid-cols-4">
+  {% for k in kpis %}
+    {% include "includes/kpi_card.html" with label=k.label value=k.value hint=k.hint color=k.color %}
+  {% endfor %}
+</div>
+
+{# Risk kartları #}
+<div class="grid grid-cols-4">
+  {% for r in risk_cards %}
+    <div class="card risk-card {{ r.color }}">
+      <div class="card-title" style="color:var(--{{ r.color }}-500);">{{ r.label }}</div>
+      <div class="muted" style="font-size:12px; margin-top:6px;">{{ r.desc }}</div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="grid grid-cols-2" style="margin-top:8px;">
+  {# Bugünkü görevler #}
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Bugünkü Görevlerim</div>
+      <a href="{% url 'tasks:list' %}" class="btn btn-ghost btn-sm">Tümü →</a>
+    </div>
+    {% for t in my_tasks %}
+      <div style="padding:10px 0; border-bottom:1px solid var(--neutral-200); display:flex; align-items:center; gap:10px;">
+        <span class="status-tag {% if t.priority == 'CRITICAL' %}danger{% elif t.priority == 'HIGH' %}orange{% else %}info{% endif %}">
+          {{ t.get_priority_display }}
+        </span>
+        <div style="flex:1;">{{ t.title }}</div>
+        <span class="mono muted" style="font-size:11px;">
+          {% if t.due_date %}{{ t.due_date|date:"d.m.Y" }}{% else %}—{% endif %}
+        </span>
+      </div>
+    {% empty %}
+      <div class="muted" style="text-align:center; padding:20px 0;">
+        Bugün için görev yok 🎉
+      </div>
+    {% endfor %}
+    {% if phase10_tasks %}
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--neutral-200);
+                  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
+        <div>
+          <div class="muted" style="font-size:11px; text-transform:uppercase;">Bugün</div>
+          <div class="mono" style="font-size:18px; font-weight:700;">{{ phase10_tasks.today_count }}</div>
+        </div>
+        <div>
+          <div class="muted" style="font-size:11px; text-transform:uppercase;">Geciken</div>
+          <div class="mono" style="font-size:18px; font-weight:700; color:{% if phase10_tasks.overdue_count %}var(--danger-600){% else %}inherit{% endif %};">{{ phase10_tasks.overdue_count }}</div>
+        </div>
+        <div>
+          <div class="muted" style="font-size:11px; text-transform:uppercase;">Kritik</div>
+          <div class="mono" style="font-size:18px; font-weight:700; color:{% if phase10_tasks.critical_count %}var(--danger-600){% else %}inherit{% endif %};">{{ phase10_tasks.critical_count }}</div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# Son AuditLog #}
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Son İşlemler (AuditLog)</div>
+      <a href="{% url 'audit:list' %}" class="btn btn-ghost btn-sm">Tümü →</a>
+    </div>
+    {% for a in recent_audit %}
+      <div style="padding:8px 0; border-bottom:1px solid var(--neutral-200); font-size:12px; display:flex; gap:6px;">
+        <b style="color:var(--brand-700);">{{ a.actor.username|default:"sistem" }}</b>
+        <span class="muted">{{ a.get_action_display|lower }}</span>
+        <span style="color:var(--brand-900);">{{ a.object_repr|default:a.summary|default:"—"|truncatechars:32 }}</span>
+        <span class="mono muted" style="margin-left:auto;">{{ a.created_at|date:"d.m H:i" }}</span>
+      </div>
+    {% empty %}
+      <div class="muted" style="text-align:center; padding:20px 0;">Henüz işlem yok.</div>
+    {% endfor %}
+  </div>
+</div>
+
+{# Modül özetleri — kompakt kart-grid #}
+<div class="grid grid-cols-3" style="margin-top:8px;">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📡 Abonelikler</div>
+      <a href="{% url 'subscriptions:list' %}" class="btn btn-ghost btn-sm">→</a>
+    </div>
+    <div style="font-size:24px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ phase5_summary.active_subscriptions }}</div>
+    <div class="muted" style="font-size:12px;">Aktif abonelik</div>
+    {% if phase5_summary.approaching_commitments %}
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--neutral-200);">
+        <div class="caption" style="color:var(--orange-500);">Yaklaşan Taahhüt</div>
+        {% for cm in phase5_summary.approaching_commitments %}
+          <div style="font-size:11px; margin-top:4px;">
+            <span style="color:var(--orange-500); font-weight:700; font-family:var(--font-mono);">{{ cm.end_date|date:"d.m" }}</span>
+            · {{ cm.subscription.title|truncatechars:30 }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">💼 Düzenli Ödeme</div>
+      <a href="{% url 'regular_payments:list' %}" class="btn btn-ghost btn-sm">→</a>
+    </div>
+    <div style="font-size:24px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ phase5_summary.regular_this_month_count }}</div>
+    <div class="muted" style="font-size:12px;">bu ay · {{ phase5_summary.regular_this_month_total|money_tr }}</div>
+    {% if phase5_summary.unlinked_periods %}
+      <div style="margin-top:10px; padding:8px 10px; background:var(--danger-100); color:var(--danger-500); border-radius:6px; font-size:11px; font-weight:600;">
+        ⚠ {{ phase5_summary.unlinked_periods }} dönem PayableItem'a bağlanmamış
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🏦 Resmi Ödemeler</div>
+      <a href="{% url 'official_payments:list' %}" class="btn btn-ghost btn-sm">→</a>
+    </div>
+    {% if phase5_summary.official_upcoming %}
+      {% for p in phase5_summary.official_upcoming %}
+        <div style="padding:6px 0; border-bottom:1px solid var(--neutral-200); font-size:11px; display:flex; justify-content:space-between;">
+          <span><b>{{ p.profile.get_payment_type_display }}</b> · {{ p.profile.title|truncatechars:24 }}</span>
+          <span class="mono" style="color:var(--brand-700);">{{ p.due_date|date:"d.m" }}</span>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="muted" style="text-align:center; padding:14px 0; font-size:12px;">30 gün içinde resmi ödeme yok</div>
+    {% endif %}
+  </div>
+</div>
+
+{# Site Aidatları özet — Faz badge sadeleştirildi (Aktif → minimal) #}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">Site Aidatları</div>
+    <a href="{% url 'pruva:dashboard' %}" class="btn btn-ghost btn-sm">Tümü →</a>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; padding:8px 0;">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Aktif Bağımsız Bölüm</div>
+      <div style="font-size:22px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ phase6_pruva.active_units }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Satıldı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase6_pruva.sold_units }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Açık Ekstre</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase6_pruva.open_statements }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Açık Aidat Farkı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase6_pruva.open_diffs }}</div>
+    </div>
+  </div>
+</div>
+
+{# Emlak Vergisi özet — FAZ 7 badge kaldırıldı #}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">Emlak Vergisi & Mülk Takip</div>
+    <a href="{% url 'properties:dashboard' %}" class="btn btn-ghost btn-sm">Tümü →</a>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; padding:8px 0;">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">{{ phase7_property.this_year }} Takipte</div>
+      <div style="font-size:22px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ phase7_property.tracked_this_year }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Aktif Mülk</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase7_property.active_assets }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Satıldı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase7_property.sold_assets }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Geciken Taksit</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if phase7_property.overdue_count %}var(--danger-600){% else %}inherit{% endif %};">{{ phase7_property.overdue_count }}</div>
+    </div>
+  </div>
+  {% if phase7_property.upcoming_installments %}
+    <div class="muted" style="font-size:11px; text-transform:uppercase; margin-top:8px;">Yaklaşan Taksitler</div>
+    <ul style="margin:4px 0 0; padding-left:18px;">
+      {% for i in phase7_property.upcoming_installments %}
+        <li style="font-size:13px;">{{ i.due_date|date:"d.m.Y" }} · {{ i.tax_year.property_asset.name }} · {{ i.installment_no }}. taksit · {{ i.amount|money_tr }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+
+{# Teminat Mektupları özet — FAZ 8 badge kaldırıldı #}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">Teminat Mektupları & Komisyon</div>
+    <a href="{% url 'guarantees:list' %}" class="btn btn-ghost btn-sm">Tümü →</a>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; padding:8px 0;">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Aktif Teminat</div>
+      <div style="font-size:22px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ phase8_guarantee.active_count }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Yaklaşan Vade</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase8_guarantee.returning_count }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Geciken Komisyon</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if phase8_guarantee.overdue_count %}var(--danger-600){% else %}inherit{% endif %};">{{ phase8_guarantee.overdue_count }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Bağlı Komisyon</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase8_guarantee.linked_payables }}</div>
+    </div>
+  </div>
+  {% if phase8_guarantee.upcoming_commissions %}
+    <div class="muted" style="font-size:11px; text-transform:uppercase; margin-top:8px;">Yaklaşan Komisyonlar</div>
+    <ul style="margin:4px 0 0; padding-left:18px;">
+      {% for p in phase8_guarantee.upcoming_commissions %}
+        <li style="font-size:13px;">{{ p.due_date|date:"d.m.Y" }} · {{ p.guarantee.letter_no }} · {{ p.period_label }} · {{ p.commission_amount|money_tr }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+
+{# Entegratör & Kontör özet — FAZ 9 badge kaldırıldı #}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">Entegratör & Kontör</div>
+    <a href="{% url 'integrators:list' %}" class="btn btn-ghost btn-sm">Tümü →</a>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; padding:8px 0;">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Aktif Hizmet</div>
+      <div style="font-size:22px; font-weight:800; color:var(--brand-900); font-family:var(--font-mono);">{{ phase9_integrators.active_services }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Tükenen Kontör</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if phase9_integrators.exhausted_count %}var(--danger-600){% else %}inherit{% endif %};">{{ phase9_integrators.exhausted_count }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Bağlı PayableItem</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase9_integrators.linked_payables }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Kritik Kontör</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if phase9_integrators.critical_credits %}var(--orange-600){% else %}inherit{% endif %};">{{ phase9_integrators.critical_credits|length }}</div>
+    </div>
+  </div>
+  {% if phase9_integrators.approaching_contracts %}
+    <div class="muted" style="font-size:11px; text-transform:uppercase; margin-top:8px;">Yaklaşan Sözleşmeler</div>
+    <ul style="margin:4px 0 0; padding-left:18px;">
+      {% for c in phase9_integrators.approaching_contracts %}
+        <li style="font-size:13px;">{{ c.renewal_date|date:"d.m.Y" }} · {{ c.service.provider_name }} · {{ c.title|truncatechars:32 }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if phase9_integrators.critical_credits %}
+    <div class="muted" style="font-size:11px; text-transform:uppercase; margin-top:8px;">Kritik Kontör Paketleri</div>
+    <ul style="margin:4px 0 0; padding-left:18px;">
+      {% for p in phase9_integrators.critical_credits %}
+        <li style="font-size:13px;">{{ p.service.provider_name }} · {{ p.package_name|truncatechars:28 }} · kalan: <strong>{{ p.remaining_credits }}</strong></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+
+{# Yaklaşan Ödemeler #}
+{% load kmtags %}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">Yaklaşan Ödemeler (T-7)</div>
+    <a href="{% url 'finance:list' %}" class="btn btn-ghost btn-sm">Tümü →</a>
+  </div>
+  {% for p in upcoming_payables %}
+    <div style="padding:8px 0; border-bottom:1px solid var(--neutral-200); display:flex; align-items:center; gap:10px;">
+      <span class="status-tag {% if p.status == 'OVERDUE' %}danger{% elif p.status == 'APPROACHING' %}orange{% else %}info{% endif %}">{{ p.get_status_display }}</span>
+      <div style="flex:1;">
+        <div style="font-weight:600;">{{ p.title|truncatechars:48 }}</div>
+        <div class="muted" style="font-size:11px;">{{ p.owner_label }}{% if p.institution %} · {{ p.institution.name }}{% endif %}</div>
+      </div>
+      <div class="mono" style="font-size:11px; color:var(--ink2);">{{ p.due_date|date:"d.m.Y" }}</div>
+      <div class="mono" style="font-weight:700; color:var(--brand-900);">{{ p.amount|money_tr }}</div>
+    </div>
+  {% empty %}
+    <div class="muted" style="text-align:center; padding:20px 0;">
+      Yaklaşan ödeme yok 🎉
+    </div>
+  {% endfor %}
+</div>
+
+{# Raporlama özet — FAZ 12 badge kaldırıldı #}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">📈 Raporlama & Export</div>
+    <a href="{% url 'reports:center' %}" class="btn btn-ghost btn-sm">Rapor Merkezi →</a>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; padding:8px 0;">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Tamamlandı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase12_reports.completed_count|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Hatalı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if phase12_reports.failed_count %}var(--danger-600){% else %}inherit{% endif %};">{{ phase12_reports.failed_count|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Bekleyen</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase12_reports.pending_count|default:0 }}</div>
+    </div>
+  </div>
+  {% if phase12_reports.recent_runs %}
+    <div class="muted" style="font-size:11px; text-transform:uppercase; margin-top:8px;">Son Exportlar</div>
+    <ul style="margin:4px 0 0; padding-left:18px;">
+      {% for r in phase12_reports.recent_runs %}
+        <li style="font-size:13px;">
+          <a href="{% url 'reports:run_detail' r.pk %}">{{ r.title|default:r.report_type }}</a>
+          <span class="muted">· {{ r.format }} · {{ r.get_status_display }} · {{ r.created_at|date:"d.m H:i" }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+
+{# Mesajlar özet — FAZ 11 badge kaldırıldı #}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">💬 Mesajlar & Konular</div>
+    <a href="{% url 'chat:center' %}" class="btn btn-ghost btn-sm">Mesaj Merkezi →</a>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; padding:8px 0;">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Okunmamış</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if phase11_chat.unread_count %}var(--orange-600){% else %}inherit{% endif %};">{{ phase11_chat.unread_count|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Aktif Konu</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase11_chat.active_threads|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Kayıt-Bağlı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase11_chat.record_threads|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Görev-Bağlı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase11_chat.task_threads|default:0 }}</div>
+    </div>
+  </div>
+  {% if phase11_chat.recent_threads %}
+    <div class="muted" style="font-size:11px; text-transform:uppercase; margin-top:8px;">Son Konular</div>
+    <ul style="margin:4px 0 0; padding-left:18px;">
+      {% for t in phase11_chat.recent_threads %}
+        <li style="font-size:13px;">
+          <a href="{% url 'chat:thread_detail' t.pk %}">{{ t.title|default:t }}</a>
+          <span class="muted">· {{ t.get_thread_type_display }}</span>
+          {% if t.last_message_preview %}<span class="muted">· {{ t.last_message_preview|truncatechars:48 }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+
+{# Bildirim Merkezi — FAZ 13 badge kaldırıldı #}
+<div class="card" style="margin-top:8px;">
+  <div class="card-header">
+    <div class="card-title">🔔 Bildirim Merkezi</div>
+    <a href="{% url 'notifications:dashboard' %}" class="btn btn-ghost btn-sm">Bildirim Merkezi →</a>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; padding:8px 0;">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Dry-run</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase13_notifications.dry_run_count|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Kritik</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono); color:{% if phase13_notifications.critical_count %}var(--danger-500){% else %}inherit{% endif %};">{{ phase13_notifications.critical_count|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Suppressed</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase13_notifications.suppressed_count|default:0 }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase;">Hatalı</div>
+      <div style="font-size:22px; font-weight:800; font-family:var(--font-mono);">{{ phase13_notifications.failed_count|default:0 }}</div>
+    </div>
+  </div>
+  <div class="muted" style="font-size:11px;">Gerçek Telegram: <b style="color:var(--danger-500);">KAPALI</b> · token/chat-id maskeli.</div>
+  {% if phase13_notifications.recent %}
+    <ul style="margin:4px 0 0; padding-left:18px;">
+      {% for n in phase13_notifications.recent %}
+        <li style="font-size:13px;">
+          <a href="{% url 'notifications:log_detail' n.pk %}">{{ n.title|truncatechars:60 }}</a>
+          <span class="muted">· {{ n.get_severity_display }} · {{ n.get_status_display }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted" style="text-align:center; padding:14px 0; font-size:12px;">
+      Aday bildirim yok. <a href="{% url 'notifications:dry_run' %}">Dry-run çalıştır</a>.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

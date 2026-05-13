@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% load tasks_tags %}
+{% load chat_tags %}
+{% block title %}{{ statement.unit.code }} · {{ statement.period_label }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Site Aidatları / Ekstre</div>
+    <h1 style="margin:6px 0 0;">{{ statement.unit.code }} · {{ statement.period_label }}</h1>
+    <div class="muted">Son Ödeme: {{ statement.due_date|date:"d.m.Y" }} · Durum: <span class="status-tag info">{{ statement.get_status_display }}</span></div>
+  </div>
+  {% if can_write %}
+    <div style="display:flex; gap:8px;">
+      {% if statement.status != 'CANCELLED' and statement.status != 'LINKED' and statement.status != 'PAID' %}
+        <a href="{% url 'pruva:statement_update' pk=statement.pk %}" class="btn btn-ghost">Düzenle</a>
+      {% endif %}
+      {% if not statement.payable and statement.status != 'CANCELLED' %}
+        <form method="post" action="{% url 'pruva:statement_create_payable' pk=statement.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button class="btn btn-primary" type="submit">PayableItem Yarat</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <table class="kmt-table">
+    <tr><th>Aidat</th><td class="num">{{ statement.aidat_amount|money_tr }}</td></tr>
+    <tr><th>Gider Katılımı</th><td class="num">{{ statement.gider_amount|money_tr }}</td></tr>
+    <tr><th>Önceki Bakiye</th><td class="num">{{ statement.previous_debt|money_tr }}</td></tr>
+    <tr><th>Gecikme</th><td class="num">{{ statement.penalty|money_tr }}</td></tr>
+    <tr><th>Diğer</th><td class="num">{{ statement.other|money_tr }}</td></tr>
+    <tr><th><strong>TOPLAM</strong></th><td class="num"><strong>{{ statement.total_amount|money_tr }}</strong></td></tr>
+    {% if statement.payable %}<tr><th>PayableItem</th><td><a href="{% url 'finance:detail' pk=statement.payable.pk %}">#{{ statement.payable.pk }} · {{ statement.payable.get_status_display }}</a></td></tr>{% endif %}
+  </table>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Belgeler</div>
+  {% if statement.documents.all %}
+    <ul>
+      {% for d in statement.documents.all %}
+        <li><span class="status-tag info">{{ d.get_document_role_display }}</span> {{ d.document.original_filename }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}<div class="muted">Belge yok.</div>{% endif %}
+  {% if can_write %}
+    <a href="{% url 'pruva:statement_document_upload' pk=statement.pk %}" class="btn btn-ghost btn-sm" style="margin-top:8px;">+ Belge Bağla</a>
+  {% endif %}
+</div>
+
+{% if can_write and statement.status != 'CANCELLED' %}
+<div class="card" style="padding:14px;">
+  <form method="post" action="{% url 'pruva:statement_cancel' pk=statement.pk %}" class="kmt-form">
+    {% csrf_token %}
+    <input type="text" name="reason" placeholder="İptal sebebi" style="width:60%;">
+    <button class="btn btn-ghost" type="submit">Ekstreyi İptal Et</button>
+  </form>
+</div>
+{% endif %}
+
+{# Faz 10 — bağlı görevler #}
+{% related_tasks_panel statement %}
+{% related_chat_panel statement %}
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title|default:"Görevler" }} · {{ BRAND.name|default:BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+  <h1>{{ page_title|default:"Ajanda & Görev Yönetimi" }}</h1>
+  {% if can_write %}
+    <a class="btn btn-primary" href="{% url 'tasks:create' %}">+ Yeni Görev</a>
+  {% endif %}
+</div>
+
+<div class="muted" style="font-size:13px; margin:6px 0 14px 0;">
+  Bugün · Yaklaşan · Geciken görevlerinizi tek noktadan yönetin.
+</div>
+
+<div class="card" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+  <a class="status-tag info" href="{% url 'tasks:today' %}">Bugün</a>
+  <a class="status-tag warning" href="{% url 'tasks:overdue' %}">Geciken</a>
+  <a class="status-tag info" href="{% url 'tasks:upcoming' %}">Yaklaşan (14g)</a>
+  <a class="status-tag neutral" href="{% url 'tasks:assigned_to_me' %}">Bana Atanan</a>
+  <a class="status-tag neutral" href="{% url 'tasks:created_by_me' %}">Oluşturduğum</a>
+  <a class="status-tag neutral" href="{% url 'tasks:list' %}">Tümü</a>
+</div>
+
+<form method="get" class="card" style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
+  <div>
+    <label class="muted" style="font-size:11px;">Durum</label><br>
+    <select name="status">
+      <option value="">— Tümü —</option>
+      {% for v,l in status_choices %}
+        <option value="{{ v }}" {% if filter_status == v %}selected{% endif %}>{{ l }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="muted" style="font-size:11px;">Öncelik</label><br>
+    <select name="priority">
+      <option value="">— Tümü —</option>
+      {% for v,l in priority_choices %}
+        <option value="{{ v }}" {% if filter_priority == v %}selected{% endif %}>{{ l }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="muted" style="font-size:11px;">Atama</label><br>
+    <select name="assigned">
+      <option value="" {% if not filter_assigned %}selected{% endif %}>Tümü</option>
+      <option value="me" {% if filter_assigned == 'me' %}selected{% endif %}>Bana atanan</option>
+    </select>
+  </div>
+  <button class="btn" type="submit">Filtrele</button>
+</form>
+
+<div class="card" style="padding:0;">
+  {% if tasks %}
+    <table class="kmt-table">
+      <thead>
+        <tr>
+          <th>Başlık</th><th>Atanan</th><th>Öncelik</th>
+          <th>Durum</th><th>Son Tarih</th><th>Bağlı Kayıt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tasks %}
+          <tr>
+            <td>
+              <a href="{% url 'tasks:detail' t.pk %}"><b>{{ t.title }}</b></a>
+              {% if t.is_overdue %}<span class="status-tag danger" style="margin-left:6px;">⚠ Gecikti</span>{% endif %}
+            </td>
+            <td>{{ t.assigned_to.username|default:"—" }}</td>
+            <td>
+              <span class="status-tag {% if t.priority == 'CRITICAL' %}danger{% elif t.priority == 'HIGH' %}orange{% elif t.priority == 'LOW' %}neutral{% else %}info{% endif %}">{{ t.get_priority_display }}</span>
+            </td>
+            <td>
+              <span class="status-tag {% if t.status == 'COMPLETED' %}success{% elif t.status == 'POSTPONED' %}warning{% elif t.status == 'CANCELLED' %}neutral{% elif t.status == 'IN_PROGRESS' %}info{% else %}info{% endif %}">{{ t.get_status_display }}</span>
+            </td>
+            <td class="mono" style="font-size:12px;">{% if t.due_date %}{{ t.due_date|date:"d.m.Y" }}{% else %}—{% endif %}</td>
+            <td class="mono" style="font-size:11px; color:var(--brand-700);">
+              {% if t.related_app %}📎 {{ t.related_app }}.{{ t.related_model }}{% if t.related_title %} · {{ t.related_title|truncatechars:40 }}{% endif %}{% else %}—{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📅</div>
+      <div>Henüz görev yok 🎉</div>
+      <div class="muted" style="font-size:12px; margin-top:6px;">Yeni görev ekleyerek başlayın.</div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

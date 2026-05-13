@@ -1,0 +1,7 @@
+{# Reusable empty-state — Anayasa Madde 11.11 #}
+<div class="empty-state">
+  <div class="empty-icon">{{ icon|default:"📂" }}</div>
+  <div style="font-weight:600; margin-bottom:6px;">{{ title|default:"Henüz kayıt yok" }}</div>
+  {% if description %}<div class="muted" style="font-size:13px; margin-bottom:14px;">{{ description }}</div>{% endif %}
+  {% if cta_url %}<a href="{{ cta_url }}" class="btn btn-primary">{{ cta_label|default:"+ Yeni" }}</a>{% endif %}
+</div>

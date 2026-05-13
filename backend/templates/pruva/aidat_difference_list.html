@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Aidat Farkları · Site Aidatları{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Site Aidatları / Aidat Farkları</div>
+    <h1 style="margin:6px 0 0;">Aidat Farkları</h1>
+  </div>
+  {% if can_write %}<a href="{% url 'pruva:aidat_difference_create' %}" class="btn btn-primary">+ Yeni Fark</a>{% endif %}
+</div>
+
+<div class="card" style="padding:0;">
+  {% if differences %}
+    <table class="kmt-table">
+      <thead><tr><th>Tarih</th><th>Daire</th><th>Şahıs / Şirket</th><th class="num">Tutar</th><th>Yön</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for d in differences %}
+          <tr>
+            <td>{{ d.date|date:"d.m.Y" }}</td>
+            <td>{{ d.unit.code|default:'—' }}</td>
+            <td>{{ d.person.full_name|default:d.company.name|default:'—' }}</td>
+            <td class="num">{{ d.amount|money_tr }}</td>
+            <td><span class="status-tag info">{{ d.get_direction_display }}</span></td>
+            <td><span class="status-tag {% if d.status == 'OPEN' %}warning{% elif d.status == 'SETTLED' %}success{% else %}neutral{% endif %}">{{ d.get_status_display }}</span></td>
+            <td>
+              {% if can_write and d.status != 'CANCELLED' %}
+                <form method="post" action="{% url 'pruva:aidat_difference_cancel' pk=d.pk %}" style="display:inline;">
+                  {% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit">İptal</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<div class="empty-state"><div class="empty-icon">↔️</div><div>Henüz kayıt yok</div></div>{% endif %}
+</div>
+{% endblock %}

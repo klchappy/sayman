@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Mesaj Merkezi · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<h1>Mesaj Merkezi</h1>
+<div class="muted" style="font-size:13px; margin-bottom:14px;">
+  Kurumsal chat — kayıt-bağlantılı mesajlaşma. Faz 11'de WebSocket ile aktif olur.
+</div>
+
+<div class="empty-state">
+  <div class="empty-icon">💬</div>
+  <div style="font-weight:600; margin-bottom:6px;">Yakında — MVP-3</div>
+  <div class="muted" style="font-size:13px; max-width:480px; margin:0 auto;">
+    Birebir + grup + kayıt-bağlantılı thread'ler · WebSocket real-time + okundu bilgisi + dosya eki + mention.
+    Anayasa Madde 10 referans.
+  </div>
+</div>
+{% endblock %}

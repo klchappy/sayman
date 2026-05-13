@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Site Aidatları · {{ BRAND.name }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Operasyon / Site Aidatları</div>
+    <h1 style="margin:6px 0 0;">Site Aidatları</h1>
+    <div class="muted" style="font-size:13px;">Aylık ekstre · Aidat farkı · Site belgeleri. <span class="status-tag info" style="margin-left:6px;">Faz 6</span></div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    {% if can_write %}<a href="{% url 'pruva:unit_create' %}" class="btn btn-primary">+ Yeni Daire</a>{% endif %}
+    <a href="{% url 'pruva:aidat_difference_list' %}" class="btn btn-ghost">Aidat Farkları</a>
+    <a href="{% url 'pruva:site_document_list' %}" class="btn btn-ghost">Site Belgeleri</a>
+  </div>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Daireler ({{ units|length }})</div>
+  {% if units %}
+    <table class="kmt-table">
+      <thead><tr><th>Kod</th><th>Blok</th><th>Daire</th><th>Sahip</th><th>Kullanım</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for u in units %}
+          <tr>
+            <td><strong>{{ u.code }}</strong></td>
+            <td>{{ u.block }}</td>
+            <td>{{ u.unit_no }}</td>
+            <td>{{ u.owner_label|truncatechars:28 }}</td>
+            <td><span class="status-tag info">{{ u.get_usage_type_display }}</span></td>
+            <td>
+              {% if u.status == 'ACTIVE' %}<span class="status-tag success">{{ u.get_status_display }}</span>
+              {% elif u.status == 'SOLD' %}<span class="status-tag neutral">{{ u.get_status_display }}</span>
+              {% elif u.status == 'NEEDS_REVIEW' %}<span class="status-tag purple">{{ u.get_status_display }}</span>
+              {% else %}<span class="status-tag neutral">{{ u.get_status_display }}</span>{% endif %}
+            </td>
+            <td><a href="{% url 'pruva:unit_detail' pk=u.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state"><div class="empty-icon">🏢</div><div>Henüz daire yok</div></div>
+  {% endif %}
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Son Ekstreler</div>
+  {% if recent_statements %}
+    <table class="kmt-table">
+      <thead><tr><th>Daire</th><th>Dönem</th><th>Son Ödeme</th><th class="num">Toplam</th><th>Durum</th><th>PayableItem</th><th></th></tr></thead>
+      <tbody>
+        {% for s in recent_statements %}
+          <tr>
+            <td>{{ s.unit.code }}</td>
+            <td>{{ s.period_label }}</td>
+            <td>{{ s.due_date|date:"d.m.Y" }}</td>
+            <td class="num">{{ s.total_amount|money_tr }}</td>
+            <td><span class="status-tag info">{{ s.get_status_display }}</span></td>
+            <td>{% if s.payable %}<a href="{% url 'finance:detail' pk=s.payable.pk %}">#{{ s.payable.pk }}</a>{% else %}—{% endif %}</td>
+            <td><a href="{% url 'pruva:statement_detail' pk=s.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted">Ekstre yok.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="padding:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Açık Aidat Farkları</div>
+  {% if open_diffs %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for d in open_diffs %}
+        <li>{{ d.date|date:"d.m.Y" }} · {{ d.unit.code|default:'—' }} · {{ d.person.full_name|default:'—' }} · <strong>{{ d.amount|money_tr }}</strong> · <span class="muted">{{ d.get_direction_display }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted">Açık fark yok.</div>
+  {% endif %}
+</div>
+{% endblock %}

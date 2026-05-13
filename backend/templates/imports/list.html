@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Import Merkezi · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Operasyon / Import Merkezi</div>
+    <h1 style="margin:6px 0 0;">Import Merkezi</h1>
+    <div class="muted" style="font-size:13px;">
+      Excel · PDF · RAR · Klasör — Anayasa Madde 7: onaysız domain commit yok.
+      <span class="status-tag warning" style="margin-left:6px;">Faz 3 / Excel Preview</span>
+    </div>
+  </div>
+  <div>
+    <a href="{% url 'imports:new' %}" class="btn btn-primary">+ Yeni Import</a>
+  </div>
+</div>
+
+{% if pending_review %}
+  <div class="alert warning">
+    {{ pending_review }} import kontrol bekliyor — preview ekranından inceleyin.
+  </div>
+{% endif %}
+
+<div class="card" style="padding:0;">
+  {% if batches %}
+    <table class="kmt-table">
+      <thead>
+        <tr>
+          <th>Batch ID</th>
+          <th>Başlık</th>
+          <th>Kaynak</th>
+          <th>Modül</th>
+          <th>Durum</th>
+          <th>Satır</th>
+          <th>OK / Uyarı / Hata / Manuel</th>
+          <th>Yükleyen</th>
+          <th>Tarih</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in batches %}
+          <tr>
+            <td class="mono" style="font-size:11px;">{{ b.short_id }}</td>
+            <td>{{ b.title|default:"—" }}</td>
+            <td><span class="status-tag info">{{ b.get_source_type_display }}</span></td>
+            <td>{{ b.get_target_module_display }}</td>
+            <td>
+              {% if b.status == 'COMMITTED' %}<span class="status-tag success">{{ b.get_status_display }}</span>
+              {% elif b.status == 'NEEDS_REVIEW' %}<span class="status-tag warning">{{ b.get_status_display }}</span>
+              {% elif b.status == 'PARSED' %}<span class="status-tag info">{{ b.get_status_display }}</span>
+              {% elif b.status == 'CANCELLED' %}<span class="status-tag neutral">{{ b.get_status_display }}</span>
+              {% elif b.status == 'FAILED' %}<span class="status-tag danger">{{ b.get_status_display }}</span>
+              {% elif b.status == 'APPROVED' %}<span class="status-tag success">{{ b.get_status_display }}</span>
+              {% else %}<span class="status-tag neutral">{{ b.get_status_display }}</span>{% endif %}
+            </td>
+            <td class="mono">{{ b.row_count }}</td>
+            <td class="mono" style="font-size:11px;">
+              <span style="color:var(--success-500);">{{ b.ok_count }}</span> /
+              <span style="color:var(--warning-500);">{{ b.warning_count }}</span> /
+              <span style="color:var(--danger-500);">{{ b.error_count }}</span> /
+              <span style="color:var(--purple-500);">{{ b.manual_review_count }}</span>
+            </td>
+            <td>{{ b.created_by.username|default:"sistem" }}</td>
+            <td class="mono" style="font-size:11px;">{{ b.created_at|date:"d.m.Y H:i" }}</td>
+            <td><a href="{% url 'imports:detail' batch_id=b.batch_id %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">⬆</div>
+      <div style="font-weight:600;">Henüz import yok</div>
+      <div class="muted" style="font-size:13px; margin:6px 0 14px;">İlk Excel dosyasını yükleyin.</div>
+      <a href="{% url 'imports:new' %}" class="btn btn-primary">+ Yeni Import</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

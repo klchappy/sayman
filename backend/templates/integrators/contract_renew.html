@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sözleşme Yenileme · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div class="caption">Entegratör / Sözleşme Yenileme</div>
+<h1 style="margin:6px 0 14px;">Yeni Sözleşme (Yenileme)</h1>
+<div class="muted" style="margin-bottom:10px;">Eski: {{ old.title }} · {{ old.service.provider_name }}</div>
+
+<form method="post" class="card" style="padding:16px; max-width:880px;">
+  {% csrf_token %}
+  {% for f in form %}
+    <div style="margin-bottom:10px;">
+      <label style="display:block; font-weight:600; font-size:13px;">{{ f.label }}</label>
+      {{ f }}
+      {% if f.errors %}<div class="status-tag danger">{{ f.errors|join:", " }}</div>{% endif %}
+    </div>
+  {% endfor %}
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-primary" type="submit">Yenile</button>
+    <a class="btn btn-ghost" href="{% url 'integrators:contract_detail' pk=old.pk %}">İptal</a>
+  </div>
+  <div class="muted" style="font-size:12px; margin-top:8px;">Eski sözleşme RENEWED olur ve yeni sözleşme ile bağlanır.</div>
+</form>
+{% endblock %}

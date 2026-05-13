@@ -1,0 +1,36 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1E3A5F">
+  <title>{% block title %}{{ BRAND.name|default:BRAND_NAME }}{% endblock %}</title>
+  <!-- IBM Plex Sans + IBM Plex Mono — DESIGN_FREEZE.md -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    {% block layout %}
+      {% if user.is_authenticated %}
+        {% include "includes/topbar.html" %}
+        <div class="app-body">
+          {% include "includes/sidebar.html" %}
+          <main class="main-content">
+            {% include "includes/messages.html" %}
+            {% block content %}{% endblock %}
+          </main>
+        </div>
+        {% include "includes/chat_widget_placeholder.html" %}
+      {% else %}
+        {% block anon_content %}{% endblock %}
+      {% endif %}
+    {% endblock %}
+  </div>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

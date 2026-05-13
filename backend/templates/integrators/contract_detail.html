@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% load tasks_tags %}
+{% load chat_tags %}
+{% block title %}Sözleşme · {{ contract.title }}{% endblock %}
+{% block content %}
+<div class="caption">Entegratör / Sözleşme</div>
+<h1 style="margin:6px 0 14px;">{{ contract.title }}</h1>
+<div class="muted" style="margin-bottom:10px;">{{ contract.service.provider_name }} · {{ contract.service.title }}</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px;">
+    <div><div class="muted" style="font-size:11px;">Tip</div><div>{{ contract.get_contract_type_display }}</div></div>
+    <div><div class="muted" style="font-size:11px;">Durum</div>
+      <div>
+        {% if contract.status == 'ACTIVE' %}<span class="status-tag success">{{ contract.get_status_display }}</span>
+        {% elif contract.status == 'APPROACHING' %}<span class="status-tag orange">{{ contract.get_status_display }}</span>
+        {% elif contract.status == 'EXPIRED' %}<span class="status-tag danger">{{ contract.get_status_display }}</span>
+        {% elif contract.status == 'RENEWED' %}<span class="status-tag info">{{ contract.get_status_display }}</span>
+        {% elif contract.status == 'CANCELLED' %}<span class="status-tag neutral">{{ contract.get_status_display }}</span>
+        {% else %}<span class="status-tag warning">{{ contract.get_status_display }}</span>{% endif %}
+      </div>
+    </div>
+    <div><div class="muted" style="font-size:11px;">Başlangıç</div><div>{{ contract.start_date|date:"d.m.Y"|default:"—" }}</div></div>
+    <div><div class="muted" style="font-size:11px;">Bitiş</div><div>{{ contract.end_date|date:"d.m.Y"|default:"—" }}</div></div>
+    <div><div class="muted" style="font-size:11px;">Yenileme</div><div>{{ contract.renewal_date|date:"d.m.Y"|default:"—" }}</div></div>
+    <div><div class="muted" style="font-size:11px;">Tutar</div><div style="font-family:var(--font-mono);">{{ contract.amount|money_tr|default:"—" }} {{ contract.currency }}</div></div>
+    <div><div class="muted" style="font-size:11px;">PayableItem</div>
+      <div>{% if contract.payable %}<a href="{% url 'finance:detail' pk=contract.payable.pk %}">#{{ contract.payable.pk }}</a>{% else %}—{% endif %}</div>
+    </div>
+  </div>
+  {% if contract.renewed_from or contract.renewed_to %}
+    <div class="muted" style="margin-top:8px; font-size:12px;">
+      {% if contract.renewed_from %}Eski: <a href="{% url 'integrators:contract_detail' pk=contract.renewed_from.pk %}">{{ contract.renewed_from.title }}</a>{% endif %}
+      {% if contract.renewed_to %}· Yeni: <a href="{% url 'integrators:contract_detail' pk=contract.renewed_to.pk %}">{{ contract.renewed_to.title }}</a>{% endif %}
+    </div>
+  {% endif %}
+  {% if contract.notes %}<div class="muted" style="margin-top:8px; white-space:pre-wrap;">{{ contract.notes }}</div>{% endif %}
+</div>
+
+<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+  {% if can_write %}
+    <a href="{% url 'integrators:contract_update' pk=contract.pk %}" class="btn btn-ghost">Düzenle</a>
+    {% if not contract.payable %}
+      <form method="post" action="{% url 'integrators:contract_create_payable' pk=contract.pk %}">
+        {% csrf_token %}<button class="btn btn-primary" type="submit">PayableItem Yarat</button>
+      </form>
+    {% endif %}
+  {% endif %}
+  {% if can_approve and contract.status != 'CANCELLED' and contract.status != 'RENEWED' %}
+    <a href="{% url 'integrators:contract_renew' pk=contract.pk %}" class="btn btn-primary">Yenile</a>
+    <form method="post" action="{% url 'integrators:contract_cancel' pk=contract.pk %}">
+      {% csrf_token %}<button class="btn btn-danger" type="submit">İptal</button>
+    </form>
+  {% endif %}
+  <a href="{% url 'integrators:detail' pk=contract.service.pk %}" class="btn btn-ghost">← Hizmete Dön</a>
+</div>
+
+<h3>Belgeler</h3>
+<div class="card" style="padding:14px;">
+  {% if documents %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for d in documents %}<li>{{ d.document.original_filename }} <span class="muted">· {{ d.get_document_role_display }}</span></li>{% endfor %}
+    </ul>
+  {% else %}<div class="muted">Belge yok.</div>{% endif %}
+  {% if can_write %}
+    <form method="post" action="{% url 'integrators:contract_add_document' contract_pk=contract.pk %}" style="margin-top:10px; display:flex; gap:8px;">
+      {% csrf_token %}{{ doc_form.document }} {{ doc_form.document_role }}
+      <button class="btn btn-primary btn-sm" type="submit">Bağla</button>
+    </form>
+  {% endif %}
+</div>
+
+{# Faz 10 — bağlı görevler #}
+{% related_tasks_panel contract %}
+{% related_chat_panel contract %}
+{% endblock %}

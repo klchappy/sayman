@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Batch {{ batch.short_id }} · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div class="caption">Operasyon / Import / {{ batch.short_id }}</div>
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <h1 style="margin:6px 0 0;">{{ batch.title|default:"Import Batch" }}</h1>
+    <div class="muted mono" style="font-size:11px;">batch_id: {{ batch.batch_id }}</div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    {% if batch.status != 'CANCELLED' and batch.status != 'COMMITTED' %}
+      <a href="{% url 'imports:preview' batch_id=batch.batch_id %}" class="btn btn-primary">Preview & Onay</a>
+      <form method="post" action="{% url 'imports:cancel' batch_id=batch.batch_id %}" style="margin:0;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger" onclick="return confirm('Import iptal edilsin mi?');">İptal Et</button>
+      </form>
+    {% endif %}
+    <a href="{% url 'imports:list' %}" class="btn btn-ghost">← Liste</a>
+  </div>
+</div>
+
+<div class="grid grid-cols-4">
+  <div class="card kpi-card">
+    <div class="kpi-label">Durum</div>
+    <div style="margin-top:8px;">
+      {% if batch.status == 'COMMITTED' %}<span class="status-tag success">{{ batch.get_status_display }}</span>
+      {% elif batch.status == 'NEEDS_REVIEW' %}<span class="status-tag warning">{{ batch.get_status_display }}</span>
+      {% elif batch.status == 'CANCELLED' %}<span class="status-tag neutral">{{ batch.get_status_display }}</span>
+      {% elif batch.status == 'FAILED' %}<span class="status-tag danger">{{ batch.get_status_display }}</span>
+      {% else %}<span class="status-tag info">{{ batch.get_status_display }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Toplam Satır</div>
+    <div class="kpi-value">{{ batch.row_count }}</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">OK / Uyarı</div>
+    <div class="kpi-value" style="color:var(--success-500);">{{ batch.ok_count }} <span style="color:var(--warning-500); font-size:18px;">/ {{ batch.warning_count }}</span></div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Hata / Manuel</div>
+    <div class="kpi-value" style="color:var(--danger-500);">{{ batch.error_count }} <span style="color:var(--purple-500); font-size:18px;">/ {{ batch.manual_review_count }}</span></div>
+  </div>
+</div>
+
+<div class="grid grid-cols-2">
+  <div class="card">
+    <div class="card-title">Genel Bilgi</div>
+    <table class="kmt-table" style="margin-top:8px;">
+      <tr><td><b>Kaynak</b></td><td>{{ batch.get_source_type_display }}</td></tr>
+      <tr><td><b>Hedef Modül</b></td><td>{{ batch.get_target_module_display }}</td></tr>
+      <tr><td><b>Yükleyen</b></td><td>{{ batch.created_by.username|default:"sistem" }}</td></tr>
+      <tr><td><b>Yüklenme</b></td><td class="mono">{{ batch.created_at|date:"d.m.Y H:i:s" }}</td></tr>
+      <tr><td><b>Parse</b></td><td class="mono">{{ batch.parsed_at|date:"d.m.Y H:i:s"|default:"—" }}</td></tr>
+      <tr><td><b>Geçmiş Veri</b></td><td>{% if batch.historical_data %}<span class="status-tag warning">EVET (D-018)</span>{% else %}Hayır{% endif %}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Kaynak Dosyalar</div>
+    {% for sf in source_files %}
+      <div style="padding:10px 0; border-bottom:1px solid var(--neutral-200);">
+        <div style="font-weight:600;">{{ sf.document.original_filename }}</div>
+        <div class="muted mono" style="font-size:11px; margin-top:2px;">
+          sha256: {{ sf.document.sha256|slice:":16" }}… ·
+          {{ sf.document.file_size }} byte ·
+          {% if sf.sheet_name %}sheet: {{ sf.sheet_name }} ·{% endif %}
+          {{ sf.row_count }} satır
+        </div>
+        <a href="{% url 'documents:download' pk=sf.document.pk %}" class="btn btn-ghost btn-sm" style="margin-top:6px;">📥 İndir</a>
+      </div>
+    {% empty %}
+      <div class="muted">Kaynak dosya yok.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:8px;">
+  <div class="card-title">ImportLog (son 20)</div>
+  <table class="kmt-table" style="margin-top:8px;">
+    <thead><tr><th>Zaman</th><th>Seviye</th><th>Kod</th><th>Mesaj</th></tr></thead>
+    <tbody>
+      {% for log in recent_logs %}
+        <tr>
+          <td class="mono" style="font-size:11px;">{{ log.created_at|date:"d.m H:i:s" }}</td>
+          <td>
+            {% if log.level == 'ERROR' or log.level == 'CRITICAL' %}<span class="status-tag danger">{{ log.level }}</span>
+            {% elif log.level == 'WARNING' %}<span class="status-tag warning">{{ log.level }}</span>
+            {% else %}<span class="status-tag info">{{ log.level }}</span>{% endif %}
+          </td>
+          <td class="mono" style="font-size:11px;">{{ log.code }}</td>
+          <td>{{ log.message }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="muted" style="text-align:center; padding:14px;">Log yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{#
+  Domain detay sayfasında bağlı chat konularını + "Konu Aç" linkini gösterir.
+  Context: obj, obj_app, obj_model, obj_title, can_open_chat, related_threads
+#}
+<div class="card" style="border-left:4px solid var(--brand-700);">
+  <div class="card-header">
+    <div class="card-title">💬 Bağlı Konular ({{ related_threads|length|default:"0" }})</div>
+    {% if can_open_chat %}
+      <a class="btn btn-sm" href="{% url 'chat:create_for_object' %}?app={{ obj_app }}&model={{ obj_model }}&object_id={{ obj.pk }}">+ Konu Aç</a>
+    {% endif %}
+  </div>
+  {% if related_threads %}
+    <ul style="margin:6px 0 0; padding-left:18px;">
+      {% for t in related_threads %}
+        <li style="font-size:13px;">
+          <a href="{% url 'chat:thread_detail' t.pk %}">{{ t.title|default:t }}</a>
+          <span class="status-tag info">{{ t.get_thread_type_display }}</span>
+          {% if t.last_message_at %}<span class="muted mono" style="font-size:11px;"> · {{ t.last_message_at|date:"d.m.Y H:i" }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted" style="font-size:12px;">Bu kayıt için bağlı konu yok.</div>
+  {% endif %}
+</div>

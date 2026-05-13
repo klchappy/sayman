@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}{{ asset.name }} · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Emlak Vergisi / Mülk</div>
+    <h1 style="margin:6px 0 0;">{{ asset.name }}</h1>
+    <div class="muted">
+      {{ asset.get_property_type_display }} · {{ asset.owner_label }} ·
+      {{ asset.province }}{% if asset.district %} / {{ asset.district }}{% endif %}
+      {% if asset.parcel_info %} · Ada/Parsel: {{ asset.parcel_info }}{% endif %}
+      {% if asset.independent_section %} · BB: {{ asset.independent_section }}{% endif %}
+    </div>
+    <div style="margin-top:6px;">
+      {% if asset.status == 'ACTIVE' %}<span class="status-tag success">{{ asset.get_status_display }}</span>
+      {% elif asset.status == 'SOLD' %}<span class="status-tag neutral">{{ asset.get_status_display }} {% if asset.sale_date %}({{ asset.sale_date|date:"d.m.Y" }}){% endif %}</span>
+      {% elif asset.status == 'NEEDS_REVIEW' %}<span class="status-tag purple">{{ asset.get_status_display }}</span>
+      {% else %}<span class="status-tag info">{{ asset.get_status_display }}</span>{% endif %}
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    {% if can_write %}
+      <a href="{% url 'properties:asset_update' pk=asset.pk %}" class="btn btn-ghost">Düzenle</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if asset.address %}
+<div class="card" style="padding:12px; margin-bottom:14px;"><strong>Adres:</strong> {{ asset.address }}</div>
+{% endif %}
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Vergi Yılları ({{ tax_years|length }})</div>
+  {% if tax_years %}
+    <table class="kmt-table">
+      <thead><tr><th>Yıl</th><th>Belediye</th><th class="num">Tahakkuk</th><th class="num">Ödenen</th><th class="num">Kalan</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for ty in tax_years %}
+          <tr>
+            <td><strong>{{ ty.tax_year }}</strong></td>
+            <td>{{ ty.municipality.name|default:"—" }}</td>
+            <td class="num">{{ ty.total_accrual_amount|money_tr }}</td>
+            <td class="num">{{ ty.total_paid_amount|money_tr }}</td>
+            <td class="num">{{ ty.remaining_amount|money_tr }}</td>
+            <td><span class="status-tag info">{{ ty.get_status_display }}</span></td>
+            <td><a href="{% url 'properties:tax_year_detail' pk=ty.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<div class="muted">Bu mülk için yıl kaydı yok.</div>{% endif %}
+</div>
+
+{% if can_write and asset.status != 'SOLD' %}
+<div class="card" style="padding:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Mülkü Satıldı Olarak İşaretle</div>
+  <form method="post" action="{% url 'properties:asset_mark_sold' pk=asset.pk %}" style="display:flex; gap:8px; align-items:center;">
+    {% csrf_token %}
+    {{ mark_sold_form.sale_date }} {{ mark_sold_form.buyer_name }}
+    <button class="btn btn-warning" type="submit">Satıldı</button>
+  </form>
+  <div class="muted" style="font-size:12px; margin-top:6px;">Geçmiş yıl/taksit kayıtları korunur (tarihçe).</div>
+</div>
+{% endif %}
+{% endblock %}

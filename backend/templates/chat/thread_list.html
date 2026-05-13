@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Konularım · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<h1>Konularım</h1>
+<a class="btn" href="{% url 'chat:thread_create' %}">+ Yeni Konu</a>
+<table class="table" style="margin-top:8px;">
+  <thead><tr><th>Başlık</th><th>Tür</th><th>Durum</th><th>Son Mesaj</th></tr></thead>
+  <tbody>
+    {% for t in threads %}
+      <tr>
+        <td><a href="{% url 'chat:thread_detail' t.pk %}">{{ t }}</a></td>
+        <td>{{ t.get_thread_type_display }}</td>
+        <td>{{ t.get_status_display }}</td>
+        <td>{{ t.last_message_at|default:"—" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="muted">Konu yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

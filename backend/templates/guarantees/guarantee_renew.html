@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Teminat Yenileme · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div class="caption">Teminat / Yenileme</div>
+<h1 style="margin:6px 0 14px;">Yeni Teminat Mektubu (Yenileme)</h1>
+<div class="muted" style="margin-bottom:10px;">Eski mektup: {{ old.letter_no }} · {{ old.title }} · {{ old.amount }} {{ old.currency }}</div>
+
+<form method="post" class="card" style="padding:16px; max-width:880px;">
+  {% csrf_token %}
+  {% for f in form %}
+    <div style="margin-bottom:10px;">
+      <label style="display:block; font-weight:600; font-size:13px;">{{ f.label }}</label>
+      {{ f }}
+      {% if f.errors %}<div class="status-tag danger">{{ f.errors|join:", " }}</div>{% endif %}
+    </div>
+  {% endfor %}
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-primary" type="submit">Yenile</button>
+    <a class="btn btn-ghost" href="{% url 'guarantees:detail' pk=old.pk %}">İptal</a>
+  </div>
+  <div class="muted" style="font-size:12px; margin-top:8px;">Eski mektup status=RENEWED olur ve yeni mektup ile bağlanır. Geçmiş kayıtlar korunur.</div>
+</form>
+{% endblock %}

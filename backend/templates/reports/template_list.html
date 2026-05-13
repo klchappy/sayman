@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Rapor Şablonları · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<h1>Rapor Şablonları</h1>
+<a class="btn" href="{% url 'reports:template_create' %}">+ Yeni Şablon</a>
+<table class="table" style="margin-top:8px;">
+  <thead><tr><th>Ad</th><th>Tip</th><th>Format</th><th>Güncellendi</th></tr></thead>
+  <tbody>
+    {% for t in templates_list %}
+      <tr>
+        <td><a href="{% url 'reports:template_detail' t.pk %}">{{ t.name }}</a></td>
+        <td>{{ t.get_report_type_display }}</td>
+        <td>{{ t.default_format }}</td>
+        <td>{{ t.updated_at|date:"d.m.Y H:i" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="muted">Şablon yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}{{ master_name }} · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+  <div>
+    <div class="caption">Master / {{ master_name }}</div>
+    <h1 style="margin:4px 0 0;">{{ master_name }}</h1>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a href="?{% if not only_archived %}archived=1{% endif %}" class="btn btn-secondary btn-sm">
+      {% if only_archived %}Aktifleri Göster{% else %}Pasifleri Göster{% endif %}
+    </a>
+    <a href="{% url 'parties:create' slug=slug %}" class="btn btn-primary">+ Yeni</a>
+  </div>
+</div>
+
+<div class="card" style="padding:0;">
+  {% if object_list %}
+    <table class="kmt-table">
+      <thead>
+        <tr>
+          {% for f in fields %}<th>{{ f }}</th>{% endfor %}
+          <th>Durum</th>
+          <th>Güncellendi</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obj in object_list %}
+          <tr>
+            {% for f in fields %}<td>{{ obj|getattr_:f|default:"—" }}</td>{% endfor %}
+            <td>
+              {% if obj.is_active %}
+                <span class="status-tag success">Aktif</span>
+              {% else %}
+                <span class="status-tag neutral">Pasif</span>
+              {% endif %}
+            </td>
+            <td class="mono" style="font-size:12px; color:var(--neutral-600);">{{ obj.updated_at|date:"d.m.Y H:i" }}</td>
+            <td>
+              <a href="{% url 'parties:detail' slug=slug pk=obj.pk %}" class="btn btn-ghost btn-sm">Aç</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📂</div>
+      <div style="font-weight:600; margin-bottom:6px;">{% if only_archived %}Pasif{% else %}Aktif{% endif %} kayıt yok</div>
+      <div class="muted" style="font-size:13px; margin-bottom:14px;">İlk kayıt için "Yeni" butonu.</div>
+      <a href="{% url 'parties:create' slug=slug %}" class="btn btn-primary">+ Yeni Kayıt</a>
+    </div>
+  {% endif %}
+</div>
+
+{% if is_paginated %}
+  <div style="margin-top:14px; display:flex; gap:6px; justify-content:center;">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn btn-secondary btn-sm">← Önceki</a>{% endif %}
+    <span class="muted" style="padding:8px 12px;">Sayfa {{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn btn-secondary btn-sm">Sonraki →</a>{% endif %}
+  </div>
+{% endif %}
+{% endblock %}

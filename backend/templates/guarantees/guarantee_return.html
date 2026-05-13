@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Teminat İade · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div class="caption">Teminat / İade</div>
+<h1 style="margin:6px 0 14px;">Teminat Mektubu İade</h1>
+<div class="muted" style="margin-bottom:10px;">{{ guarantee.letter_no }} · {{ guarantee.title }} · {{ guarantee.amount }} {{ guarantee.currency }}</div>
+
+<form method="post" class="card" style="padding:16px; max-width:560px;">
+  {% csrf_token %}
+  {% for f in form %}
+    <div style="margin-bottom:10px;">
+      <label style="display:block; font-weight:600; font-size:13px;">{{ f.label }}</label>
+      {{ f }}
+      {% if f.errors %}<div class="status-tag danger">{{ f.errors|join:", " }}</div>{% endif %}
+    </div>
+  {% endfor %}
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-warning" type="submit">İade İşaretle</button>
+    <a class="btn btn-ghost" href="{% url 'guarantees:detail' pk=guarantee.pk %}">İptal</a>
+  </div>
+  <div class="muted" style="font-size:12px; margin-top:8px;">İade sonrası geçmiş komisyon dönemleri görüntülenebilir kalır; yeni dönem oluşturulamaz.</div>
+</form>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{% if edit_mode %}Görev Düzenle{% else %}Yeni Görev{% endif %} · {{ BRAND.name|default:BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<h1>{% if edit_mode %}Görev Düzenle{% else %}Yeni Görev{% endif %}</h1>
+
+{% if related_app or task.related_app %}
+  <div class="card" style="background:var(--brand-50); border-left:4px solid var(--brand-700);">
+    <div class="muted" style="font-size:11px;">Bağlı Kayıt</div>
+    <div class="mono" style="font-size:13px;">
+      {{ related_app|default:task.related_app }}.{{ related_model|default:task.related_model }}#{{ related_object_id|default:task.related_object_id }}
+      {% if related_title or task.related_title %} · {{ related_title|default:task.related_title }}{% endif %}
+    </div>
+  </div>
+{% endif %}
+
+<form method="post" class="card" style="max-width:640px;">
+  {% csrf_token %}
+  {% for field in form %}
+    <div style="margin-bottom:12px;">
+      <label><b>{{ field.label }}</b>{% if field.field.required %} *{% endif %}</label><br>
+      {{ field }}
+      {% if field.errors %}<div style="color:var(--danger-500); font-size:12px;">{{ field.errors|join:", " }}</div>{% endif %}
+      {% if field.help_text %}<div class="muted" style="font-size:11px;">{{ field.help_text }}</div>{% endif %}
+    </div>
+  {% endfor %}
+  <div style="display:flex; gap:8px;">
+    <button type="submit" class="btn btn-primary">{% if edit_mode %}Kaydet{% else %}Oluştur{% endif %}</button>
+    <a class="btn" href="{% if edit_mode %}{% url 'tasks:detail' task.pk %}{% else %}{% url 'tasks:list' %}{% endif %}">Vazgeç</a>
+  </div>
+</form>
+{% endblock %}

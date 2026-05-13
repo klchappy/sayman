@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% load tasks_tags %}
+{% load chat_tags %}
+{% block title %}{{ service.provider_name }} · {{ service.title }}{% endblock %}
+{% block content %}
+
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Entegratör / Hizmet</div>
+    <h1 style="margin:6px 0 0;">{{ service.provider_name }} · {{ service.title }}</h1>
+    <div class="muted" style="font-size:13px;">
+      {{ service.get_provider_type_display }} · {{ service.get_service_type_display }}
+      {% if service.status == 'ACTIVE' %}<span class="status-tag success">{{ service.get_status_display }}</span>
+      {% elif service.status == 'CANCELLED' %}<span class="status-tag neutral">{{ service.get_status_display }}</span>
+      {% elif service.status == 'PASSIVE' %}<span class="status-tag neutral">{{ service.get_status_display }}</span>
+      {% elif service.status == 'RENEWED' %}<span class="status-tag info">{{ service.get_status_display }}</span>
+      {% else %}<span class="status-tag warning">{{ service.get_status_display }}</span>{% endif %}
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    {% if can_write %}
+      <a href="{% url 'integrators:update' pk=service.pk %}" class="btn btn-ghost">Düzenle</a>
+      <a href="{% url 'integrators:contract_create' pk=service.pk %}" class="btn btn-primary">+ Sözleşme</a>
+      <a href="{% url 'integrators:credit_create' pk=service.pk %}" class="btn btn-primary">+ Kontör</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px;">
+    <div><div class="muted" style="font-size:11px; text-transform:uppercase;">Sağlayıcı</div><div style="font-weight:700;">{{ service.provider_name }}</div></div>
+    <div><div class="muted" style="font-size:11px; text-transform:uppercase;">Tip</div><div>{{ service.get_provider_type_display }}</div></div>
+    <div><div class="muted" style="font-size:11px; text-transform:uppercase;">Hizmet</div><div>{{ service.get_service_type_display }}</div></div>
+    <div><div class="muted" style="font-size:11px; text-transform:uppercase;">Müşteri No</div><div style="font-family:var(--font-mono);">{{ service.customer_no|default:"—" }}</div></div>
+    <div><div class="muted" style="font-size:11px; text-transform:uppercase;">Hesap No</div><div style="font-family:var(--font-mono);">{{ service.account_no|default:"—" }}</div></div>
+    <div><div class="muted" style="font-size:11px; text-transform:uppercase;">Şirket</div><div>{{ service.owner_company|default:"—" }}</div></div>
+    <div><div class="muted" style="font-size:11px; text-transform:uppercase;">Şahıs</div><div>{{ service.owner_person|default:"—" }}</div></div>
+  </div>
+  {% if service.notes %}<div class="muted" style="margin-top:8px; white-space:pre-wrap;">{{ service.notes }}</div>{% endif %}
+</div>
+
+<h3>Sözleşmeler</h3>
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  {% if contracts %}
+    <table class="kmt-table">
+      <thead><tr><th>Tip</th><th>Başlık</th><th>Başlangıç</th><th>Bitiş</th><th>Yenileme</th><th class="num">Tutar</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for c in contracts %}
+          <tr>
+            <td>{{ c.get_contract_type_display }}</td>
+            <td>{{ c.title|truncatechars:32 }}</td>
+            <td>{{ c.start_date|date:"d.m.Y"|default:"—" }}</td>
+            <td>{{ c.end_date|date:"d.m.Y"|default:"—" }}</td>
+            <td>{{ c.renewal_date|date:"d.m.Y"|default:"—" }}</td>
+            <td class="num">{{ c.amount|money_tr|default:"—" }}</td>
+            <td>
+              {% if c.status == 'ACTIVE' %}<span class="status-tag success">{{ c.get_status_display }}</span>
+              {% elif c.status == 'APPROACHING' %}<span class="status-tag orange">{{ c.get_status_display }}</span>
+              {% elif c.status == 'EXPIRED' %}<span class="status-tag danger">{{ c.get_status_display }}</span>
+              {% elif c.status == 'RENEWED' %}<span class="status-tag info">{{ c.get_status_display }}</span>
+              {% elif c.status == 'CANCELLED' %}<span class="status-tag neutral">{{ c.get_status_display }}</span>
+              {% else %}<span class="status-tag warning">{{ c.get_status_display }}</span>{% endif %}
+            </td>
+            <td><a href="{% url 'integrators:contract_detail' pk=c.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted">Sözleşme yok.</div>
+  {% endif %}
+</div>
+
+<h3>Kontör Paketleri</h3>
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  {% if credit_packages %}
+    <table class="kmt-table">
+      <thead><tr><th>Paket</th><th>Alış</th><th class="num">Toplam</th><th class="num">Kalan</th><th>Eşik</th><th>Kullanım</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for p in credit_packages %}
+          <tr>
+            <td>{{ p.package_name|truncatechars:36 }}</td>
+            <td>{{ p.purchase_date|date:"d.m.Y"|default:"—" }}</td>
+            <td class="num">{{ p.total_credits }}</td>
+            <td class="num"><strong>{{ p.remaining_credits }}</strong></td>
+            <td class="num">{{ p.critical_threshold }}</td>
+            <td>
+              <div style="background:var(--gray-100); height:8px; border-radius:4px; overflow:hidden; width:100px;">
+                <div style="background:{% if p.status == 'CRITICAL' %}var(--orange-600){% elif p.status == 'EXHAUSTED' %}var(--danger-600){% else %}var(--brand-600){% endif %}; height:100%; width:{{ p.usage_percentage }}%;"></div>
+              </div>
+              <small class="muted">%{{ p.usage_percentage }}</small>
+            </td>
+            <td>
+              {% if p.status == 'ACTIVE' %}<span class="status-tag success">{{ p.get_status_display }}</span>
+              {% elif p.status == 'CRITICAL' %}<span class="status-tag orange">{{ p.get_status_display }}</span>
+              {% elif p.status == 'EXHAUSTED' %}<span class="status-tag danger">{{ p.get_status_display }}</span>
+              {% elif p.status == 'CANCELLED' %}<span class="status-tag neutral">{{ p.get_status_display }}</span>
+              {% else %}<span class="status-tag warning">{{ p.get_status_display }}</span>{% endif %}
+            </td>
+            <td><a href="{% url 'integrators:credit_detail' pk=p.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted">Kontör paketi yok.</div>
+  {% endif %}
+</div>
+
+<h3>Belgeler</h3>
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  {% if documents %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for d in documents %}
+        <li>{{ d.document.original_filename }} <span class="muted">· {{ d.get_document_role_display }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}<div class="muted">Belge yok.</div>{% endif %}
+  {% if can_write %}
+    <form method="post" action="{% url 'integrators:add_document' pk=service.pk %}" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      {% csrf_token %}
+      {{ doc_form.document }} {{ doc_form.document_role }}
+      <button class="btn btn-primary btn-sm" type="submit">Bağla</button>
+    </form>
+  {% endif %}
+</div>
+
+<h3>Aksiyonlar</h3>
+<div class="card" style="padding:14px; margin-bottom:14px; display:flex; gap:8px; flex-wrap:wrap;">
+  {% if can_approve and service.status != 'CANCELLED' %}
+    <form method="post" action="{% url 'integrators:cancel' pk=service.pk %}">
+      {% csrf_token %}<button class="btn btn-danger" type="submit">İptal Et</button>
+    </form>
+  {% endif %}
+  {% if can_write %}
+    {% if service.is_active %}
+      <form method="post" action="{% url 'integrators:archive' pk=service.pk %}">
+        {% csrf_token %}<button class="btn btn-ghost" type="submit">Arşivle</button>
+      </form>
+    {% else %}
+      <form method="post" action="{% url 'integrators:restore' pk=service.pk %}">
+        {% csrf_token %}<button class="btn btn-ghost" type="submit">Geri Al</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+
+<h3>Audit (Son 8)</h3>
+<div class="card" style="padding:14px;">
+  {% if audit_recent %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for a in audit_recent %}<li>{{ a.created_at|date:"d.m.Y H:i" }} · {{ a.actor|default:"—" }} · {{ a.action }} · {{ a.summary|truncatechars:60 }}</li>{% endfor %}
+    </ul>
+  {% else %}<div class="muted">Audit kaydı yok.</div>{% endif %}
+</div>
+
+
+{# Faz 10 — bağlı görevler #}
+{% related_tasks_panel service %}
+{% related_chat_panel service %}
+{% endblock %}

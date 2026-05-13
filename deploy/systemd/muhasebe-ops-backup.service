@@ -1,0 +1,35 @@
+# /etc/systemd/system/muhasebe-ops-backup.service
+# Muhasebe Operasyonları — Backup oneshot service (taslak, Faz 17B)
+# Eşlik eden timer: muhasebe-ops-backup.timer
+# Bu fazda enable/start YAPILMAZ; yalnız taslak.
+
+[Unit]
+Description=Muhasebe Operasyonlari Backup (PostgreSQL + private_media)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=slc
+Group=slc
+WorkingDirectory=/var/www/muhasebe-ops/repo/backend
+EnvironmentFile=/etc/muhasebe-ops/.env
+ExecStart=/var/www/muhasebe-ops/repo/backend/scripts/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=1800
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/backups/muhasebe-ops /var/log/muhasebe-ops
+
+# Çıkış kodu yorumu — 0 OK, diğer her şey hata; journald yakar.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+# WantedBy yok; bu unit timer tarafından çağrılır.

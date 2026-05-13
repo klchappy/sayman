@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Yeni Konu · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<h1>Yeni Konu</h1>
+<form method="post" class="card" style="max-width:560px;">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit" class="btn">Oluştur</button>
+  <a href="{% url 'chat:thread_list' %}" class="btn btn-sm">İptal</a>
+</form>
+{% endblock %}

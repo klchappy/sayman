@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% load tasks_tags %}
+{% load chat_tags %}
+{% block title %}{{ period }} · {{ BRAND_NAME }}{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Teminat / Komisyon Dönemi</div>
+    <h1 style="margin:6px 0 0;">{{ period.guarantee.letter_no }} · {{ period.period_label }}</h1>
+    <div class="muted">
+      Vade: {{ period.due_date|date:"d.m.Y" }} · Tutar: <strong>{{ period.commission_amount|money_tr }}</strong> ·
+      <span class="status-tag info">{{ period.get_status_display }}</span>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    {% if can_write %}
+      <a href="{% url 'guarantees:period_update' pk=period.pk %}" class="btn btn-ghost">Düzenle</a>
+      {% if not period.payable_id and period.status != 'CANCELLED' %}
+        <form method="post" action="{% url 'guarantees:period_create_payable' pk=period.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button class="btn btn-primary" type="submit">PayableItem Yarat</button>
+        </form>
+      {% endif %}
+      {% if period.status != 'CANCELLED' %}
+        <form method="post" action="{% url 'guarantees:period_cancel' pk=period.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button class="btn btn-warning" type="submit"
+                  onclick="return confirm('Dönem iptal edilsin mi?');">İptal</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div><strong>Teminat:</strong> <a href="{% url 'guarantees:detail' pk=period.guarantee.pk %}">{{ period.guarantee.letter_no }} · {{ period.guarantee.title }}</a></div>
+  <div><strong>PayableItem:</strong> {% if period.payable %}<a href="{% url 'finance:detail' pk=period.payable.pk %}">#{{ period.payable.pk }}</a> · {{ period.payable.get_status_display }}{% else %}—{% endif %}</div>
+  <div><strong>Kaynak:</strong> {{ period.get_source_display }}</div>
+  {% if period.notes %}<div class="muted" style="margin-top:8px;">📝 {{ period.notes|linebreaksbr }}</div>{% endif %}
+</div>
+
+<div class="card" style="padding:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Belgeler</div>
+  {% if documents %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for d in documents %}
+        <li>{{ d.created_at|date:"d.m.Y" }} · {{ d.get_document_role_display }} · {{ d.document.original_filename|default:d.document.title }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}<div class="muted">Belge yok.</div>{% endif %}
+
+  {% if can_write %}
+  <form method="post" action="{% url 'guarantees:period_add_document' period_pk=period.pk %}"
+        style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+    {% csrf_token %}
+    {{ doc_form.document }} {{ doc_form.document_role }}
+    <button class="btn btn-primary" type="submit">Belge Bağla</button>
+  </form>
+  {% endif %}
+</div>
+
+{# Faz 10 — bağlı görevler #}
+{% related_tasks_panel period %}
+{% related_chat_panel period %}
+{% endblock %}

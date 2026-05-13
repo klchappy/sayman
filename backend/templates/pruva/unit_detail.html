@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}{{ unit.code }} · Site Aidatları{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Site Aidatları / Bağımsız Bölüm</div>
+    <h1 style="margin:6px 0 0;">{{ unit.code }}</h1>
+    <div class="muted">{{ unit.owner_label }} · {{ unit.get_usage_type_display }} ·
+      {% if unit.status == 'ACTIVE' %}<span class="status-tag success">{{ unit.get_status_display }}</span>
+      {% elif unit.status == 'SOLD' %}<span class="status-tag neutral">{{ unit.get_status_display }}</span>
+      {% else %}<span class="status-tag neutral">{{ unit.get_status_display }}</span>{% endif %}
+    </div>
+  </div>
+  {% if can_write %}
+    <div style="display:flex; gap:8px;">
+      <a href="{% url 'pruva:unit_update' pk=unit.pk %}" class="btn btn-ghost">Düzenle</a>
+      <a href="{% url 'pruva:statement_create' pk=unit.pk %}" class="btn btn-primary">+ Ekstre</a>
+    </div>
+  {% endif %}
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Daire Bilgisi</div>
+  <table class="kmt-table">
+    <tr><th>Blok</th><td>{{ unit.block|default:'—' }}</td></tr>
+    <tr><th>Daire No</th><td>{{ unit.unit_no|default:'—' }}</td></tr>
+    <tr><th>Sahip Tipi</th><td>{{ unit.get_owner_type_display }}</td></tr>
+    <tr><th>Sahip</th><td>{{ unit.owner_label }}</td></tr>
+    <tr><th>Varsayılan Son Ödeme Günü</th><td>{{ unit.default_due_day }}</td></tr>
+    {% if unit.status == 'SOLD' %}<tr><th>Satış Tarihi</th><td>{{ unit.sale_date|date:"d.m.Y" }} · {{ unit.buyer_name|default:'—' }}</td></tr>{% endif %}
+  </table>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Ekstreler</div>
+  {% if statements %}
+    <table class="kmt-table">
+      <thead><tr><th>Dönem</th><th>Son Ödeme</th><th class="num">Aidat</th><th class="num">Toplam</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for s in statements %}
+          <tr>
+            <td>{{ s.period_label }}</td>
+            <td>{{ s.due_date|date:"d.m.Y" }}</td>
+            <td class="num">{{ s.aidat_amount|money_tr }}</td>
+            <td class="num">{{ s.total_amount|money_tr }}</td>
+            <td><span class="status-tag info">{{ s.get_status_display }}</span></td>
+            <td><a href="{% url 'pruva:statement_detail' pk=s.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<div class="muted">Henüz ekstre yok.</div>{% endif %}
+</div>
+
+{% if unit.status != 'SOLD' and can_write %}
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Daireyi Satıldı Olarak İşaretle</div>
+  <form method="post" action="{% url 'pruva:unit_mark_sold' pk=unit.pk %}" class="kmt-form" style="display:flex; gap:8px; align-items:flex-end;">
+    {% csrf_token %}
+    {{ mark_sold_form.as_p }}
+    <button class="btn btn-primary" type="submit">Satıldı</button>
+  </form>
+  <div class="muted" style="font-size:12px; margin-top:6px;">Tarihçe ve eski ekstreler korunur.</div>
+</div>
+{% endif %}
+
+{% if can_write %}
+<div class="card" style="padding:14px;">
+  <form method="post" action="{% url 'pruva:unit_archive' pk=unit.pk %}" class="kmt-form">
+    {% csrf_token %}
+    {% if unit.is_active %}
+      <input type="text" name="reason" placeholder="Pasifleştirme sebebi" style="width:60%;">
+      <button class="btn btn-ghost" type="submit">Pasifleştir</button>
+    {% else %}
+      <button class="btn btn-primary" type="submit">Aktifleştir</button>
+    {% endif %}
+  </form>
+</div>
+{% endif %}
+{% endblock %}

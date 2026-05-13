@@ -1,0 +1,11 @@
+{% comment %}
+Seed Design V2 — KPI Card (single)
+Tek bir KPI kartını render eder. Wrapper grid (.grid .grid-cols-4) çağıran
+template tarafından sağlanır.
+Parametreler: label / value / hint / color (warning|orange|danger|info|success)
+{% endcomment %}
+<div class="card kpi-card{% if color %} kpi-{{ color }}{% endif %}">
+  <div class="kpi-label">{{ label }}</div>
+  <div class="kpi-value">{{ value }}</div>
+  {% if hint %}<div class="kpi-hint">{{ hint }}</div>{% endif %}
+</div>

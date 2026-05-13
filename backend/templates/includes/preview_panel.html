@@ -1,0 +1,22 @@
+{% comment %}
+Seed Design V2 — Preview Panel (right side detail card)
+Liste sayfalarında sağ tarafta gösterilen seçili kayıt önizleme paneli.
+
+Çağıran template .list-with-preview grid yapısını kurar; bu partial
+yalnız sağ panelin başlık iskeletini sağlar (title + subtitle + crumbs).
+İçerik (badge'ler, satırlar, aksiyonlar) çağıran template'de doldurulur.
+title boşsa empty state render edilir.
+{% endcomment %}
+{% if title %}
+  <div class="preview-panel-header">
+    {% if crumbs %}<div class="eyebrow">{{ crumbs }}</div>{% endif %}
+    <div class="preview-panel-title">{{ title }}</div>
+    {% if subtitle %}<div class="preview-panel-subtitle">{{ subtitle }}</div>{% endif %}
+  </div>
+  {% if extra_content %}{{ extra_content|safe }}{% endif %}
+{% else %}
+  <div class="preview-panel-empty">
+    <div class="empty-icon" aria-hidden="true">›</div>
+    <div class="muted">Önizleme için bir kayıt seçin.</div>
+  </div>
+{% endif %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Bildirim · {{ log.title }}{% endblock %}
+{% block content %}
+<div class="caption">Bildirim · {{ log.get_category_display }}</div>
+<h1>{{ log.title }}</h1>
+
+<div class="card" style="margin-top:8px;">
+  <div><b>Şiddet:</b> {{ log.get_severity_display }}</div>
+  <div><b>Durum:</b> {{ log.get_status_display }}</div>
+  <div><b>Kanal:</b> {{ log.get_channel_display }}</div>
+  <div><b>Dry-run:</b> {{ log.dry_run|yesno:"Evet,Hayır" }}</div>
+  <div><b>Gerçek Gönderim İzin:</b> {{ log.real_send_allowed|yesno:"Evet,Hayır" }}
+    <span class="muted" style="font-size:11px;">(Faz 13 sınırı: gerçek gönderim KAPALI)</span></div>
+  <div><b>Hedef Chat (maskeli):</b> <span class="mono">{{ log.masked_chat_id|default:"—" }}</span></div>
+  {% if log.related_app %}
+    <div><b>İlgili:</b> {{ log.related_app }}/{{ log.related_model }}#{{ log.related_object_id }}
+      {% if log.related_title %} · {{ log.related_title }}{% endif %}</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:10px;">
+  <div class="card-title">Mesaj</div>
+  <pre style="white-space:pre-wrap;">{{ log.message }}</pre>
+</div>
+
+<div class="card" style="margin-top:10px;">
+  <div class="card-title">Telegram Simülasyonu</div>
+  <pre class="mono" style="white-space:pre-wrap;">{{ sim.preview_text }}</pre>
+  <div class="muted" style="font-size:12px;">
+    Hedef: <span class="mono">{{ sim.masked_chat_id }}</span> · Gerçek gönderim: <b style="color:var(--danger-500);">KAPALI</b>
+  </div>
+</div>
+
+<div style="margin-top:10px;">
+  <form method="post" action="{% url 'notifications:log_ready' log.pk %}" style="display:inline;">{% csrf_token %}
+    <button class="btn btn-sm" type="submit">READY işaretle</button>
+  </form>
+  <form method="post" action="{% url 'notifications:log_suppress' log.pk %}" style="display:inline;">{% csrf_token %}
+    <button class="btn btn-sm" type="submit">Bastır</button>
+  </form>
+  <form method="post" action="{% url 'notifications:log_cancel' log.pk %}" style="display:inline;">{% csrf_token %}
+    <button class="btn btn-sm" type="submit">İptal Et</button>
+  </form>
+  <a class="btn btn-sm btn-ghost" href="{% url 'notifications:log_list' %}">← Geri</a>
+</div>
+{% endblock %}

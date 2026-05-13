@@ -1,0 +1,32 @@
+# /etc/systemd/system/muhasebe-ops-gunicorn.service
+# Muhasebe Operasyonları — Gunicorn systemd unit (taslak, Faz 16)
+
+[Unit]
+Description=Muhasebe Operasyonlari Gunicorn (Django)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=notify
+User=slc
+Group=slc
+WorkingDirectory=/var/www/muhasebe-ops/repo/backend
+EnvironmentFile=/etc/muhasebe-ops/.env
+ExecStart=/var/www/muhasebe-ops/venv/bin/gunicorn \
+    --config /var/www/muhasebe-ops/repo/deploy/gunicorn/gunicorn.conf.py \
+    config.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/www/muhasebe-ops /var/log/muhasebe-ops /var/backups/muhasebe-ops
+
+[Install]
+WantedBy=multi-user.target

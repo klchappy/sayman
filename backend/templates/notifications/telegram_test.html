@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Telegram Simülasyonu{% endblock %}
+{% block content %}
+<div class="caption">Operasyon / Bildirimler / Telegram</div>
+<h1>Telegram Test Simülasyonu</h1>
+<div class="card" style="border-left:4px solid var(--danger-500);">
+  <b>Gerçek Telegram: KAPALI.</b>
+  <div class="muted" style="font-size:12px;">Bu sayfa yalnız mesaj formatını gösterir; HTTP isteği yapılmaz, token okunmaz.</div>
+</div>
+
+<form method="post" class="card" style="margin-top:10px;">{% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn" type="submit">Simüle Et</button>
+</form>
+
+{% if sim %}
+  <div class="card" style="margin-top:10px;">
+    <div class="card-title">Önizleme</div>
+    <pre class="mono" style="white-space:pre-wrap;">{{ sim.preview_text }}</pre>
+    <div class="muted" style="font-size:12px;">
+      Hedef chat (maskeli): <span class="mono">{{ sim.masked_chat_id }}</span> ·
+      Karakter: {{ sim.preview_length }} ·
+      Gerçek gönderim: <b style="color:var(--danger-500);">KAPALI</b>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

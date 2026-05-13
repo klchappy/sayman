@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Emlak Vergisi · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Operasyon / Emlak Vergisi</div>
+    <h1 style="margin:6px 0 0;">Emlak Vergisi & Mülk Takip</h1>
+    <div class="muted" style="font-size:13px;">
+      Yıllık tahakkuk · 1./2. taksit · Belediye · Borç dökümü/Makbuz/Dekont.
+      <span class="status-tag info" style="margin-left:6px;">Faz 7 · Manual MVP</span>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    {% if can_write %}
+      <a href="{% url 'properties:asset_create' %}" class="btn btn-primary">+ Yeni Mülk</a>
+      <a href="{% url 'properties:tax_year_create' %}" class="btn btn-primary">+ Vergi Yılı</a>
+    {% endif %}
+    <a href="{% url 'properties:municipality_list' %}" class="btn btn-ghost">Belediyeler</a>
+  </div>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">{{ this_year }} Yılı Takipteki Mülkler ({{ tax_years|length }})</div>
+  {% if tax_years %}
+    <table class="kmt-table">
+      <thead><tr><th>Mülk</th><th>Belediye</th><th class="num">Tahakkuk</th><th class="num">Ödenen</th><th class="num">Kalan</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for ty in tax_years %}
+          <tr>
+            <td><strong>{{ ty.property_asset.name }}</strong></td>
+            <td>{{ ty.municipality.name|default:"—" }}</td>
+            <td class="num">{{ ty.total_accrual_amount|money_tr }}</td>
+            <td class="num">{{ ty.total_paid_amount|money_tr }}</td>
+            <td class="num">{{ ty.remaining_amount|money_tr }}</td>
+            <td>
+              {% if ty.status == 'PAID' %}<span class="status-tag success">{{ ty.get_status_display }}</span>
+              {% elif ty.status == 'PARTIAL_PAID' %}<span class="status-tag info">{{ ty.get_status_display }}</span>
+              {% elif ty.status == 'OVERDUE' %}<span class="status-tag danger">{{ ty.get_status_display }}</span>
+              {% elif ty.status == 'CANCELLED' %}<span class="status-tag neutral">{{ ty.get_status_display }}</span>
+              {% else %}<span class="status-tag warning">{{ ty.get_status_display }}</span>{% endif %}
+            </td>
+            <td><a href="{% url 'properties:tax_year_detail' pk=ty.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state"><div class="empty-icon">🏛</div><div>{{ this_year }} yılı için kayıt yok</div></div>
+  {% endif %}
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+  <div class="card" style="padding:14px;">
+    <div style="font-weight:600; margin-bottom:8px;">Yaklaşan Taksitler (45 gün)</div>
+    {% if upcoming_installments %}
+      <ul style="margin:0; padding-left:18px;">
+        {% for i in upcoming_installments %}
+          <li>{{ i.due_date|date:"d.m.Y" }} · {{ i.tax_year.property_asset.name }} · <strong>{{ i.amount|money_tr }}</strong> ·
+            <a href="{% url 'properties:installment_detail' pk=i.pk %}">{{ i.installment_no }}. taksit</a></li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="muted">Yaklaşan taksit yok.</div>{% endif %}
+  </div>
+
+  <div class="card" style="padding:14px;">
+    <div style="font-weight:600; margin-bottom:8px;">Geciken Taksitler</div>
+    {% if overdue_installments %}
+      <ul style="margin:0; padding-left:18px;">
+        {% for i in overdue_installments %}
+          <li><span class="status-tag danger">{{ i.due_date|date:"d.m.Y" }}</span>
+            {{ i.tax_year.property_asset.name }} · <strong>{{ i.amount|money_tr }}</strong> ·
+            <a href="{% url 'properties:installment_detail' pk=i.pk %}">{{ i.installment_no }}. taksit</a></li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="muted">Geciken taksit yok.</div>{% endif %}
+  </div>
+</div>
+
+<div class="card" style="padding:14px; margin-bottom:14px;">
+  <div style="font-weight:600; margin-bottom:8px;">Ödenmiş ama Makbuzu Eksik</div>
+  {% if paid_no_receipt %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for i in paid_no_receipt %}
+        <li>{{ i.tax_year.property_asset.name }} · {{ i.tax_year.tax_year }}/{{ i.installment_no }} ·
+          <a href="{% url 'properties:installment_detail' pk=i.pk %}">Belge yükle</a></li>
+      {% endfor %}
+    </ul>
+  {% else %}<div class="muted">Eksik makbuz yok.</div>{% endif %}
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+  <div class="card" style="padding:14px;">
+    <div style="font-weight:600; margin-bottom:8px;">Aktif Mülkler ({{ assets_active|length }})</div>
+    {% if assets_active %}
+      <table class="kmt-table">
+        <thead><tr><th>İsim</th><th>Tip</th><th>Sahip</th><th>Şehir</th><th></th></tr></thead>
+        <tbody>
+          {% for a in assets_active %}
+          <tr>
+            <td><strong>{{ a.name }}</strong></td>
+            <td>{{ a.get_property_type_display }}</td>
+            <td>{{ a.owner_label|truncatechars:24 }}</td>
+            <td>{{ a.province }}{% if a.district %} / {{ a.district }}{% endif %}</td>
+            <td><a href="{% url 'properties:asset_detail' pk=a.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<div class="muted">Aktif mülk yok.</div>{% endif %}
+  </div>
+
+  <div class="card" style="padding:14px;">
+    <div style="font-weight:600; margin-bottom:8px;">Satılan / Pasif Mülkler ({{ assets_inactive|length }})</div>
+    {% if assets_inactive %}
+      <ul style="margin:0; padding-left:18px;">
+        {% for a in assets_inactive %}
+          <li>{{ a.name }} · <span class="status-tag neutral">{{ a.get_status_display }}</span>
+            {% if a.sale_date %} · {{ a.sale_date|date:"d.m.Y" }}{% endif %}
+            {% if a.buyer_name %} · {{ a.buyer_name }}{% endif %} ·
+            <a href="{% url 'properties:asset_detail' pk=a.pk %}">Aç</a></li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="muted">Satılan/pasif mülk yok.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

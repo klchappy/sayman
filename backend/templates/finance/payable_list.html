@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% load kmtags %}
+{% block title %}Fatura & Ödeme · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+  <div>
+    <div class="caption">Operasyon / Fatura & Ödeme</div>
+    <h1 style="margin:6px 0 0;">Fatura & Ödeme Takibi</h1>
+    <div class="muted" style="font-size:13px;">
+      Manuel kayıt + dekont + ödeme işaretleme. <span class="status-tag info" style="margin-left:6px;">Faz 4 MVP</span>
+    </div>
+  </div>
+  {% if perms %}{% endif %}
+  <a href="{% url 'finance:create' %}" class="btn btn-primary">+ Yeni Kayıt</a>
+</div>
+
+{# === KPI bandı === #}
+<div class="grid grid-cols-4">
+  <div class="card kpi-card">
+    <div class="kpi-label">Bugün Ödenecek</div>
+    <div class="kpi-value">{{ kpis.bugun_tutar|money_tr }}</div>
+    <div class="kpi-hint">{{ kpis.bugun_sayi }} kalem</div>
+  </div>
+  <div class="card kpi-card" style="border-left:4px solid var(--orange-500);">
+    <div class="kpi-label">7 Gün İçinde</div>
+    <div class="kpi-value" style="color:var(--orange-500);">{{ kpis.yaklasan_tutar|money_tr }}</div>
+    <div class="kpi-hint">{{ kpis.yaklasan_sayi }} kalem</div>
+  </div>
+  <div class="card kpi-card" style="border-left:4px solid var(--danger-500);">
+    <div class="kpi-label">Geciken</div>
+    <div class="kpi-value" style="color:var(--danger-500);">{{ kpis.gecikmis_tutar|money_tr }}</div>
+    <div class="kpi-hint">{{ kpis.gecikmis_sayi }} kalem</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Eksik Dekont</div>
+    <div class="kpi-value" style="color:var(--orange-500);">{{ kpis.eksik_dekont }}</div>
+    <div class="kpi-hint">5K+ TL</div>
+  </div>
+</div>
+
+<div class="grid grid-cols-2">
+  <div class="card kpi-card">
+    <div class="kpi-label">Bu Ay Toplam</div>
+    <div class="kpi-value">{{ kpis.ay_toplam|money_tr }}</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Bu Ay Ödenen</div>
+    <div class="kpi-value" style="color:var(--success-500);">{{ kpis.ay_odenen|money_tr }}</div>
+  </div>
+</div>
+
+{# === Filter bar === #}
+<div class="card" style="padding:12px 16px;">
+  <form method="get" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <input type="text" name="q" value="{{ filter_q }}" placeholder="Ara: kurum, fatura no, açıklama..." style="flex:1 1 240px;">
+    <select name="status" style="width:auto; min-width:140px;">
+      <option value="">Durum: Tümü</option>
+      {% for code, label in status_choices %}
+        <option value="{{ code }}" {% if filter_status == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary btn-sm" type="submit">Filtrele</button>
+    <a href="?archived=1" class="btn btn-ghost btn-sm">Pasifler</a>
+    <a href="?" class="btn btn-ghost btn-sm">Sıfırla</a>
+  </form>
+</div>
+
+{# === Tablo === #}
+<div class="card" style="padding:0;">
+  {% if payables %}
+    <table class="kmt-table">
+      <thead>
+        <tr>
+          <th>Sahip</th>
+          <th>Başlık / Kurum</th>
+          <th>Kategori</th>
+          <th>Dönem</th>
+          <th>Son Ödeme</th>
+          <th class="num">Tutar</th>
+          <th class="num">Ödenen</th>
+          <th>Yöntem</th>
+          <th>Durum</th>
+          <th>Dekont</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in payables %}
+          <tr>
+            <td>{{ p.owner_label|truncatechars:24 }}</td>
+            <td>
+              <div style="font-weight:600;">{{ p.title|truncatechars:48 }}</div>
+              {% if p.institution %}<div class="muted" style="font-size:11px;">{{ p.institution.name }}</div>{% endif %}
+            </td>
+            <td>{{ p.category|default:"—" }}</td>
+            <td class="mono" style="font-size:12px;">{{ p.period_label|default:"—" }}</td>
+            <td class="mono" style="font-size:12px; {% if p.is_overdue %}color:var(--danger-500); font-weight:700;{% endif %}">{{ p.due_date|date:"d.m.Y" }}</td>
+            <td class="num">{{ p.amount|money_tr }}</td>
+            <td class="num" style="color:var(--success-500);">{{ p.amount_paid|money_tr }}</td>
+            <td><span class="status-tag info">{{ p.get_payment_method_display }}</span></td>
+            <td>
+              {% if p.status == 'PAID' %}<span class="status-tag success">{{ p.get_status_display }}</span>
+              {% elif p.status == 'OVERDUE' %}<span class="status-tag danger">{{ p.get_status_display }}</span>
+              {% elif p.status == 'APPROACHING' %}<span class="status-tag orange">{{ p.get_status_display }}</span>
+              {% elif p.status == 'PARTIAL_PAID' %}<span class="status-tag warning">{{ p.get_status_display }}</span>
+              {% elif p.status == 'WAITING_APPROVAL' %}<span class="status-tag purple">{{ p.get_status_display }}</span>
+              {% elif p.status == 'CANCELLED' or p.status == 'ARCHIVED' %}<span class="status-tag neutral">{{ p.get_status_display }}</span>
+              {% else %}<span class="status-tag info">{{ p.get_status_display }}</span>{% endif %}
+            </td>
+            <td>
+              {% if p.has_receipt %}<span class="status-tag success">✓</span>
+              {% elif p.requires_receipt %}<span class="status-tag orange">EKSİK</span>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td><a href="{% url 'finance:detail' pk=p.pk %}" class="btn btn-ghost btn-sm">Aç</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🧾</div>
+      <div style="font-weight:600;">Kayıt yok</div>
+      <div class="muted" style="font-size:13px; margin:6px 0 14px;">İlk faturayı/ödemeyi manuel ekleyin.</div>
+      <a href="{% url 'finance:create' %}" class="btn btn-primary">+ Yeni Kayıt</a>
+    </div>
+  {% endif %}
+</div>
+
+{% if is_paginated %}
+  <div style="margin-top:14px; display:flex; gap:6px; justify-content:center;">
+    {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn btn-secondary btn-sm">← Önceki</a>{% endif %}
+    <span class="muted" style="padding:8px 12px;">Sayfa {{ page_obj.number }} / {{ paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn btn-secondary btn-sm">Sonraki →</a>{% endif %}
+  </div>
+{% endif %}
+{% endblock %}

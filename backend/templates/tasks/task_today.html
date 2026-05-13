@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Bugün · {{ BRAND.name|default:BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+  <h1>Bugün · {{ today|date:"d.m.Y" }}</h1>
+  {% if can_write %}
+    <a class="btn btn-primary" href="{% url 'tasks:create' %}">+ Yeni Görev</a>
+  {% endif %}
+</div>
+<div class="muted" style="margin-bottom:14px; font-size:13px;">
+  Bana atanan açık görevler — bugün ve geciken.
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">⚠ Geciken ({{ overdue_tasks|length }})</h3>
+  {% if overdue_tasks %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for t in overdue_tasks %}
+        <li>
+          <a href="{% url 'tasks:detail' t.pk %}">{{ t.title }}</a>
+          <span class="muted mono" style="font-size:11px;">— {{ t.due_date|date:"d.m.Y" }}</span>
+          <span class="status-tag {% if t.priority == 'CRITICAL' %}danger{% elif t.priority == 'HIGH' %}orange{% else %}info{% endif %}" style="margin-left:6px;">{{ t.get_priority_display }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted">Geciken görev yok 🎉</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">📍 Bugünkü Görevler ({{ today_tasks|length }})</h3>
+  {% if today_tasks %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for t in today_tasks %}
+        <li>
+          <a href="{% url 'tasks:detail' t.pk %}">{{ t.title }}</a>
+          <span class="status-tag {% if t.status == 'IN_PROGRESS' %}info{% else %}neutral{% endif %}" style="margin-left:6px;">{{ t.get_status_display }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted">Bugün için görev yok.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">📅 Yaklaşan (7 gün) ({{ upcoming_tasks|length }})</h3>
+  {% if upcoming_tasks %}
+    <ul style="margin:0; padding-left:18px;">
+      {% for t in upcoming_tasks %}
+        <li>
+          <a href="{% url 'tasks:detail' t.pk %}">{{ t.title }}</a>
+          <span class="muted mono" style="font-size:11px;">— {{ t.due_date|date:"d.m.Y" }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="muted">Yaklaşan görev yok.</div>
+  {% endif %}
+</div>
+{% endblock %}

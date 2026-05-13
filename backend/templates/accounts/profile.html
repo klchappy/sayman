@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Profil · {{ BRAND_NAME }}{% endblock %}
+
+{% block content %}
+<h1>Profil</h1>
+<div class="card">
+  <div class="grid grid-cols-2">
+    <div>
+      <label class="form-label">Kullanıcı</label>
+      <div>{{ user.get_full_name|default:user.username }}</div>
+    </div>
+    <div>
+      <label class="form-label">E-posta</label>
+      <div>{{ user.email|default:"—" }}</div>
+    </div>
+    <div>
+      <label class="form-label">Roller</label>
+      <div>
+        {% for role in roles %}
+          {% spaceless %}<span class="status-tag info" style="margin-right:4px;">{{ role }}</span>{% endspaceless %}
+        {% empty %}
+          <span class="muted">Henüz rol atanmamış.</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <label class="form-label">Son Giriş</label>
+      <div class="mono">{{ user.last_login|date:"d.m.Y H:i" }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>2FA</h3>
+  <p class="muted">2FA ileride eklenecektir (Anayasa Madde 4 / D-016 — MVP-1'de zorunlu değil).</p>
+  <button class="btn btn-secondary" disabled>2FA Etkinleştir (yakında)</button>
+</div>
+{% endblock %}
