@@ -101,22 +101,29 @@ class Command(BaseCommand):
 
         Public Organization yoksa "sayman-system" slug'lu bir tane yaratılır;
         public TenantSchema buna bağlanır.
+
+        Önemli: public schema PostgreSQL'de zaten vardır; auto_create_schema'yı
+        instance bazında False'a çekip save() çağırıyoruz, böylece
+        django-tenants tekrar yaratmaya çalışmaz.
         """
         sys_org, _ = Organization.objects.get_or_create(
             slug="sayman-system",
             defaults={"name": "Sayman Sistem"},
         )
-        public_tenant, created = TenantSchema.objects.get_or_create(
-            schema_name="public",
-            defaults={
-                "organization": sys_org,
-                "slug": "public",
-                "name": "Public (Sistem)",
-                "sector": Sector.DIGER,
-                "auto_create_schema": False,  # public zaten var
-            },
-        )
-        if created:
+
+        try:
+            public_tenant = TenantSchema.objects.get(schema_name="public")
+        except TenantSchema.DoesNotExist:
+            public_tenant = TenantSchema(
+                organization=sys_org,
+                slug="public",
+                name="Public (Sistem)",
+                sector=Sector.DIGER,
+                schema_name="public",
+            )
+            # Instance-level override (class-level True default'unu bypass)
+            public_tenant.auto_create_schema = False
+            public_tenant.save()
             self.stdout.write(self.style.SUCCESS("+ Public tenant kaydı oluşturuldu"))
 
         Domain.objects.get_or_create(

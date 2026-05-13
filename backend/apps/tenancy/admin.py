@@ -15,10 +15,10 @@ class OrganizationAdmin(admin.ModelAdmin):
 @admin.register(TenantSchema)
 class TenantSchemaAdmin(admin.ModelAdmin):
     list_display = ("organization", "slug", "name", "sector", "schema_name",
-                    "is_active", "created_on")
+                    "is_active", "created_at")
     list_filter = ("sector", "is_active", "organization")
     search_fields = ("name", "slug", "schema_name", "organization__name")
-    readonly_fields = ("schema_name", "created_on", "created_at", "updated_at")
+    readonly_fields = ("schema_name", "created_at", "updated_at")
     list_select_related = ("organization",)
 
 

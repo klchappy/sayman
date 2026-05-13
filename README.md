@@ -50,35 +50,88 @@ _docs/          Faz raporları + PHASE_A_… (yeni)
 _analysis/      Analiz / doğrulama raporları
 ```
 
-## Hızlı Başlangıç (lokal dev)
+## Hızlı Başlangıç (Docker — önerilen)
+
+Lokal makinada Python kurulu olmasına gerek yok. Sadece Docker Desktop yeterli.
 
 ```powershell
-cd C:\Users\kaank\sayman\backend
-python -m venv ..\.venv
-..\.venv\Scripts\Activate.ps1
+cd C:\Users\kaank\sayman
 
-pip install -r requirements.txt
-Copy-Item .env.example .env  # secret/DB ayarlarını düzenle
-python manage.py migrate_schemas --shared   # Faz A sonrası
-python manage.py seed_roles
-python manage.py createsuperuser
-python manage.py runserver 8200
+# 1) PostgreSQL container'ını başlat
+docker compose up -d db
+
+# 2) Backend image'ını build et
+docker compose build web
+
+# 3) Public schema migration (sadece SHARED_APPS)
+docker compose run --rm web python manage.py migrate_schemas --shared
+
+# 4) İlk organization + 7 sektör tenant'ı seed
+docker compose run --rm web python manage.py bootstrap_sayman `
+    --org-name "Kılıç Holding" --org-slug kilic `
+    --base-domain localhost --ensure-public
+
+# 5) Superuser oluştur
+docker compose run --rm web python manage.py createsuperuser
+
+# 6) Web sunucuyu başlat (port 8200)
+docker compose up -d web
+docker compose logs -f web   # log takibi
 ```
 
-Tarayıcıda: http://127.0.0.1:8200/admin/
+### Erişim
+
+| URL | Schema | Açıklama |
+|---|---|---|
+| http://localhost:8200/admin/ | `public` | Control plane — Organization/Tenant/User yönetimi |
+| http://tekstil.kilic.localhost:8200/admin/ | `g3_tekstil` | Tekstil tenant admin |
+| http://enerji.kilic.localhost:8200/admin/ | `g3_enerji` | Enerji tenant admin |
+| http://insaat.kilic.localhost:8200/admin/ | `g3_insaat` | İnşaat tenant admin |
+| http://gayrimenkul.kilic.localhost:8200/admin/ | `g3_gayrimenkul` | Gayrimenkul tenant admin |
+| http://kisisel.kilic.localhost:8200/admin/ | `g3_kisisel` | Kişisel tenant admin |
+| http://sanayi.kilic.localhost:8200/admin/ | `g3_sanayi` | Sanayi tenant admin |
+| http://hukuk.kilic.localhost:8200/admin/ | `g3_hukuk` | Hukuk tenant admin |
+
+**Not:** Windows 10+ otomatik `*.localhost` → `127.0.0.1` resolve eder; `hosts` dosyası düzenlemeye gerek yok.
+
+### Yararlı Docker Komutları
+
+```powershell
+# Container durumu
+docker compose ps
+
+# PostgreSQL shell
+docker compose exec db psql -U sayman_user -d sayman_dev
+
+# Schema'ları listele
+docker compose exec db psql -U sayman_user -d sayman_dev -c "\dn"
+
+# Django shell (multi-tenant aware)
+docker compose run --rm web python manage.py shell
+
+# Belirli tenant'a tenant_command çalıştır
+docker compose run --rm web python manage.py tenant_command shell --schema=g3_tekstil
+
+# Tüm container'ları durdur
+docker compose down
+
+# Volume'ları da temizle (DB sıfırla)
+docker compose down -v
+```
 
 ## Settings Ortamları
 
 | Ortam | DJANGO_SETTINGS_MODULE | DB |
 |---|---|---|
-| Lokal | `config.settings.local` | SQLite (Faz A öncesi); Faz A sonrası PostgreSQL zorunlu (django-tenants) |
-| Lokal PostgreSQL | `config.settings.local_pg` | PostgreSQL |
+| Lokal Docker | `config.settings.local_pg` | PostgreSQL (compose service `db`) |
+| Lokal native | `config.settings.local` | SQLite (sadece public schema testi; multi-tenant runtime için PG zorunlu) |
 | Production | `config.settings.production` | PostgreSQL (env'den) |
 
 ## Roadmap
 
 - ✅ Seed paket (17 faz tek-tenant muhasebe sistemi)
-- 🚧 **Faz A — Multi-Group + Tenant Foundation** (django-tenants, schema setup) — şu an
+- ✅ **Faz A.0 — Multi-Tenant Scaffold** (django-tenants kuruldu; 1 organization + 7 tenant + schema izolasyon doğrulandı)
+- 🚧 **Faz A.1 — Tenant Switcher UI + Subdomain prod hazırlık**
 - ⏳ Faz B — Hibrit Auth & Permission (UserGroupRole + UserTenantOverride)
 - ⏳ Faz C — Group-Shared Master Data (`share_scope[]`)
 - ⏳ Faz D — DRF REST API
