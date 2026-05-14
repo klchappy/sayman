@@ -15,7 +15,7 @@
  */
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -107,7 +107,10 @@ usersRouter.get(
               .from(userTenantOverrides)
               .innerJoin(tenants, eq(tenants.id, userTenantOverrides.tenant_id))
               .where(
-                sql`${userTenantOverrides.user_id} = ANY(${userIds}) AND ${tenants.organization_id} = ${req.activeOrgId!}`,
+                and(
+                  inArray(userTenantOverrides.user_id, userIds),
+                  eq(tenants.organization_id, req.activeOrgId!),
+                ),
               )
           : [];
 
@@ -642,7 +645,10 @@ usersRouter.delete(
         await db
           .delete(userTenantOverrides)
           .where(
-            sql`${userTenantOverrides.user_id} = ${userId} AND ${userTenantOverrides.tenant_id} = ANY(${tenantIds})`,
+            and(
+              eq(userTenantOverrides.user_id, userId),
+              inArray(userTenantOverrides.tenant_id, tenantIds),
+            ),
           );
       }
 
