@@ -5,6 +5,7 @@ import {
   Building,
   Building2,
   CheckSquare,
+  FileUp,
   Home,
   HomeIcon,
   Landmark,
@@ -84,6 +85,7 @@ const navItems: NavItem[] = [
 
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
   { to: '/users', label: 'Kullanıcılar', icon: UserCog, group: 'Sistem' },
+  { to: '/import', label: 'Toplu Yükleme', icon: FileUp, group: 'Sistem', requires: 'imports' },
   { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },
 ];

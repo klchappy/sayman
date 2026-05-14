@@ -553,7 +553,58 @@ async function main() {
 
   useTenant(ORG_SLUG, SLUG_INSAAT);
 
-  // --- 11d. Dashboard summary (Faz L) ---
+  // --- 11d. Import Center (Faz K) ---
+  useTenant(ORG_SLUG, null);
+
+  await step('GET /import/resources', async () => {
+    const r = await api('GET', '/import/resources');
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.length >= 7, `expected >=7 resources, got ${r.body.data.length}`);
+  });
+
+  await step('POST /import/companies (dry-run)', async () => {
+    const csv = 'name,short_name,tax_number\nBulk Import A.S.,BIA,1111111111\nBulk Import B Ltd.,BIB,2222222222\nIncomplete,';
+    const r = await api('POST', '/import/companies', {
+      format: 'csv',
+      data: csv,
+      dry_run: true,
+    });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.dry_run === true, 'dry_run flag missing');
+    expect(r.body.data.valid === 3, `expected valid=3, got ${r.body.data.valid}`);
+    expect(r.body.data.invalid === 0, `expected invalid=0, got ${r.body.data.invalid}`);
+  });
+
+  await step('POST /import/companies (confirm — gercek insert)', async () => {
+    const csv = 'name,short_name,tax_number\nBulk Import A.S.,BIA,1111111111\nBulk Import B Ltd.,BIB,2222222222';
+    const r = await api('POST', '/import/companies', {
+      format: 'csv',
+      data: csv,
+      dry_run: false,
+    });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.inserted === 2, `expected inserted=2, got ${r.body.data.inserted}`);
+    expect(r.body.data.inserted_ids.length === 2, 'inserted_ids count mismatch');
+    console.log(`     inserted=${r.body.data.inserted} ids=${r.body.data.inserted_ids.slice(0,2).join(',')}`);
+  });
+
+  // Tenant-scope import (payables)
+  useTenant(ORG_SLUG, SLUG_INSAAT);
+  await step('POST /import/payables (tenant-scope, confirm)', async () => {
+    const csv = 'title,amount,due_date,owner_type\nBulk Elektrik,500.00,2026-06-15,company\nBulk Internet,299.90,2026-06-01,company';
+    const r = await api('POST', '/import/payables', {
+      format: 'csv',
+      data: csv,
+      dry_run: false,
+    });
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body).slice(0,300)}`);
+    expect(r.body.data.inserted === 2, `expected inserted=2, got ${r.body.data.inserted}`);
+  });
+
+  // Tekrar org-scope context'e geri (dashboard step icin)
+  useTenant(ORG_SLUG, SLUG_INSAAT);
+
+  // --- 11e. Dashboard summary (Faz L) ---
   await step('GET /dashboard/summary', async () => {
     const r = await api('GET', '/dashboard/summary');
     expect(r.status === 200, `status ${r.status}`);
