@@ -553,6 +553,20 @@ async function main() {
 
   useTenant(ORG_SLUG, SLUG_INSAAT);
 
+  // --- 11d. Dashboard summary (Faz L) ---
+  await step('GET /dashboard/summary', async () => {
+    const r = await api('GET', '/dashboard/summary');
+    expect(r.status === 200, `status ${r.status}`);
+    const d = r.body.data;
+    expect(Array.isArray(d.cashflow_6mo) && d.cashflow_6mo.length === 6, 'cashflow_6mo not 6 months');
+    expect(typeof d.payables_summary.total === 'number', 'payables_summary missing');
+    expect(typeof d.subscriptions.active_count === 'number', 'subscriptions kpi missing');
+    expect(typeof d.guarantees.active_count === 'number', 'guarantees kpi missing');
+    expect(typeof d.official_payments.this_month_amount === 'number', 'official kpi missing');
+    expect(typeof d.regular_payments.this_month_amount === 'number', 'regular kpi missing');
+    console.log(`     payables.total=${d.payables_summary.total} subs.active=${d.subscriptions.active_count} gtee.active=${d.guarantees.active_count}`);
+  });
+
   // --- 12. Org-scope master data: hukuk tenant'tan da görünmeli (share_scope) ---
   await step('Cross-tenant master data: hukuk-tenant /persons should still see person', async () => {
     const r = await api('GET', '/persons');

@@ -20,6 +20,7 @@ import { officialPaymentsRouter } from './official-payments';
 import { guaranteesRouter } from './guarantees';
 import { usersRouter } from './users';
 import { jobsRouter } from './jobs';
+import { dashboardRouter } from './dashboard';
 
 export const apiRouter = Router();
 
@@ -59,3 +60,6 @@ apiRouter.use(usersRouter);
 
 // Cron manuel tetik (super_admin)
 apiRouter.use(jobsRouter);
+
+// Dashboard KPI aggregation (tenant-scope)
+apiRouter.use(dashboardRouter);
