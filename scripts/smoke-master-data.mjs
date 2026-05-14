@@ -147,23 +147,25 @@ async function main() {
   });
 
   // --- 3. POST /tenants ile 2 tenant olustur (Faz F endpoint) ---
+  // STAMP ile slug'lar unique (eski runlardan kalan kayitlarla cakismasin)
+  const SLUG_INSAAT = `sm-${STAMP}-insaat`;
+  const SLUG_HUKUK = `sm-${STAMP}-hukuk`;
+
   useTenant(ORG_SLUG, null); // org-only header
   const insaatTenant = await step('POST /tenants (insaat, default modules)', async () => {
     const r = await api('POST', '/tenants', {
-      slug: 'smoke-insaat',
+      slug: SLUG_INSAAT,
       name: 'Smoke Insaat',
       sector: 'insaat',
-      // active_modules omitted → backend defaults to SECTOR_DEFAULT_MODULES.insaat
     });
     expect(r.status === 201, `POST /tenants status ${r.status}: ${JSON.stringify(r.body)}`);
-    expect(r.body.data.slug === 'smoke-insaat', 'slug mismatch');
+    expect(r.body.data.slug === SLUG_INSAAT, `slug mismatch: ${r.body.data.slug}`);
     return r.body.data;
   });
 
-  // hukuk tenant'i: active_modules'u DARALT — Faz E filtre testi icin
   const hukukTenant = await step('POST /tenants (hukuk, narrow modules)', async () => {
     const r = await api('POST', '/tenants', {
-      slug: 'smoke-hukuk',
+      slug: SLUG_HUKUK,
       name: 'Smoke Hukuk',
       sector: 'hukuk',
       active_modules: ['finance', 'dashboard', 'notifications', 'tasks'],
@@ -221,7 +223,7 @@ async function main() {
   });
 
   // --- 5. Master data: insaat tenant'ında CRUD ---
-  useTenant(ORG_SLUG, 'smoke-insaat');
+  useTenant(ORG_SLUG, SLUG_INSAAT);
 
   let personId, companyId, propertyId, bankId, institutionId;
 
@@ -379,7 +381,7 @@ async function main() {
   });
 
   // --- 11. Tenant-scope isolation: hukuk tenant'tan insaat'ın subscription'ını görebiliyor mu? (görmemeli) ---
-  useTenant(ORG_SLUG, 'smoke-hukuk');
+  useTenant(ORG_SLUG, SLUG_HUKUK);
   await step('Tenant isolation: /subscriptions hukuk tenantta bos olmali', async () => {
     const r = await api('GET', '/subscriptions');
     expect(r.status === 200, `status ${r.status}`);
@@ -409,7 +411,10 @@ async function main() {
     expect(r.status === 201, `status ${r.status}: ${JSON.stringify(r.body)}`);
     expect(r.body.action_link?.includes('accept-invite'), 'action_link missing');
     inviteId = r.body.data.id;
-    inviteToken = r.body.token;
+    // Token'i action_link'ten parse et (prod'da response.body.token gizli)
+    const url = new URL(r.body.action_link);
+    inviteToken = r.body.token ?? url.searchParams.get('token');
+    expect(inviteToken, 'token cikarilamadi');
   });
 
   await step('GET /users/invitations (pending list)', async () => {
@@ -473,7 +478,7 @@ async function main() {
   });
 
   // Switch back to tenant context for cleanup below
-  useTenant(ORG_SLUG, 'smoke-insaat');
+  useTenant(ORG_SLUG, SLUG_INSAAT);
 
   // --- 12. Org-scope master data: hukuk tenant'tan da görünmeli (share_scope) ---
   await step('Cross-tenant master data: hukuk-tenant /persons should still see person', async () => {
@@ -485,7 +490,7 @@ async function main() {
 
   // --- 13. CLEANUP ---
   console.log('\n--- CLEANUP ---');
-  useTenant(ORG_SLUG, 'smoke-insaat');
+  useTenant(ORG_SLUG, SLUG_INSAAT);
   // 4 yeni modül delete (soft)
   for (const [ep, id] of [
     ['/subscriptions', subId],

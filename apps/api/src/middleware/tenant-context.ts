@@ -15,7 +15,7 @@
  *
  * Not: bu Faz A.0 minimum implementasyonu. JWT auth + role check Faz B'de.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import { getDb, organizations, tenants } from '@sayman/db';
 
@@ -51,11 +51,12 @@ export const tenantContext: RequestHandler = async (req, _res, next) => {
       organizationId = org?.id ?? null;
 
       if (organizationId && tenantSlug) {
+        // Slug org-bagiminda unique — slug + organization_id ile resolve et
         const [tenant] = await db
           .select()
           .from(tenants)
-          .where(eq(tenants.slug, tenantSlug));
-        if (tenant && tenant.organization_id === organizationId) {
+          .where(and(eq(tenants.slug, tenantSlug), eq(tenants.organization_id, organizationId)));
+        if (tenant) {
           tenantId = tenant.id;
         }
       }
