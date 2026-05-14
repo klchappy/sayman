@@ -91,6 +91,20 @@ export function LoginPage() {
             {loading ? 'Giriş yapılıyor…' : 'Giriş yap'}
           </button>
         </form>
+
+        <div className="mt-6 pt-4 border-t border-brand-100 text-center text-xs text-brand-500 space-y-1">
+          <p>
+            <a href="/auth/forgot-password" className="text-brand-700 hover:underline">
+              Şifremi unuttum
+            </a>
+          </p>
+          <p>
+            Hesabın yok mu?{' '}
+            <a href="/auth/sign-up-org" className="text-brand-700 hover:underline">
+              Yeni organizasyon kayıt
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { authLocalRouter } from './auth-local';
 import { healthRouter } from './health';
 import { meRouter } from './me';
 import { organizationsRouter } from './organizations';
+import { securityRouter } from './security';
 import { tenantsRouter } from './tenants';
 import { personsRouter } from './master-data/persons';
 import { companiesRouter } from './master-data/companies';
@@ -17,6 +18,7 @@ apiRouter.use(tenantContext);
 apiRouter.use(healthRouter);
 apiRouter.use(meRouter);
 apiRouter.use(authLocalRouter);
+apiRouter.use(securityRouter);
 apiRouter.use(organizationsRouter);
 apiRouter.use(tenantsRouter);
 

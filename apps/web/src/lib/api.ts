@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getLocalToken } from './local-auth';
 
 const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:4300/v1';
 
@@ -6,6 +7,18 @@ export const api = axios.create({
   baseURL,
   withCredentials: true,
   timeout: 20_000,
+});
+
+/**
+ * Local token (sign-up-org / reset-password) varsa onu öncelikle kullan.
+ * Yoksa Supabase Authorization header'ı (auth.ts'de set edilir) kalır.
+ */
+api.interceptors.request.use((config) => {
+  const localToken = getLocalToken();
+  if (localToken) {
+    config.headers['Authorization'] = `Bearer ${localToken}`;
+  }
+  return config;
 });
 
 /**

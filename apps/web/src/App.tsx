@@ -7,6 +7,10 @@ import { DashboardPage } from './pages/Dashboard';
 import { HomePage } from './pages/Home';
 import { LoginPage } from './pages/Login';
 import { OrganizationDetailPage } from './pages/OrganizationDetail';
+import { SecurityPage } from './pages/Security';
+import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
+import { ResetPasswordPage } from './pages/auth/ResetPassword';
+import { SignUpOrgPage } from './pages/auth/SignUpOrg';
 import { CompaniesPage } from './pages/master-data/Companies';
 import { PersonsPage } from './pages/master-data/Persons';
 import { PayableDetailPage } from './pages/finance/PayableDetail';
@@ -20,8 +24,14 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Public */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/sign-up" element={<SignUpOrgPage />} />
+      <Route path="/auth/sign-up-org" element={<SignUpOrgPage />} />
+      <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
 
+      {/* Protected */}
       <Route
         element={
           <ProtectedRoute>
@@ -36,6 +46,8 @@ export default function App() {
 
         <Route path="/master-data/persons" element={<PersonsPage />} />
         <Route path="/master-data/companies" element={<CompaniesPage />} />
+
+        <Route path="/security" element={<SecurityPage />} />
 
         <Route path="/orgs" element={<HomePage />} />
         <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />

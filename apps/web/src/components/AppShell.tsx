@@ -1,4 +1,13 @@
-import { Building2, Coins, Layers, LayoutDashboard, LogOut, Receipt, Users } from 'lucide-react';
+import {
+  Building2,
+  Coins,
+  Layers,
+  LayoutDashboard,
+  LogOut,
+  Receipt,
+  Shield,
+  Users,
+} from 'lucide-react';
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { bindActiveAccessor } from '../lib/api';
@@ -11,6 +20,7 @@ const navItems = [
   { to: '/master-data/persons', label: 'Şahıslar', icon: Users },
   { to: '/master-data/companies', label: 'Şirketler', icon: Building2 },
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers },
+  { to: '/security', label: 'Güvenlik', icon: Shield },
 ];
 
 export function AppShell() {
