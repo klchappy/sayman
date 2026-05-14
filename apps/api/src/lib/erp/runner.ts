@@ -4,18 +4,20 @@
  *   runFullSync(connectionId, trigger)
  *     → adapter.syncCariAccounts → cari_accounts upsert
  *     → her cari için adapter.syncCariMovements → cari_movements upsert
+ *     → adapter.syncInvoices (varsa) → payable_items upsert (ERP → Sayman)
  *     → erp_sync_logs'a row eklenir
  *
  * Per-connection lock yok şu an — pratikte cron 1 saat aralıkla çalışıyor,
  * iki paralel sync deadlock olmaz çünkü ON CONFLICT idempotent.
  */
-import { and, eq, max, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, max, sql } from 'drizzle-orm';
 import {
   cariAccounts,
   cariMovements,
   erpConnections,
   erpSyncLogs,
   getDb,
+  payableItems,
 } from '@sayman/db';
 import { logger } from '../../config/logger';
 import { decryptSecret } from '../secret-box';
@@ -27,6 +29,7 @@ export interface SyncResult {
   status: 'success' | 'partial' | 'error';
   cari_pulled: number;
   movements_pulled: number;
+  invoices_pulled: number;
   errors: string[];
   duration_ms: number;
 }
@@ -40,6 +43,7 @@ export async function runFullSync(
   const errors: string[] = [];
   let cariPulled = 0;
   let movementsPulled = 0;
+  let invoicesPulled = 0;
 
   // Connection oku + decrypt config
   const [conn] = await db
@@ -202,19 +206,121 @@ export async function runFullSync(
       }
     }
 
+    // 3. ERP'den faturalari cek (adapter destekliyorsa)
+    if (adapter.syncInvoices) {
+      try {
+        // Son pull edilmis fatura tarihinden sonrasini al (incremental)
+        const [lastInvoice] = await db
+          .select({ last: max(payableItems.issue_date) })
+          .from(payableItems)
+          .where(
+            and(
+              eq(payableItems.tenant_id, tenantId),
+              eq(payableItems.erp_connection_id, connectionId),
+              isNotNull(payableItems.erp_external_id),
+            ),
+          );
+        const sinceInvoice = lastInvoice?.last ?? null;
+
+        const invoices = await adapter.syncInvoices(config, sinceInvoice, {
+          tenantId,
+          connectionId,
+        });
+
+        for (const inv of invoices) {
+          try {
+            // Halihazirda Sayman'da bu kayit var mi (erp_external_id + erp_connection_id)
+            const existing = await db
+              .select({ id: payableItems.id })
+              .from(payableItems)
+              .where(
+                and(
+                  eq(payableItems.erp_external_id, inv.external_id),
+                  eq(payableItems.erp_connection_id, connectionId),
+                ),
+              );
+
+            const status: 'pending' | 'paid' | 'partial_paid' =
+              inv.payment_status === 'paid'
+                ? 'paid'
+                : (inv.paid_amount ?? 0) > 0
+                  ? 'partial_paid'
+                  : 'pending';
+
+            if (existing.length > 0) {
+              // Update
+              await db
+                .update(payableItems)
+                .set({
+                  title: inv.title,
+                  invoice_number: inv.invoice_number ?? null,
+                  supplier_name: inv.supplier_name ?? null,
+                  issue_date: inv.issue_date ?? null,
+                  due_date: inv.due_date ?? null,
+                  amount: String(inv.amount),
+                  paid_amount: String(inv.paid_amount ?? 0),
+                  currency: inv.currency,
+                  status,
+                  metadata: {
+                    source: 'erp_pull',
+                    cari_external_id: inv.cari_external_id,
+                  },
+                  updated_at: new Date(),
+                })
+                .where(eq(payableItems.id, existing[0]!.id));
+            } else {
+              // Insert
+              await db.insert(payableItems).values({
+                tenant_id: tenantId,
+                owner_type: 'company',
+                title: inv.title,
+                invoice_number: inv.invoice_number ?? null,
+                supplier_name: inv.supplier_name ?? null,
+                issue_date: inv.issue_date ?? null,
+                due_date: inv.due_date ?? null,
+                amount: String(inv.amount),
+                paid_amount: String(inv.paid_amount ?? 0),
+                currency: inv.currency,
+                status,
+                metadata: {
+                  source: 'erp_pull',
+                  cari_external_id: inv.cari_external_id,
+                },
+                erp_connection_id: connectionId,
+                erp_external_id: inv.external_id,
+                erp_push_status: 'pulled',
+                erp_pushed_at: new Date(),
+              });
+            }
+            invoicesPulled++;
+          } catch (err) {
+            errors.push(
+              `Invoice ${inv.external_id}: ${(err as Error).message.slice(0, 100)}`,
+            );
+          }
+        }
+      } catch (err) {
+        errors.push(`syncInvoices: ${(err as Error).message.slice(0, 150)}`);
+      }
+    }
+
     const durationMs = Date.now() - t0;
     const status: 'success' | 'partial' | 'error' =
-      errors.length === 0 ? 'success' : cariPulled > 0 ? 'partial' : 'error';
+      errors.length === 0 ? 'success' : cariPulled + invoicesPulled > 0 ? 'partial' : 'error';
 
     // Log + connection durumu güncelle
     await db
       .update(erpSyncLogs)
       .set({
         status,
-        records_pulled: String(cariPulled + movementsPulled),
+        records_pulled: String(cariPulled + movementsPulled + invoicesPulled),
         duration_ms: String(durationMs),
         error_message: errors.length > 0 ? errors.slice(0, 5).join(' | ').slice(0, 1000) : null,
-        details: { cari_pulled: cariPulled, movements_pulled: movementsPulled },
+        details: {
+          cari_pulled: cariPulled,
+          movements_pulled: movementsPulled,
+          invoices_pulled: invoicesPulled,
+        },
         completed_at: new Date(),
       })
       .where(eq(erpSyncLogs.id, syncLog.id));
@@ -232,7 +338,7 @@ export async function runFullSync(
       .where(eq(erpConnections.id, connectionId));
 
     logger.info(
-      { connectionId, status, cariPulled, movementsPulled, durationMs },
+      { connectionId, status, cariPulled, movementsPulled, invoicesPulled, durationMs },
       'ERP sync completed',
     );
 
@@ -241,6 +347,7 @@ export async function runFullSync(
       status,
       cari_pulled: cariPulled,
       movements_pulled: movementsPulled,
+      invoices_pulled: invoicesPulled,
       errors,
       duration_ms: durationMs,
     };

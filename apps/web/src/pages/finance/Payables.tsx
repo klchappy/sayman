@@ -30,6 +30,7 @@ interface Payable {
   paid_amount: string;
   currency: string;
   status: PayableStatus;
+  erp_push_status: 'pushed' | 'pulled' | 'failed' | null;
 }
 
 interface SemanticHit {
@@ -242,6 +243,30 @@ export function PayablesPage() {
                         <Link to={`/payables/${p.id}`} className="hover:text-brand-700">
                           {p.title}
                         </Link>
+                        {p.erp_push_status === 'pushed' && (
+                          <span
+                            title="Bu fatura ERP'ye gönderildi"
+                            className="text-[9px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded uppercase tracking-wider"
+                          >
+                            ERP↑
+                          </span>
+                        )}
+                        {p.erp_push_status === 'pulled' && (
+                          <span
+                            title="Bu fatura ERP'den geldi"
+                            className="text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded uppercase tracking-wider"
+                          >
+                            ERP↓
+                          </span>
+                        )}
+                        {p.erp_push_status === 'failed' && (
+                          <span
+                            title="ERP push hatası"
+                            className="text-[9px] bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-1.5 py-0.5 rounded uppercase tracking-wider"
+                          >
+                            ERP×
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 px-2 font-mono text-xs text-brand-600">
                         {p.invoice_number ?? '-'}
@@ -426,7 +451,7 @@ function PayableForm({ onClose }: { onClose: () => void }) {
 
         <div className="space-y-3">
           <TextField label="Başlık *" value={title} onChange={setTitle} placeholder="Elektrik Faturası" />
-          <TextField label="Tedarikçi Adı" value={supplierName} onChange={setSupplierName} placeholder="Türk Telekom" />
+          <CariAutocomplete value={supplierName} onChange={setSupplierName} />
           <div className="grid grid-cols-2 gap-3">
             <TextField label="Fatura No" value={invoiceNo} onChange={setInvoiceNo} />
             <TextField label="Dönem" value={period} onChange={setPeriod} placeholder="2026-05" />
@@ -608,6 +633,107 @@ function SelectField({
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+interface CariSuggestion {
+  id: string;
+  name: string;
+  code: string | null;
+  account_type: string;
+  balance: string;
+}
+
+function CariAutocomplete({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [debounced, setDebounced] = useState('');
+
+  // 300ms debounce
+  useState(() => {
+    const t = setTimeout(() => setDebounced(value), 300);
+    return () => clearTimeout(t);
+  });
+
+  const q = useQuery({
+    queryKey: ['cari-autocomplete', debounced],
+    enabled: debounced.length >= 2 && open,
+    queryFn: async () => {
+      const res = await api.get<{ data: CariSuggestion[] }>(
+        `/cari?search=${encodeURIComponent(debounced)}`,
+      );
+      return res.data.data.slice(0, 8);
+    },
+  });
+
+  return (
+    <label className="block relative">
+      <span className="text-xs uppercase tracking-wide text-brand-500 dark:text-slate-400">
+        Tedarikçi / Cari
+      </span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setDebounced(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        placeholder="Türk Telekom (ERP'den otomatik tamamlanır)"
+        className="mt-1 w-full rounded-lg border border-brand-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-400"
+      />
+      {open && q.data && q.data.length > 0 && (
+        <ul className="absolute z-30 mt-1 left-0 right-0 bg-white dark:bg-slate-900 border border-brand-200 dark:border-slate-700 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          {q.data.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(c.name);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-brand-50 dark:hover:bg-slate-800 text-sm flex items-center justify-between gap-3"
+              >
+                <span>
+                  <span className="font-medium text-brand-900 dark:text-slate-100">{c.name}</span>
+                  {c.code && (
+                    <span className="ml-2 text-xs font-mono text-brand-500">{c.code}</span>
+                  )}
+                </span>
+                <span
+                  className={`text-xs font-mono ${
+                    Number(c.balance) > 0
+                      ? 'text-emerald-700'
+                      : Number(c.balance) < 0
+                        ? 'text-red-600'
+                        : 'text-brand-400'
+                  }`}
+                >
+                  {new Intl.NumberFormat('tr-TR', {
+                    style: 'currency',
+                    currency: 'TRY',
+                    maximumFractionDigits: 0,
+                  }).format(Number(c.balance))}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && debounced.length >= 2 && q.data?.length === 0 && (
+        <p className="absolute z-30 mt-1 left-0 right-0 bg-white dark:bg-slate-900 border border-brand-200 dark:border-slate-700 rounded-lg shadow-lg p-3 text-xs text-brand-500 dark:text-slate-400">
+          ERP'de eşleşme yok. İsim olarak kaydedilecek.
+        </p>
+      )}
     </label>
   );
 }

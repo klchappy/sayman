@@ -48,6 +48,29 @@ export interface NormalizedCariMovement {
   raw_data?: Record<string, unknown>;
 }
 
+/**
+ * ERP'den çekilen fatura — Sayman'da payable_items'a yansıtılır.
+ * cari_external_id varsa Sayman'da o cari ile linklenir (supplier_name doldurmak için).
+ */
+export interface NormalizedInvoice {
+  external_id: string;
+  invoice_number?: string | null;
+  title: string;
+  issue_date?: string | null;
+  due_date?: string | null;
+  amount: number;
+  currency: string;
+  /** Hangi cari (Paraşüt contact_id, Logo client ref) */
+  cari_external_id?: string | null;
+  /** Tedarikçi adı (cari_external_id yoksa fallback) */
+  supplier_name?: string | null;
+  notes?: string | null;
+  /** Paraşüt: 'pending' | 'paid' | 'partially_paid' */
+  payment_status?: string | null;
+  paid_amount?: number;
+  raw_data?: Record<string, unknown>;
+}
+
 export interface PushPayloadPayable {
   /** Sayman payable id (debugging için) */
   payable_id: string;
@@ -115,6 +138,13 @@ export interface ErpAdapter {
     since: string | null,
     ctx: AdapterContext,
   ): Promise<NormalizedCariMovement[]>;
+
+  /** ERP'den faturalari Sayman'a cek (ozellikle alis faturalari = purchase_bills) */
+  syncInvoices?(
+    config: AdapterConfig,
+    since: string | null,
+    ctx: AdapterContext,
+  ): Promise<NormalizedInvoice[]>;
 
   /** Push: Sayman payable'ı ERP'ye fatura/alış faturası olarak yarat */
   pushInvoice?(

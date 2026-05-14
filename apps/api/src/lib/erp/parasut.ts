@@ -21,6 +21,7 @@ import type {
   ErpAdapter,
   NormalizedCariAccount,
   NormalizedCariMovement,
+  NormalizedInvoice,
   PushPayloadPayable,
   PushPayloadPayment,
   PushResult,
@@ -84,6 +85,26 @@ interface ParasutTransaction {
     transaction_kind?: string;
     transaction_id?: string;
     [k: string]: unknown;
+  };
+}
+
+interface ParasutPurchaseBill {
+  id: string;
+  attributes: {
+    description?: string;
+    invoice_no?: string;
+    issue_date?: string;
+    due_date?: string;
+    net_total?: string;
+    gross_total?: string;
+    remaining?: string;
+    currency?: string;
+    payment_status?: string;
+    [k: string]: unknown;
+  };
+  relationships?: {
+    supplier?: { data?: { id: string; type: string } };
+    contact?: { data?: { id: string; type: string } };
   };
 }
 
@@ -244,6 +265,73 @@ export const parasutAdapter: ErpAdapter = {
           balance_after: null,
           currency: t.attributes.debit_currency ?? t.attributes.credit_currency ?? 'TRY',
           raw_data: t.attributes,
+        });
+      }
+      if (!data.meta?.total_pages || page >= data.meta.total_pages) break;
+      page++;
+      if (page > 100) break;
+    }
+    return all;
+  },
+
+  /**
+   * Paraşüt'ten alis faturalari (purchase_bills) cek.
+   *
+   * Endpoint: GET /v4/{company_id}/purchase_bills
+   * Filter: filter[issue_date_after] — son sync tarihinden sonra
+   * Include: contact (cari linki icin)
+   */
+  async syncInvoices(
+    config: AdapterConfig,
+    since: string | null,
+  ): Promise<NormalizedInvoice[]> {
+    const cfg = config as ParasutConfig;
+    const token = await getToken(cfg);
+    const sinceFilter = since ? `&filter[issue_date_after]=${since}` : '';
+    const all: NormalizedInvoice[] = [];
+    let page = 1;
+    while (true) {
+      const res = await fetch(
+        `${PARASUT_BASE}/v4/${cfg.company_id}/purchase_bills?page[size]=${PAGE_SIZE}&page[number]=${page}&include=supplier${sinceFilter}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) {
+        if (res.status === 404) break;
+        throw new Error(`Paraşüt purchase_bills ${res.status}`);
+      }
+      const data = (await res.json()) as ParasutListResponse<ParasutPurchaseBill> & {
+        included?: Array<{ id: string; type: string; attributes: { name?: string } }>;
+      };
+      const supplierNameById = new Map<string, string>();
+      for (const inc of data.included ?? []) {
+        if (inc.type === 'contacts' && inc.attributes?.name) {
+          supplierNameById.set(inc.id, inc.attributes.name);
+        }
+      }
+      for (const b of data.data) {
+        const cariExt =
+          b.relationships?.supplier?.data?.id ??
+          b.relationships?.contact?.data?.id ??
+          null;
+        const gross = Number(b.attributes.gross_total ?? b.attributes.net_total ?? 0);
+        const remaining = Number(b.attributes.remaining ?? gross);
+        const paid = Math.max(0, gross - remaining);
+        all.push({
+          external_id: b.id,
+          invoice_number: b.attributes.invoice_no ?? null,
+          title:
+            b.attributes.description ||
+            (supplierNameById.get(cariExt ?? '') ?? `Paraşüt #${b.attributes.invoice_no ?? b.id}`),
+          issue_date: b.attributes.issue_date ?? null,
+          due_date: b.attributes.due_date ?? null,
+          amount: gross,
+          currency: b.attributes.currency ?? 'TRL',
+          cari_external_id: cariExt,
+          supplier_name: cariExt ? (supplierNameById.get(cariExt) ?? null) : null,
+          notes: null,
+          payment_status: b.attributes.payment_status ?? null,
+          paid_amount: paid,
+          raw_data: b.attributes,
         });
       }
       if (!data.meta?.total_pages || page >= data.meta.total_pages) break;

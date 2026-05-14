@@ -19,6 +19,9 @@ import type {
   ErpAdapter,
   NormalizedCariAccount,
   NormalizedCariMovement,
+  PushPayloadPayable,
+  PushPayloadPayment,
+  PushResult,
   TestResult,
 } from './types';
 
@@ -156,5 +159,128 @@ export const logoAdapter: ErpAdapter = {
       currency: 'TRY',
       raw_data: t,
     }));
+  },
+
+  /**
+   * Logo j-Platform alis fisi (PurchaseInvoice / 31 numarali fis tipi) yarat.
+   *
+   * Endpoint: POST /api/v1/PurchaseInvoices
+   *
+   * NOT: Logo'da cari (clcard) onceden var olmali; yoksa supplier_name ile bulup
+   * eslemek gerekir. Logo'da yeni cari yaratma izin sistemi karmaşik — bu MVP'de
+   * cari yaratmaz, sadece var olan cari ile fatura kaydeder. Yoksa hata doner.
+   */
+  async pushInvoice(
+    config: AdapterConfig,
+    payload: PushPayloadPayable,
+  ): Promise<PushResult> {
+    const cfg = config as LogoConfig;
+    const token = await getLogoToken(cfg);
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    // 1. Cari'yi bul (clcards ara)
+    let clientRef: number | null = null;
+    if (payload.cari_external_id) {
+      clientRef = Number(payload.cari_external_id);
+    } else if (payload.supplier_name) {
+      const searchRes = await fetch(
+        `${cfg.base_url}/api/v1/clcards?filter=DEFINITION_%20like%20%27${encodeURIComponent(payload.supplier_name)}%25%27&limit=1`,
+        { headers },
+      );
+      if (searchRes.ok) {
+        const data = (await searchRes.json()) as { items?: any[]; value?: any[]; data?: any[] };
+        const items = data.items ?? data.value ?? data.data ?? [];
+        if (items.length > 0) {
+          clientRef = Number(items[0].LogicalRef ?? items[0].INTERNAL_REFERENCE);
+        }
+      }
+    }
+    if (!clientRef) {
+      throw new Error(
+        `Logo'da "${payload.supplier_name}" cari bulunamadi. Once Logo'da cari yaratin veya cari_external_id verin.`,
+      );
+    }
+
+    // 2. PurchaseInvoice yarat — Logo'nun standart payload formati
+    const body = {
+      Type: 1, // 1 = Alış faturası
+      Number: payload.invoice_number ?? '',
+      Date: payload.issue_date ?? new Date().toISOString().slice(0, 10),
+      DueDate: payload.due_date,
+      ArpRef: clientRef,
+      DocumentNumber: payload.invoice_number ?? '',
+      Description: payload.title,
+      GrossTotal: payload.amount,
+      NetTotal: payload.amount,
+      Transactions: {
+        Items: [
+          {
+            Type: 0, // mal alımı
+            Quantity: 1,
+            Price: payload.amount,
+            Total: payload.amount,
+            Description: payload.title,
+          },
+        ],
+      },
+    };
+
+    const res = await fetch(`${cfg.base_url}/api/v1/PurchaseInvoices`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errTxt = await res.text();
+      throw new Error(`Logo PurchaseInvoice: ${res.status} ${errTxt.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { LogicalRef?: number; INTERNAL_REFERENCE?: number; id?: number };
+    const externalId = String(data.LogicalRef ?? data.INTERNAL_REFERENCE ?? data.id ?? '?');
+    return {
+      external_id: externalId,
+      external_url: null, // Logo'nun web UI'si yok
+      raw_response: data,
+    };
+  },
+
+  /**
+   * Logo'da ödeme fişi (CashTransactions) yarat — bir fatura için.
+   */
+  async pushPayment(
+    config: AdapterConfig,
+    payload: PushPayloadPayment,
+  ): Promise<PushResult> {
+    if (!payload.related_invoice_external_id) {
+      throw new Error('Logo odeme icin fatura external_id zorunlu');
+    }
+    const cfg = config as LogoConfig;
+    const token = await getLogoToken(cfg);
+
+    const body = {
+      Type: 1, // ödeme
+      Date: payload.paid_at,
+      Number: payload.reference_no ?? '',
+      InvoiceRef: Number(payload.related_invoice_external_id),
+      Amount: payload.amount,
+      Description: payload.notes ?? 'Sayman ödemesi',
+    };
+
+    const res = await fetch(`${cfg.base_url}/api/v1/CashTransactions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errTxt = await res.text();
+      throw new Error(`Logo CashTransaction: ${res.status} ${errTxt.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { LogicalRef?: number; id?: number };
+    return {
+      external_id: String(data.LogicalRef ?? data.id ?? '?'),
+      raw_response: data,
+    };
   },
 };

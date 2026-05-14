@@ -194,6 +194,7 @@ function ConnectionCard({
           status: string;
           cari_pulled: number;
           movements_pulled: number;
+          invoices_pulled: number;
           duration_ms: number;
           errors: string[];
         };
@@ -327,7 +328,8 @@ function ConnectionCard({
       {sync.data && (
         <div className="bg-brand-50 dark:bg-slate-800 rounded p-2 text-xs mb-2">
           <p className="font-medium text-brand-900 dark:text-slate-100">
-            ✓ Sync tamamlandı — {sync.data.cari_pulled} cari, {sync.data.movements_pulled} hareket,{' '}
+            ✓ Sync tamamlandı — {sync.data.cari_pulled} cari, {sync.data.movements_pulled} hareket
+            {sync.data.invoices_pulled > 0 && `, ${sync.data.invoices_pulled} fatura`},{' '}
             {(sync.data.duration_ms / 1000).toFixed(1)} sn
           </p>
           {sync.data.errors.length > 0 && (
