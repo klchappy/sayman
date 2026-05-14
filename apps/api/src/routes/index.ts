@@ -22,6 +22,7 @@ import { usersRouter } from './users';
 import { jobsRouter } from './jobs';
 import { dashboardRouter } from './dashboard';
 import { importRouter } from './import';
+import { subsidiariesRouter } from './subsidiaries';
 
 export const apiRouter = Router();
 
@@ -67,3 +68,6 @@ apiRouter.use(dashboardRouter);
 
 // Import Center — CSV/JSON bulk insert
 apiRouter.use(importRouter);
+
+// Subsidiaries (Faz M) — Tenant içinde yan şirket / şube
+apiRouter.use(subsidiariesRouter);

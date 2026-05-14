@@ -16,6 +16,7 @@ import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
 import { ImportPage } from './pages/Import';
+import { SubsidiariesPage } from './pages/Subsidiaries';
 import { UsersPage } from './pages/Users';
 import { BanksPage } from './pages/master-data/Banks';
 import { CompaniesPage } from './pages/master-data/Companies';
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="/audit" element={<AuditLogPage />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/import" element={<ImportPage />} />
+        <Route path="/subsidiaries" element={<SubsidiariesPage />} />
 
         <Route path="/security" element={<SecurityPage />} />
 

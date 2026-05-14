@@ -604,6 +604,42 @@ async function main() {
   // Tekrar org-scope context'e geri (dashboard step icin)
   useTenant(ORG_SLUG, SLUG_INSAAT);
 
+  // --- 11d2. Subsidiaries (Faz M) ---
+  useTenant(ORG_SLUG, SLUG_INSAAT);
+
+  let subsidiaryId;
+  await step('POST /subsidiaries (root)', async () => {
+    const r = await api('POST', '/subsidiaries', {
+      name: 'Smoke Holding Genel',
+      code: 'smoke-genel',
+      description: 'Root subsidiary',
+    });
+    expect(r.status === 201, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.data.name === 'Smoke Holding Genel', 'name mismatch');
+    subsidiaryId = r.body.data.id;
+  });
+
+  await step('POST /subsidiaries (child of root)', async () => {
+    const r = await api('POST', '/subsidiaries', {
+      name: 'Smoke Istanbul Subesi',
+      parent_subsidiary_id: subsidiaryId,
+    });
+    expect(r.status === 201, `status ${r.status}`);
+    expect(r.body.data.parent_subsidiary_id === subsidiaryId, 'parent mismatch');
+  });
+
+  await step('GET /subsidiaries (liste)', async () => {
+    const r = await api('GET', '/subsidiaries');
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.length === 2, `expected 2, got ${r.body.data.length}`);
+  });
+
+  await step('PATCH /subsidiaries/:id (rename)', async () => {
+    const r = await api('PATCH', `/subsidiaries/${subsidiaryId}`, { name: 'Smoke Holding Renamed' });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.name === 'Smoke Holding Renamed', 'rename failed');
+  });
+
   // --- 11e. Telegram status (Faz N) ---
   useTenant(ORG_SLUG, null);
   await step('GET /users/me/telegram (status)', async () => {

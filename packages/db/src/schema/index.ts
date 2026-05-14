@@ -18,3 +18,4 @@ export * from './regular-payments';
 export * from './official-payments';
 export * from './guarantees';
 export * from './invitations';
+export * from './subsidiaries';

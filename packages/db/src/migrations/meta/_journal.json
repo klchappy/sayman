@@ -43,6 +43,13 @@
       "when": 1778760594428,
       "tag": "0005_closed_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778763044837,
+      "tag": "0006_cold_manta",
+      "breakpoints": true
     }
   ]
 }

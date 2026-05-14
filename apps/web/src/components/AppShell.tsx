@@ -12,6 +12,7 @@ import {
   Layers,
   LayoutDashboard,
   LogOut,
+  Network,
   Receipt,
   Repeat,
   Shield,
@@ -82,6 +83,7 @@ const navItems: NavItem[] = [
   },
   { to: '/master-data/banks', label: 'Bankalar', icon: Landmark, group: 'Master Data' },
   { to: '/master-data/institutions', label: 'Kurumlar', icon: Building, group: 'Master Data' },
+  { to: '/subsidiaries', label: 'Yan Şirketler', icon: Network, group: 'Master Data' },
 
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
   { to: '/users', label: 'Kullanıcılar', icon: UserCog, group: 'Sistem' },
