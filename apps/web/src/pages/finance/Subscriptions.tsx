@@ -3,6 +3,7 @@ import { Plus, Repeat } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface Subscription {
   id: string;
@@ -145,6 +146,7 @@ export function SubscriptionsPage() {
 
 function SubForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const subsidiariesQ = useSubsidiaries();
   const [packageName, setPackageName] = useState('');
   const [subscriptionNo, setSubscriptionNo] = useState('');
   const [monthlyAmount, setMonthlyAmount] = useState('');
@@ -152,6 +154,7 @@ function SubForm({ onClose }: { onClose: () => void }) {
   const [startDate, setStartDate] = useState('');
   const [commitmentEnd, setCommitmentEnd] = useState('');
   const [autoPayment, setAutoPayment] = useState(false);
+  const [subsidiaryId, setSubsidiaryId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -165,6 +168,7 @@ function SubForm({ onClose }: { onClose: () => void }) {
         start_date: startDate || null,
         commitment_end_date: commitmentEnd || null,
         auto_payment: autoPayment,
+        subsidiary_id: subsidiaryId || null,
         notes: notes || null,
       });
     },
@@ -211,6 +215,17 @@ function SubForm({ onClose }: { onClose: () => void }) {
             <Text label="Başlangıç" v={startDate} on={setStartDate} ph="2026-01-15" />
             <Text label="Taahhüt Bitiş" v={commitmentEnd} on={setCommitmentEnd} ph="2027-01-15" />
           </div>
+          {(subsidiariesQ.data?.length ?? 0) > 0 && (
+            <Select
+              label="Yan Şirket / Şube (ops.)"
+              v={subsidiaryId}
+              on={setSubsidiaryId}
+              opts={[
+                { value: '', label: '— (tenant kökü)' },
+                ...(subsidiariesQ.data ?? []).map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
+          )}
           <Text label="Notlar" v={notes} on={setNotes} />
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-3">

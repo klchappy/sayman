@@ -20,6 +20,7 @@ import {
   paymentTransactions,
   regularPaymentPeriods,
   subscriptions,
+  subsidiaries,
 } from '@sayman/db';
 import { requireAuth } from '../middleware/auth';
 import { requireTenant } from '../lib/helpers';
@@ -197,6 +198,29 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
       next_30_count: Number(rpRollup?.next_30 ?? 0),
     };
 
+    // --- 8. SUBSIDIARY BREAKDOWN (top 8) ---
+    // payable_items + subscriptions + guarantees toplam tutarı subsidiary'ye göre
+    const subsidiaryBreakdownRaw = await db
+      .select({
+        subsidiary_id: subsidiaries.id,
+        subsidiary_name: subsidiaries.name,
+        color: subsidiaries.color,
+        total_payables: sql<string>`COALESCE(SUM(${payableItems.amount}) FILTER (WHERE ${payableItems.subsidiary_id} = ${subsidiaries.id} AND ${payableItems.is_active} = true), 0)`,
+      })
+      .from(subsidiaries)
+      .leftJoin(payableItems, eq(payableItems.subsidiary_id, subsidiaries.id))
+      .where(and(eq(subsidiaries.tenant_id, tid), eq(subsidiaries.is_active, true)))
+      .groupBy(subsidiaries.id, subsidiaries.name, subsidiaries.color)
+      .orderBy(desc(sql`COALESCE(SUM(${payableItems.amount}) FILTER (WHERE ${payableItems.subsidiary_id} = ${subsidiaries.id} AND ${payableItems.is_active} = true), 0)`))
+      .limit(8);
+
+    const subsidiary_breakdown = subsidiaryBreakdownRaw.map((r) => ({
+      id: r.subsidiary_id,
+      name: r.subsidiary_name,
+      color: r.color,
+      total_payables: Number(r.total_payables),
+    }));
+
     res.json({
       data: {
         cashflow_6mo,
@@ -206,6 +230,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
         guarantees: guarantees_kpi,
         official_payments: official_payments_kpi,
         regular_payments: regular_payments_kpi,
+        subsidiary_breakdown,
       },
     });
   } catch (err) {

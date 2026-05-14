@@ -6,6 +6,7 @@ import {
   FileText,
   HomeIcon,
   Landmark,
+  Network,
   Repeat,
   ShieldCheck,
   TrendingDown,
@@ -44,6 +45,12 @@ interface DashboardSummary {
   guarantees: { active_count: number; total_amount: number; expiring_60: number };
   official_payments: { this_month_amount: number; next_30_count: number };
   regular_payments: { this_month_amount: number; next_30_count: number };
+  subsidiary_breakdown: Array<{
+    id: string;
+    name: string;
+    color: string | null;
+    total_payables: number;
+  }>;
 }
 
 interface TenantInfo {
@@ -256,6 +263,45 @@ export function DashboardPage() {
               />
             )}
           </div>
+
+          {/* === Subsidiary breakdown === */}
+          {summary.subsidiary_breakdown.length > 0 && (
+            <section className="card mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-brand-900 flex items-center gap-2">
+                  <Network className="size-5" />
+                  Yan Şirket Bazında Toplam Fatura
+                </h2>
+                <span className="text-xs text-brand-400">payable_items SUM(amount)</span>
+              </div>
+              <div className="space-y-2">
+                {summary.subsidiary_breakdown.map((s) => {
+                  const max = Math.max(
+                    ...summary.subsidiary_breakdown.map((x) => x.total_payables),
+                    1,
+                  );
+                  const pct = (s.total_payables / max) * 100;
+                  return (
+                    <div key={s.id} className="flex items-center gap-3">
+                      <div className="w-40 truncate text-sm text-brand-700">{s.name}</div>
+                      <div className="flex-1 bg-brand-50 rounded-full h-6 relative overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${pct}%`,
+                            background: s.color ?? '#0a2540',
+                          }}
+                        />
+                      </div>
+                      <div className="w-32 text-right font-mono text-sm text-brand-900">
+                        {fmtTRY(s.total_payables)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* === Upcoming payables === */}
           {has('finance') && (

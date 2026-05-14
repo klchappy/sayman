@@ -14,6 +14,7 @@ const createSchema = z.object({
   owner_type: z.enum(['company', 'person', 'family', 'other']),
   company_id: z.string().uuid().optional().nullable(),
   person_id: z.string().uuid().optional().nullable(),
+  subsidiary_id: z.string().uuid().optional().nullable(),
   typical_amount: z.string().regex(/^-?\d+(\.\d{1,2})?$/).optional().nullable(),
   currency: z.string().length(3).default('TRY'),
   notes: z.string().optional().nullable(),

@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { companies, institutions, persons, properties } from './parties';
 import { ownerTypeEnum } from './enums';
+import { subsidiaries } from './subsidiaries';
 import { tenants } from './tenants';
 
 export const subscriptionStatusEnum = pgEnum('subscription_status', [
@@ -46,6 +47,10 @@ export const subscriptions = pgTable(
     company_id: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
     person_id: uuid('person_id').references(() => persons.id, { onDelete: 'set null' }),
     property_id: uuid('property_id').references(() => properties.id, { onDelete: 'set null' }),
+    /** Tenant içinde yan şirket / şube (Faz M) — opsiyonel */
+    subsidiary_id: uuid('subsidiary_id').references(() => subsidiaries.id, {
+      onDelete: 'set null',
+    }),
 
     subscription_no: text('subscription_no'),
     package_name: text('package_name'),

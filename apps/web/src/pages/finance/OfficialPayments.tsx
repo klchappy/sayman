@@ -3,6 +3,7 @@ import { Landmark, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface OfficialProfile {
   id: string;
@@ -151,10 +152,12 @@ export function OfficialPaymentsPage() {
 
 function OPForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const subsidiariesQ = useSubsidiaries();
   const [paymentType, setPaymentType] = useState<OfficialProfile['payment_type']>('BAGKUR');
   const [frequency, setFrequency] = useState<OfficialProfile['frequency']>('monthly');
   const [ownerType, setOwnerType] = useState<OfficialProfile['owner_type']>('company');
   const [typicalAmount, setTypicalAmount] = useState('');
+  const [subsidiaryId, setSubsidiaryId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -165,6 +168,7 @@ function OPForm({ onClose }: { onClose: () => void }) {
         frequency,
         owner_type: ownerType,
         typical_amount: typicalAmount || null,
+        subsidiary_id: subsidiaryId || null,
         notes: notes || null,
       });
     },
@@ -208,6 +212,17 @@ function OPForm({ onClose }: { onClose: () => void }) {
             />
             <Text label="Tipik Tutar" v={typicalAmount} on={setTypicalAmount} ph="6500" />
           </div>
+          {(subsidiariesQ.data?.length ?? 0) > 0 && (
+            <Select
+              label="Yan Şirket / Şube (ops.)"
+              v={subsidiaryId}
+              on={setSubsidiaryId}
+              opts={[
+                { value: '', label: '— (tenant kökü)' },
+                ...(subsidiariesQ.data ?? []).map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
+          )}
           <Text label="Notlar" v={notes} on={setNotes} />
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-3">

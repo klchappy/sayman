@@ -21,6 +21,7 @@ import {
 import { companies, persons, properties } from './parties';
 import { ownerTypeEnum, payableStatusEnum } from './enums';
 import { payableItems } from './finance';
+import { subsidiaries } from './subsidiaries';
 import { tenants } from './tenants';
 
 export const paymentKindEnum = pgEnum('regular_payment_kind', [
@@ -61,6 +62,11 @@ export const regularPaymentProfiles = pgTable(
     }),
 
     property_id: uuid('property_id').references(() => properties.id, { onDelete: 'set null' }),
+
+    /** Tenant içinde yan şirket / şube (Faz M) — opsiyonel */
+    subsidiary_id: uuid('subsidiary_id').references(() => subsidiaries.id, {
+      onDelete: 'set null',
+    }),
 
     start_date: date('start_date'),
     end_date: date('end_date'),

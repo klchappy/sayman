@@ -65,6 +65,7 @@ const payablesRowSchema = z.object({
   currency: z.string().length(3).default('TRY'),
   due_date: z.string().date().optional().nullable(),
   owner_type: z.enum(['company', 'person', 'family', 'other']).default('company'),
+  subsidiary_id: z.string().uuid().optional().nullable(),
   supplier_name: z.string().max(255).optional().nullable(),
   notes: z.string().optional().nullable(),
 });
@@ -75,6 +76,7 @@ const subscriptionsRowSchema = z.object({
   package_name: z.string().min(2).max(255),
   subscription_no: z.string().max(64).optional().nullable(),
   owner_type: z.enum(['company', 'person', 'family', 'other']).default('company'),
+  subsidiary_id: z.string().uuid().optional().nullable(),
   monthly_amount: z.string().regex(/^-?\d+(\.\d{1,2})?$/).optional().nullable(),
   start_date: z.string().date().optional().nullable(),
   commitment_end_date: z.string().date().optional().nullable(),

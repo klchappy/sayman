@@ -12,19 +12,23 @@ import {
   Layers,
   LayoutDashboard,
   LogOut,
+  Menu,
   Network,
+  X,
   Receipt,
   Repeat,
+  Search,
   Shield,
   ShieldCheck,
   UserCog,
   Users,
 } from 'lucide-react';
-import { useEffect } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { Module } from '@sayman/shared';
 import { api, bindActiveAccessor } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { CommandPalette } from './CommandPalette';
 import { TenantSwitcher } from './TenantSwitcher';
 
 interface NavItem {
@@ -102,11 +106,18 @@ export function AppShell() {
   const me = useAuth((s) => s.me);
   const signOut = useAuth((s) => s.signOut);
   const active = useAuth((s) => s.active);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Axios accessor'ı auth store'a bağla
   useEffect(() => {
     bindActiveAccessor(() => useAuth.getState().active);
   }, []);
+
+  // Route değiştiğinde mobile nav'i kapat
+  const location = useLocation();
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
 
   // Aktif tenant'ın modules'unu çek (Faz E filtreleme)
   const tenantsQuery = useQuery({
@@ -147,9 +158,21 @@ export function AppShell() {
 
   return (
     <div className="min-h-full flex bg-brand-50">
-      {/* Sidebar */}
-      <aside className="w-60 bg-brand-900 text-white flex flex-col">
-        <div className="p-5 border-b border-brand-800">
+      {/* Mobile overlay */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — mobile: drawer / desktop: static */}
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-40 w-60 bg-brand-900 text-white flex flex-col transition-transform lg:transform-none ${
+          mobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="p-5 border-b border-brand-800 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="size-9 rounded-lg bg-white/10 grid place-items-center text-sm font-semibold">
               Sy
@@ -161,6 +184,13 @@ export function AppShell() {
               </p>
             </div>
           </Link>
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            className="lg:hidden text-brand-200 hover:text-white"
+            aria-label="Menüyü kapat"
+          >
+            <X className="size-5" />
+          </button>
         </div>
 
         <nav className="flex-1 p-3 space-y-3 overflow-y-auto">
@@ -207,9 +237,17 @@ export function AppShell() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-brand-100 px-6 py-3 flex items-center justify-between">
+        <header className="bg-white border-b border-brand-100 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 sm:gap-4">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="lg:hidden p-2 -ml-2 text-brand-700 hover:bg-brand-50 rounded"
+            aria-label="Menüyü aç"
+          >
+            <Menu className="size-5" />
+          </button>
           <TenantSwitcher />
-          <div className="text-xs text-brand-400">
+          <SearchTrigger />
+          <div className="text-xs text-brand-400 hidden md:block">
             {active.orgSlug && active.tenantSlug ? (
               <span className="font-mono">
                 {active.tenantSlug}.{active.orgSlug}.sayman
@@ -226,7 +264,30 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette />
     </div>
+  );
+}
+
+function SearchTrigger() {
+  return (
+    <button
+      onClick={() => {
+        // CommandPalette useEffect ile Cmd+K dinler — programmatic trigger için
+        // ayrıca açılabilen versiyon için global event veya context kullanılabilir.
+        // En basit: ctrl+k tuş kombinasyonunu simüle et
+        window.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }),
+        );
+      }}
+      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-200 hover:border-brand-300 text-sm text-brand-500 hover:text-brand-700 transition flex-1 max-w-md"
+    >
+      <Search className="size-4" />
+      <span className="hidden sm:inline">Ara...</span>
+      <kbd className="ml-auto text-xs font-mono px-1.5 py-0.5 bg-brand-50 rounded text-brand-400 hidden sm:inline">
+        Ctrl K
+      </kbd>
+    </button>
   );
 }
 

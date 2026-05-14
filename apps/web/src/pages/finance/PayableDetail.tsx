@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, FileDown, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PAYMENT_METHODS, type PaymentMethod, type PayableStatus } from '@sayman/shared';
@@ -70,9 +70,26 @@ export function PayableDetailPage() {
         Faturalar
       </Link>
 
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-brand-900">{p.title}</h1>
-        {p.invoice_number && <p className="text-sm text-brand-500 font-mono mt-1">#{p.invoice_number}</p>}
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-brand-900">{p.title}</h1>
+          {p.invoice_number && <p className="text-sm text-brand-500 font-mono mt-1">#{p.invoice_number}</p>}
+        </div>
+        <button
+          onClick={async () => {
+            const r = await api.get<Blob>(`/pdf/payable/${p.id}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(r.data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fatura-${p.invoice_number ?? p.id.slice(0, 8)}.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="flex items-center gap-2 px-3 py-2 border border-brand-200 rounded-lg text-sm text-brand-700 hover:bg-brand-50"
+        >
+          <FileDown className="size-4" />
+          PDF İndir
+        </button>
       </header>
 
       <div className="grid sm:grid-cols-3 gap-4 mb-6">

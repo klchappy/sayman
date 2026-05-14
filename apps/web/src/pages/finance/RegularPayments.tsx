@@ -3,6 +3,7 @@ import { HomeIcon, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface RegularPayment {
   id: string;
@@ -142,6 +143,7 @@ export function RegularPaymentsPage() {
 
 function RPForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const subsidiariesQ = useSubsidiaries();
   const [kind, setKind] = useState<RegularPayment['kind']>('rent');
   const [title, setTitle] = useState('');
   const [monthlyAmount, setMonthlyAmount] = useState('');
@@ -149,6 +151,7 @@ function RPForm({ onClose }: { onClose: () => void }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [annualIncrease, setAnnualIncrease] = useState('');
+  const [subsidiaryId, setSubsidiaryId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +165,7 @@ function RPForm({ onClose }: { onClose: () => void }) {
         start_date: startDate || null,
         end_date: endDate || null,
         annual_increase_rate: annualIncrease || null,
+        subsidiary_id: subsidiaryId || null,
         notes: notes || null,
       });
     },
@@ -199,6 +203,17 @@ function RPForm({ onClose }: { onClose: () => void }) {
             <Text label="Bitiş" v={endDate} on={setEndDate} />
           </div>
           <Text label="Yıllık Artış %" v={annualIncrease} on={setAnnualIncrease} ph="25.00" />
+          {(subsidiariesQ.data?.length ?? 0) > 0 && (
+            <Select
+              label="Yan Şirket / Şube (ops.)"
+              v={subsidiaryId}
+              on={setSubsidiaryId}
+              opts={[
+                { value: '', label: '— (tenant kökü)' },
+                ...(subsidiariesQ.data ?? []).map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
+          )}
           <Text label="Notlar" v={notes} on={setNotes} />
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-3">

@@ -662,7 +662,30 @@ async function main() {
     expect(typeof d.guarantees.active_count === 'number', 'guarantees kpi missing');
     expect(typeof d.official_payments.this_month_amount === 'number', 'official kpi missing');
     expect(typeof d.regular_payments.this_month_amount === 'number', 'regular kpi missing');
-    console.log(`     payables.total=${d.payables_summary.total} subs.active=${d.subscriptions.active_count} gtee.active=${d.guarantees.active_count}`);
+    expect(Array.isArray(d.subsidiary_breakdown), 'subsidiary_breakdown missing');
+    console.log(`     payables.total=${d.payables_summary.total} subs.active=${d.subscriptions.active_count} gtee.active=${d.guarantees.active_count} subsidiary_count=${d.subsidiary_breakdown.length}`);
+  });
+
+  // --- 11g. Global search (Cmd+K) ---
+  await step('GET /search?q=Updated', async () => {
+    const r = await api('GET', '/search?q=Updated');
+    expect(r.status === 200, `status ${r.status}`);
+    expect(Array.isArray(r.body.data.results), 'results array missing');
+    expect(r.body.data.results.length >= 1, 'arama sonucu yok (master data Update yapildi mi?)');
+  });
+
+  // --- 11h. PDF export ---
+  await step('GET /pdf/payable/:id (PDF)', async () => {
+    // payableId yukarida set edildi
+    const headers = { Authorization: `Bearer ${TOKEN}` };
+    if (CURRENT_TENANT?.orgSlug) headers['X-Sayman-Org'] = CURRENT_TENANT.orgSlug;
+    if (CURRENT_TENANT?.tenantSlug) headers['X-Sayman-Tenant'] = CURRENT_TENANT.tenantSlug;
+    const res = await fetch(`${API_BASE}/pdf/payable/${payableId}`, { headers });
+    expect(res.status === 200, `status ${res.status}`);
+    expect(res.headers.get('content-type')?.includes('pdf'), 'content-type not PDF');
+    const buf = await res.arrayBuffer();
+    expect(buf.byteLength > 1000, `PDF too small: ${buf.byteLength} bytes`);
+    console.log(`     PDF size=${buf.byteLength} bytes`);
   });
 
   // --- 12. Org-scope master data: hukuk tenant'tan da görünmeli (share_scope) ---

@@ -9,6 +9,7 @@ import {
 } from '@sayman/shared';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface Payable {
   id: string;
@@ -149,6 +150,7 @@ export function PayablesPage() {
 
 function PayableForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const subsidiariesQ = useSubsidiaries();
   const [title, setTitle] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [period, setPeriod] = useState('');
@@ -156,6 +158,7 @@ function PayableForm({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState('');
   const [ownerType, setOwnerType] = useState<(typeof OWNER_TYPES)[number]>('company');
   const [expectedMethod, setExpectedMethod] = useState<(typeof PAYMENT_METHODS)[number] | ''>('');
+  const [subsidiaryId, setSubsidiaryId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
@@ -168,6 +171,7 @@ function PayableForm({ onClose }: { onClose: () => void }) {
         amount,
         owner_type: ownerType,
         expected_method: expectedMethod || null,
+        subsidiary_id: subsidiaryId || null,
       });
     },
     onSuccess: () => {
@@ -205,6 +209,17 @@ function PayableForm({ onClose }: { onClose: () => void }) {
               options={[{ value: '', label: '-' }, ...PAYMENT_METHODS.map((v) => ({ value: v, label: v }))]}
             />
           </div>
+          {(subsidiariesQ.data?.length ?? 0) > 0 && (
+            <SelectField
+              label="Yan Şirket / Şube (ops.)"
+              value={subsidiaryId}
+              onChange={setSubsidiaryId}
+              options={[
+                { value: '', label: '— (tenant kökü)' },
+                ...(subsidiariesQ.data ?? []).map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-3">
             <button onClick={onClose} className="px-4 py-2 text-brand-600 hover:bg-brand-50 rounded-lg text-sm">

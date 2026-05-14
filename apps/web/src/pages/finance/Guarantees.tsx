@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, ShieldCheck } from 'lucide-react';
+import { FileDown, Plus, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface Guarantee {
   id: string;
@@ -101,6 +102,7 @@ export function GuaranteesPage() {
                 <th className="py-2 px-2">Vade</th>
                 <th className="py-2 px-2">Komisyon</th>
                 <th className="py-2 px-2">Durum</th>
+                <th className="py-2 px-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -127,6 +129,23 @@ export function GuaranteesPage() {
                       {STATUS_LABEL[g.status]}
                     </span>
                   </td>
+                  <td className="py-2 px-2 text-right">
+                    <button
+                      onClick={async () => {
+                        const r = await api.get<Blob>(`/pdf/guarantee/${g.id}`, { responseType: 'blob' });
+                        const url = URL.createObjectURL(r.data);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `teminat-${g.letter_no ?? g.id.slice(0, 8)}.pdf`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="text-brand-600 hover:bg-brand-50 p-1.5 rounded inline-flex"
+                      title="PDF İndir"
+                    >
+                      <FileDown className="size-4" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -139,6 +158,7 @@ export function GuaranteesPage() {
 
 function GForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const subsidiariesQ = useSubsidiaries();
   const [beneficiaryName, setBeneficiaryName] = useState('');
   const [letterNo, setLetterNo] = useState('');
   const [amount, setAmount] = useState('');
@@ -146,6 +166,7 @@ function GForm({ onClose }: { onClose: () => void }) {
   const [expiryDate, setExpiryDate] = useState('');
   const [commissionRate, setCommissionRate] = useState('');
   const [commissionFreq, setCommissionFreq] = useState('3');
+  const [subsidiaryId, setSubsidiaryId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -159,6 +180,7 @@ function GForm({ onClose }: { onClose: () => void }) {
         expiry_date: expiryDate || null,
         commission_rate: commissionRate || null,
         commission_frequency_months: Number(commissionFreq) || 3,
+        subsidiary_id: subsidiaryId || null,
         notes: notes || null,
       });
     },
@@ -187,6 +209,23 @@ function GForm({ onClose }: { onClose: () => void }) {
             <Text label="Komisyon %" v={commissionRate} on={setCommissionRate} ph="2.50" />
             <Text label="Periyot (Ay)" v={commissionFreq} on={setCommissionFreq} ph="3" />
           </div>
+          {(subsidiariesQ.data?.length ?? 0) > 0 && (
+            <label className="block">
+              <span className="text-xs uppercase tracking-wide text-brand-500">Yan Şirket / Şube (ops.)</span>
+              <select
+                value={subsidiaryId}
+                onChange={(e) => setSubsidiaryId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-brand-200 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+              >
+                <option value="">— (tenant kökü)</option>
+                {(subsidiariesQ.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <Text label="Notlar" v={notes} on={setNotes} />
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-3">

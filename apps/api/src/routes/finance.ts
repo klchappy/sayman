@@ -29,6 +29,7 @@ const createPayableSchema = z.object({
   owner_type: ownerTypeSchema.default('company'),
   company_id: z.string().uuid().optional().nullable(),
   person_id: z.string().uuid().optional().nullable(),
+  subsidiary_id: z.string().uuid().optional().nullable(),
   title: z.string().min(2).max(255),
   category: z.string().max(64).optional().nullable(),
   institution_id: z.string().uuid().optional().nullable(),

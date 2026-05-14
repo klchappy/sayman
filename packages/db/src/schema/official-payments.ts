@@ -20,6 +20,7 @@ import {
 import { companies, persons } from './parties';
 import { ownerTypeEnum, payableStatusEnum } from './enums';
 import { payableItems } from './finance';
+import { subsidiaries } from './subsidiaries';
 import { tenants } from './tenants';
 
 export const officialPaymentTypeEnum = pgEnum('official_payment_type', [
@@ -56,6 +57,10 @@ export const officialPaymentProfiles = pgTable(
     owner_type: ownerTypeEnum('owner_type').notNull(),
     company_id: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
     person_id: uuid('person_id').references(() => persons.id, { onDelete: 'set null' }),
+    /** Tenant içinde yan şirket / şube (Faz M) — opsiyonel */
+    subsidiary_id: uuid('subsidiary_id').references(() => subsidiaries.id, {
+      onDelete: 'set null',
+    }),
 
     typical_amount: numeric('typical_amount', { precision: 15, scale: 2 }),
     currency: text('currency').notNull().default('TRY'),

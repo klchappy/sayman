@@ -23,6 +23,8 @@ import { jobsRouter } from './jobs';
 import { dashboardRouter } from './dashboard';
 import { importRouter } from './import';
 import { subsidiariesRouter } from './subsidiaries';
+import { searchRouter } from './search';
+import { pdfRouter } from './pdf';
 
 export const apiRouter = Router();
 
@@ -71,3 +73,9 @@ apiRouter.use(importRouter);
 
 // Subsidiaries (Faz M) — Tenant içinde yan şirket / şube
 apiRouter.use(subsidiariesRouter);
+
+// Global search (Cmd+K)
+apiRouter.use(searchRouter);
+
+// PDF export (fatura/teminat)
+apiRouter.use(pdfRouter);

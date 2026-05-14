@@ -21,6 +21,7 @@ const createProfileSchema = z.object({
   payer_company_id: z.string().uuid().optional().nullable(),
   payer_person_id: z.string().uuid().optional().nullable(),
   property_id: z.string().uuid().optional().nullable(),
+  subsidiary_id: z.string().uuid().optional().nullable(),
   start_date: z.string().date().optional().nullable(),
   end_date: z.string().date().optional().nullable(),
   monthly_amount: z.string().regex(/^-?\d+(\.\d{1,2})?$/),

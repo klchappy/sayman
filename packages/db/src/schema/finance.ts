@@ -26,6 +26,7 @@ import {
   paymentMethodEnum,
   transactionStatusEnum,
 } from './enums';
+import { subsidiaries } from './subsidiaries';
 import { tenants } from './tenants';
 import { users } from './users';
 
@@ -44,6 +45,10 @@ export const payableItems = pgTable(
     owner_type: ownerTypeEnum('owner_type').notNull().default('company'),
     company_id: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
     person_id: uuid('person_id').references(() => persons.id, { onDelete: 'set null' }),
+    /** Tenant içinde yan şirket / şube (Faz M) — opsiyonel */
+    subsidiary_id: uuid('subsidiary_id').references(() => subsidiaries.id, {
+      onDelete: 'set null',
+    }),
 
     // Tanım
     title: text('title').notNull(),

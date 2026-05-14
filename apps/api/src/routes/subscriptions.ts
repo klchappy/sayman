@@ -14,6 +14,7 @@ const createSchema = z.object({
   company_id: z.string().uuid().optional().nullable(),
   person_id: z.string().uuid().optional().nullable(),
   property_id: z.string().uuid().optional().nullable(),
+  subsidiary_id: z.string().uuid().optional().nullable(),
   subscription_no: z.string().optional().nullable(),
   package_name: z.string().optional().nullable(),
   auto_payment: z.boolean().default(false),

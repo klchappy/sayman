@@ -11,6 +11,7 @@ import { requireAuth } from '../middleware/auth';
 const createSchema = z.object({
   bank_id: z.string().uuid().optional().nullable(),
   issuer_company_id: z.string().uuid().optional().nullable(),
+  subsidiary_id: z.string().uuid().optional().nullable(),
   beneficiary_name: z.string().min(2).max(255),
   letter_no: z.string().optional().nullable(),
   amount: z.string().regex(/^-?\d+(\.\d{1,2})?$/),

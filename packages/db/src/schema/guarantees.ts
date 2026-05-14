@@ -20,6 +20,7 @@ import {
 import { banks, companies } from './parties';
 import { payableStatusEnum } from './enums';
 import { payableItems } from './finance';
+import { subsidiaries } from './subsidiaries';
 import { tenants } from './tenants';
 
 export const guaranteeStatusEnum = pgEnum('guarantee_status', [
@@ -41,6 +42,11 @@ export const guarantees = pgTable(
 
     /** Teminat veren şirket (issuer) */
     issuer_company_id: uuid('issuer_company_id').references(() => companies.id, {
+      onDelete: 'set null',
+    }),
+
+    /** Tenant içinde yan şirket / şube (Faz M) — opsiyonel */
+    subsidiary_id: uuid('subsidiary_id').references(() => subsidiaries.id, {
       onDelete: 'set null',
     }),
 

@@ -3,6 +3,11 @@ import { getLocalToken } from './local-auth';
 
 const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:4300/v1';
 
+export const apiBaseURL = baseURL;
+export function getApiBaseUrl(): string {
+  return baseURL;
+}
+
 export const api = axios.create({
   baseURL,
   withCredentials: true,
