@@ -120,6 +120,13 @@
       "when": 1778776000000,
       "tag": "0016_push_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778777000000,
+      "tag": "0017_payment_approvals",
+      "breakpoints": true
     }
   ]
 }

@@ -28,3 +28,4 @@ export * from './category-feedback';
 export * from './ai-summaries';
 export * from './inbound-webhooks';
 export * from './push-tokens';
+export * from './payment-approvals';

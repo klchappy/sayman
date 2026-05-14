@@ -24,6 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { SECTORS, type Sector } from '@sayman/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { dismissOnboarding } from '../components/ProtectedRoute';
 
 interface OnboardingState {
   step: number;
@@ -78,12 +79,22 @@ export function OnboardingPage() {
           {state.step === 1 && <Step1 state={state} setState={setState} />}
           {state.step === 2 && <Step2 state={state} setState={setState} />}
           {state.step === 3 && <Step3 state={state} setState={setState} />}
-          {state.step === 4 && <Step4 onFinish={() => navigate('/inbox')} />}
+          {state.step === 4 && (
+            <Step4
+              onFinish={() => {
+                dismissOnboarding();
+                navigate('/inbox');
+              }}
+            />
+          )}
         </div>
 
         <div className="text-center mt-6">
           <button
-            onClick={() => navigate('/inbox')}
+            onClick={() => {
+              dismissOnboarding();
+              navigate('/inbox');
+            }}
             className="text-sm text-brand-500 hover:text-brand-900"
           >
             Atla → direkt panele git

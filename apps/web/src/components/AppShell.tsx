@@ -17,6 +17,7 @@ import {
   Inbox,
   Network,
   Plug,
+  ShieldAlert,
   Tag,
   TrendingUp,
   X,
@@ -37,6 +38,7 @@ import { useAuth } from '../lib/auth';
 import { CommandPalette } from './CommandPalette';
 import { ShortcutsHelp } from './ShortcutsHelp';
 import { TenantSwitcher } from './TenantSwitcher';
+import { ThemeToggle } from './ThemeToggle';
 
 interface NavItem {
   to: string;
@@ -56,6 +58,13 @@ const navItems: NavItem[] = [
     to: '/forecast',
     label: 'Nakit Tahmin',
     icon: TrendingUp,
+    requires: 'finance',
+    group: 'Finans',
+  },
+  {
+    to: '/payment-approvals',
+    label: 'Ödeme Onayları',
+    icon: ShieldAlert,
     requires: 'finance',
     group: 'Finans',
   },
@@ -189,7 +198,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-full flex bg-brand-50">
+    <div className="min-h-full flex bg-brand-50 dark:bg-slate-950">
       {/* Mobile overlay */}
       {mobileNavOpen && (
         <div
@@ -269,7 +278,7 @@ export function AppShell() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-brand-100 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 sm:gap-4">
+        <header className="bg-white dark:bg-slate-900 border-b border-brand-100 dark:border-slate-800 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 sm:gap-4">
           <button
             onClick={() => setMobileNavOpen(true)}
             className="lg:hidden p-2 -ml-2 text-brand-700 hover:bg-brand-50 rounded"
@@ -279,6 +288,7 @@ export function AppShell() {
           </button>
           <TenantSwitcher />
           <SearchTrigger />
+          <ThemeToggle />
           <div className="text-xs text-brand-400 hidden md:block">
             {active.orgSlug && active.tenantSlug ? (
               <span className="font-mono">

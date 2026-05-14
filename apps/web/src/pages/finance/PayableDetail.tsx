@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
   Receipt,
+  Repeat,
   Sparkles,
   Tag,
 } from 'lucide-react';
@@ -136,6 +137,8 @@ export function PayableDetailPage() {
       />
 
       <AiExplainBox payableId={p.id} />
+
+      <RecurringHint payableId={p.id} />
 
       <div className="grid md:grid-cols-2 gap-4 mb-6">
         <AttachmentBox relatedTable="payable_items" relatedId={p.id} />
@@ -317,6 +320,64 @@ function PaymentForm({
         >
           {isPending ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Recurring tespit ---
+interface RecurringInfo {
+  is_recurring: boolean;
+  confidence: number;
+  cadence: 'monthly' | 'quarterly' | 'yearly' | 'irregular' | null;
+  occurrences: number;
+  avg_interval_days: number | null;
+  avg_amount: number;
+}
+
+const CADENCE_LABEL: Record<string, string> = {
+  monthly: 'Aylık',
+  quarterly: 'Üç aylık',
+  yearly: 'Yıllık',
+  irregular: 'Düzensiz',
+};
+
+function RecurringHint({ payableId }: { payableId: string }) {
+  const q = useQuery({
+    queryKey: ['recurring-detect', payableId],
+    queryFn: async () => {
+      const res = await api.get<{ data: RecurringInfo }>(`/recurring-detect/payable/${payableId}`);
+      return res.data.data;
+    },
+  });
+
+  if (!q.data || !q.data.is_recurring) return null;
+
+  return (
+    <div className="card mb-6 bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
+      <div className="flex items-start gap-3">
+        <Repeat className="size-5 text-blue-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="font-medium text-blue-900 dark:text-blue-200">
+            Bu fatura tekrar ediyor gibi görünüyor.
+          </p>
+          <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">
+            Aynı tedarikçi için {q.data.occurrences} kez kaydedilmiş, ortalama her{' '}
+            <strong>{q.data.avg_interval_days} gün</strong>'de bir (
+            {q.data.cadence ? CADENCE_LABEL[q.data.cadence] : 'düzensiz'}). Ortalama tutar:{' '}
+            {q.data.avg_amount.toLocaleString('tr-TR', {
+              style: 'currency',
+              currency: 'TRY',
+            })}
+            .
+          </p>
+          <Link
+            to="/subscriptions"
+            className="inline-block mt-2 text-sm text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-100 underline"
+          >
+            Aboneliklere çevir →
+          </Link>
+        </div>
       </div>
     </div>
   );

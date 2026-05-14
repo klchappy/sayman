@@ -1,5 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Brain, FileCode, Plus, Receipt, Search, Sparkles, X } from 'lucide-react';
+import {
+  Brain,
+  FileCode,
+  FileSpreadsheet,
+  Plus,
+  Receipt,
+  Search,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -122,13 +131,31 @@ export function PayablesPage() {
           </p>
           <h1 className="text-2xl font-semibold text-brand-900">Faturalar</h1>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
-        >
-          <Plus className="size-4" />
-          Yeni Fatura
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              const r = await api.get<Blob>('/export/payables.xlsx', { responseType: 'blob' });
+              const url = URL.createObjectURL(r.data);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `faturalar-${new Date().toISOString().slice(0, 10)}.xlsx`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="flex items-center gap-2 border border-brand-200 hover:bg-brand-50 dark:hover:bg-slate-800 dark:border-slate-700 text-brand-700 dark:text-slate-300 px-3 py-2 rounded-lg text-sm"
+            title="Excel olarak indir"
+          >
+            <FileSpreadsheet className="size-4" />
+            Excel
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            <Plus className="size-4" />
+            Yeni Fatura
+          </button>
+        </div>
       </header>
 
       {showForm && <PayableForm onClose={() => setShowForm(false)} />}
@@ -407,7 +434,7 @@ function PayableForm({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-3 gap-3">
             <TextField label="Düzenleme" value={issueDate} onChange={setIssueDate} placeholder="2026-05-01" />
             <TextField label="Vade Tarihi" value={dueDate} onChange={setDueDate} placeholder="2026-05-30" />
-            <TextField label="Tutar *" value={amount} onChange={setAmount} placeholder="1234.50" />
+            <VatField amount={amount} onChange={setAmount} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <SelectField
@@ -454,6 +481,79 @@ function PayableForm({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function VatField({
+  amount,
+  onChange,
+}: {
+  amount: string;
+  onChange: (v: string) => void;
+}) {
+  const [vatRate, setVatRate] = useState(20);
+  const num = Number(amount);
+  const valid = !isNaN(num) && num > 0;
+  const net = valid ? num / (1 + vatRate / 100) : 0;
+  const vat = valid ? num - net : 0;
+
+  function addVat() {
+    if (!valid) return;
+    onChange((num * (1 + vatRate / 100)).toFixed(2));
+  }
+  function stripVat() {
+    if (!valid) return;
+    onChange((num / (1 + vatRate / 100)).toFixed(2));
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-brand-500">Tutar *</span>
+        <div className="flex items-center gap-1">
+          <select
+            value={vatRate}
+            onChange={(e) => setVatRate(Number(e.target.value))}
+            className="text-[10px] bg-brand-50 dark:bg-slate-800 text-brand-700 dark:text-slate-300 px-1 py-0.5 rounded border border-brand-200 dark:border-slate-700"
+            title="KDV oranı"
+          >
+            <option value="1">%1</option>
+            <option value="10">%10</option>
+            <option value="20">%20</option>
+          </select>
+          <button
+            type="button"
+            onClick={addVat}
+            disabled={!valid}
+            className="text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded disabled:opacity-40"
+            title={`Tutara %${vatRate} KDV ekle`}
+          >
+            +KDV
+          </button>
+          <button
+            type="button"
+            onClick={stripVat}
+            disabled={!valid}
+            className="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded disabled:opacity-40"
+            title={`Tutardan %${vatRate} KDV düş`}
+          >
+            -KDV
+          </button>
+        </div>
+      </div>
+      <input
+        type="text"
+        value={amount}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="1234.50"
+        className="mt-1 w-full rounded-lg border border-brand-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-400"
+      />
+      {valid && (
+        <p className="text-[10px] text-brand-400 mt-1 font-mono">
+          Net: {net.toFixed(2)} · KDV: {vat.toFixed(2)} · Brüt: {num.toFixed(2)}
+        </p>
+      )}
     </div>
   );
 }

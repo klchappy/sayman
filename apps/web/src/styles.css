@@ -6,6 +6,9 @@
   :root {
     color-scheme: light;
   }
+  html.dark {
+    color-scheme: dark;
+  }
   html,
   body,
   #root {
@@ -13,6 +16,7 @@
   }
   body {
     @apply bg-brand-50 text-brand-900 font-sans antialiased;
+    @apply dark:bg-slate-950 dark:text-slate-100;
   }
 
   /* Smooth scroll */
@@ -41,12 +45,15 @@
   /* === Cards === */
   .card {
     @apply rounded-xl bg-white shadow-sm ring-1 ring-brand-100/80 p-5 transition-shadow;
+    @apply dark:bg-slate-900 dark:ring-slate-800 dark:text-slate-100;
   }
   .card:hover {
     @apply shadow-md ring-brand-200;
+    @apply dark:ring-slate-700;
   }
   .card-flat {
     @apply rounded-xl bg-white ring-1 ring-brand-100 p-5;
+    @apply dark:bg-slate-900 dark:ring-slate-800;
   }
 
   /* === Badges === */
@@ -90,6 +97,8 @@
     @apply focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-400;
     @apply placeholder:text-brand-300;
     @apply transition-colors;
+    @apply dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100;
+    @apply dark:placeholder:text-slate-500;
   }
   .input-sm {
     @apply input text-sm py-1.5;

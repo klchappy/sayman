@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './lib/auth';
+import { useTheme } from './lib/theme';
 import { DashboardPage } from './pages/Dashboard';
 import { HomePage } from './pages/Home';
 import { LoginPage } from './pages/Login';
@@ -24,6 +25,7 @@ import { InboxPage } from './pages/Inbox';
 import { IntegrationsPage } from './pages/Integrations';
 import { OCRPage } from './pages/OCR';
 import { OnboardingPage } from './pages/Onboarding';
+import { PaymentApprovalsPage } from './pages/PaymentApprovals';
 import {
   SupplierScorecardDetailPage,
   SupplierScorecardListPage,
@@ -44,9 +46,11 @@ import { SubscriptionsPage } from './pages/finance/Subscriptions';
 
 export default function App() {
   const init = useAuth((s) => s.init);
+  const initTheme = useTheme((s) => s.init);
   useEffect(() => {
+    initTheme();
     init();
-  }, [init]);
+  }, [init, initTheme]);
 
   return (
     <Routes>
@@ -99,6 +103,7 @@ export default function App() {
         <Route path="/suppliers/:name" element={<SupplierScorecardDetailPage />} />
         <Route path="/tools/bulk-categorize" element={<BulkCategorizePage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="/payment-approvals" element={<PaymentApprovalsPage />} />
 
         <Route path="/orgs" element={<HomePage />} />
         <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />

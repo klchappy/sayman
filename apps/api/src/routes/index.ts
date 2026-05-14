@@ -47,6 +47,9 @@ import { pushRouter } from './push';
 import { aiExplainRouter } from './ai-explain';
 import { supplierScorecardRouter } from './supplier-scorecard';
 import { inboxRouter } from './inbox';
+import { excelExportRouter } from './excel-export';
+import { recurringDetectRouter } from './recurring-detect';
+import { paymentApprovalsRouter } from './payment-approvals';
 
 export const apiRouter = Router();
 
@@ -167,3 +170,12 @@ apiRouter.use(supplierScorecardRouter);
 
 // Eylem-odaklı inbox (bugün ne yapmam gerek)
 apiRouter.use(inboxRouter);
+
+// Excel (xlsx) export — faturalar/ödemeler/teminat
+apiRouter.use(excelExportRouter);
+
+// Recurring (tekrar eden fatura) tespiti
+apiRouter.use(recurringDetectRouter);
+
+// Çift onaylı ödeme akışı (>= 50K TRY)
+apiRouter.use(paymentApprovalsRouter);
