@@ -58,6 +58,12 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().email().optional(),
   ),
+
+  /** Telegram Bot API token — @BotFather'dan alınır (örn: 123456:ABC...) */
+  TELEGRAM_BOT_TOKEN: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(20).optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);
@@ -69,4 +75,5 @@ export const isConfigured = {
   db: Boolean(env.DATABASE_URL),
   supabase: Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
   email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
+  telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
 };

@@ -30,6 +30,7 @@ export interface ReminderResult {
   regular_notified: number;
   official_notified: number;
   mail_sent: number;
+  telegram_sent: number;
 }
 
 const SUBSCRIPTION_OFFSETS = [60, 30, 7];
@@ -44,6 +45,7 @@ export async function runSendReminders(): Promise<ReminderResult> {
     regular_notified: 0,
     official_notified: 0,
     mail_sent: 0,
+    telegram_sent: 0,
   };
 
   const today = new Date();
@@ -85,6 +87,7 @@ export async function runSendReminders(): Promise<ReminderResult> {
       });
       result.subscriptions_notified += res.created;
       result.mail_sent += res.mail_sent;
+      result.telegram_sent += res.telegram_sent;
     }
   }
 
@@ -126,6 +129,7 @@ export async function runSendReminders(): Promise<ReminderResult> {
       });
       result.guarantees_notified += res.created;
       result.mail_sent += res.mail_sent;
+      result.telegram_sent += res.telegram_sent;
     }
   }
 
@@ -166,6 +170,7 @@ export async function runSendReminders(): Promise<ReminderResult> {
       });
       result.payables_notified += res.created;
       result.mail_sent += res.mail_sent;
+      result.telegram_sent += res.telegram_sent;
     }
   }
 
@@ -206,6 +211,7 @@ export async function runSendReminders(): Promise<ReminderResult> {
       });
       result.regular_notified += res.created;
       result.mail_sent += res.mail_sent;
+      result.telegram_sent += res.telegram_sent;
     }
   }
 
@@ -246,6 +252,7 @@ export async function runSendReminders(): Promise<ReminderResult> {
       });
       result.official_notified += res.created;
       result.mail_sent += res.mail_sent;
+      result.telegram_sent += res.telegram_sent;
     }
   }
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Key, Monitor, Shield, Trash2 } from 'lucide-react';
+import { AlertCircle, Key, Monitor, Send, Shield, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
 
@@ -280,6 +280,170 @@ function KvkkSection() {
 
 // --- Main page --------------------------------------------------------------
 
+// --- Telegram --------------------------------------------------------------
+
+interface TelegramStatus {
+  configured: boolean;
+  bot_username: string | null;
+  bot_name: string | null;
+  my_chat_id: string | null;
+  start_url: string | null;
+}
+
+function TelegramSection() {
+  const qc = useQueryClient();
+  const [chatIdInput, setChatIdInput] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  const status = useQuery({
+    queryKey: ['telegram-status'],
+    queryFn: async () => (await api.get<{ data: TelegramStatus }>('/users/me/telegram')).data.data,
+  });
+
+  const link = useMutation({
+    mutationFn: async () => api.post('/users/me/telegram/chat-id', { chat_id: chatIdInput }),
+    onSuccess: () => {
+      setChatIdInput('');
+      qc.invalidateQueries({ queryKey: ['telegram-status'] });
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    },
+  });
+
+  const unlink = useMutation({
+    mutationFn: async () => api.delete('/users/me/telegram/chat-id'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegram-status'] }),
+  });
+
+  const sendTest = useMutation({
+    mutationFn: async () => (await api.post<{ data: { delivered: string } }>('/users/me/telegram/test')).data.data,
+    onSuccess: (data) => {
+      setTestResult(`Sonuç: ${data.delivered}`);
+    },
+    onError: (e) => setError(String((e as Error).message)),
+  });
+
+  if (!status.data) {
+    return (
+      <div className="card">
+        <p className="text-brand-500 text-sm">Yükleniyor…</p>
+      </div>
+    );
+  }
+
+  const s = status.data;
+
+  return (
+    <div className="card">
+      <h2 className="font-semibold text-brand-900 mb-4 flex items-center gap-2">
+        <Send className="size-5" />
+        Telegram Bildirimleri
+      </h2>
+
+      {!s.configured && (
+        <p className="text-sm text-amber-700 bg-amber-50 p-3 rounded-lg mb-4">
+          Telegram bot henüz yapılandırılmadı (TELEGRAM_BOT_TOKEN env eksik).
+          Yapılandırıldığında bildirimler otomatik gelecek.
+        </p>
+      )}
+
+      {s.configured && !s.my_chat_id && (
+        <div className="space-y-3">
+          <p className="text-sm text-brand-700">
+            Yaklaşan vade, fatura ve onay uyarılarını Telegram'da almak için bot'a bağlan:
+          </p>
+          <ol className="text-sm text-brand-600 list-decimal list-inside space-y-1">
+            <li>
+              {s.bot_username && (
+                <>
+                  Bot'a tıkla:{' '}
+                  <a
+                    href={`https://t.me/${s.bot_username}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand-900 underline font-medium"
+                  >
+                    @{s.bot_username}
+                  </a>
+                </>
+              )}
+            </li>
+            <li>Botla sohbete <code className="bg-brand-50 px-1 rounded">/start</code> gönder</li>
+            <li>
+              Bot sana 5-10 haneli bir <strong>chat_id</strong> verecek (örnek: <code>123456789</code>)
+            </li>
+            <li>O chat_id'yi aşağıdaki kutuya yapıştır</li>
+          </ol>
+          <div className="flex gap-2 mt-3">
+            <input
+              type="text"
+              placeholder="Telegram chat_id (örn: 123456789)"
+              value={chatIdInput}
+              onChange={(e) => setChatIdInput(e.target.value)}
+              className="flex-1 rounded-lg border border-brand-200 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+            <button
+              onClick={() => {
+                setError(null);
+                if (!chatIdInput) return setError('chat_id gerekli');
+                link.mutate();
+              }}
+              disabled={link.isPending}
+              className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60"
+            >
+              Bağla
+            </button>
+          </div>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+      )}
+
+      {s.configured && s.my_chat_id && (
+        <div className="space-y-3">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+            <p className="text-sm text-emerald-800">
+              ✓ Telegram bağlı — chat_id:{' '}
+              <code className="font-mono">{s.my_chat_id.slice(0, 4)}***{s.my_chat_id.slice(-2)}</code>
+            </p>
+            {s.bot_username && (
+              <p className="text-xs text-emerald-600 mt-1">
+                Bot: <a href={`https://t.me/${s.bot_username}`} target="_blank" rel="noopener noreferrer" className="underline">@{s.bot_username}</a>
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setTestResult(null);
+                setError(null);
+                sendTest.mutate();
+              }}
+              disabled={sendTest.isPending}
+              className="bg-brand-200 hover:bg-brand-300 text-brand-900 px-4 py-2 rounded-lg text-sm disabled:opacity-60"
+            >
+              {sendTest.isPending ? 'Gönderiliyor…' : 'Test Mesajı Gönder'}
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('Telegram bağlantısı kaldırılsın mı?')) unlink.mutate();
+              }}
+              disabled={unlink.isPending}
+              className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm"
+            >
+              Bağlantıyı Kaldır
+            </button>
+          </div>
+          {testResult && <p className="text-sm text-emerald-700">{testResult}</p>}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SecurityPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
@@ -289,6 +453,7 @@ export function SecurityPage() {
       </header>
 
       <TwoFASection />
+      <TelegramSection />
       <SessionsSection />
       <KvkkSection />
 

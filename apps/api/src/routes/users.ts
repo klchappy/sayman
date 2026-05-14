@@ -38,11 +38,12 @@ import {
   users,
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { env } from '../config/env';
+import { env, isConfigured } from '../config/env';
 import { sendInviteEmail } from '../lib/email';
 import { HttpError, requireOrg } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { signLocalJwt } from '../lib/local-auth';
+import { getTelegramBotInfo, sendTelegramMessage } from '../lib/telegram';
 import { requireAuth } from '../middleware/auth';
 import { requirePerm } from '../middleware/permission';
 
@@ -143,6 +144,87 @@ usersRouter.get('/users/me/permissions', requireAuth, requireOrg, async (req, re
       all_permissions: [...PERMISSIONS],
     },
   });
+});
+
+// ---------------------------------------------------------------------------
+// Telegram integration (per-user)
+// ---------------------------------------------------------------------------
+
+usersRouter.get('/users/me/telegram', requireAuth, async (req, res, next) => {
+  try {
+    const me = req.authUser!;
+    const botInfo = await getTelegramBotInfo();
+    res.json({
+      data: {
+        configured: isConfigured.telegram,
+        bot_username: botInfo?.username ?? null,
+        bot_name: botInfo?.first_name ?? null,
+        my_chat_id: me.telegram_chat_id ?? null,
+        start_url: botInfo?.username
+          ? `https://t.me/${botInfo.username}?start=sayman_${me.id.slice(0, 8)}`
+          : null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const chatIdSchema = z.object({
+  chat_id: z.string().regex(/^-?\d+$/, 'Telegram chat_id rakam olmalı (negatif olabilir grup chat\'ler için)'),
+});
+
+usersRouter.post('/users/me/telegram/chat-id', requireAuth, async (req, res, next) => {
+  try {
+    const body = chatIdSchema.parse(req.body);
+    const db = getDb();
+    const me = req.authUser!;
+
+    await db.update(users).set({ telegram_chat_id: body.chat_id, updated_at: new Date() }).where(eq(users.id, me.id));
+
+    await auditFromRequest(req, {
+      actor_user_id: me.id,
+      actor_email: me.email,
+      action: 'user.telegram_linked',
+      details: { chat_id_masked: body.chat_id.slice(0, 4) + '...' },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+usersRouter.delete('/users/me/telegram/chat-id', requireAuth, async (req, res, next) => {
+  try {
+    const db = getDb();
+    const me = req.authUser!;
+    await db.update(users).set({ telegram_chat_id: null, updated_at: new Date() }).where(eq(users.id, me.id));
+    await auditFromRequest(req, {
+      actor_user_id: me.id,
+      actor_email: me.email,
+      action: 'user.telegram_unlinked',
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+usersRouter.post('/users/me/telegram/test', requireAuth, async (req, res, next) => {
+  try {
+    const me = req.authUser!;
+    if (!me.telegram_chat_id) {
+      throw new HttpError(400, 'Önce chat_id kaydet', 'NO_CHAT_ID');
+    }
+    const result = await sendTelegramMessage({
+      chatId: me.telegram_chat_id,
+      text: `*Sayman Test Mesajı* ✓\n\nMerhaba ${me.full_name},\nTelegram bağlantın çalışıyor. Bundan sonra yaklaşan vade ve uyarı bildirimleri buraya da düşecek.`,
+    });
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ---------------------------------------------------------------------------

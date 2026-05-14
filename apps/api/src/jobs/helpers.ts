@@ -12,21 +12,25 @@ import {
   users,
 } from '@sayman/db';
 import { sendNotificationEmail } from '../lib/email';
+import { buildNotificationMessage, sendTelegramMessage } from '../lib/telegram';
 import { logger } from '../config/logger';
 
 /**
- * Org'un admin/super_admin/yonetici kullanıcılarının email listesi.
- * Bildirim mailleri bu kişilere gider.
+ * Org'un admin/super_admin/yonetici kullanıcılarının email + telegram listesi.
+ * Bildirim mailleri + Telegram mesajları bu kişilere gider.
  */
 export async function getOrgAdmins(
   organizationId: string,
-): Promise<Array<{ user_id: string; email: string; full_name: string }>> {
+): Promise<
+  Array<{ user_id: string; email: string; full_name: string; telegram_chat_id: string | null }>
+> {
   const db = getDb();
   const rows = await db
     .select({
       user_id: users.id,
       email: users.email,
       full_name: users.full_name,
+      telegram_chat_id: users.telegram_chat_id,
       role: userOrganizationRoles.role,
     })
     .from(userOrganizationRoles)
@@ -39,7 +43,12 @@ export async function getOrgAdmins(
       ),
     );
 
-  return rows.map((r) => ({ user_id: r.user_id, email: r.email, full_name: r.full_name }));
+  return rows.map((r) => ({
+    user_id: r.user_id,
+    email: r.email,
+    full_name: r.full_name,
+    telegram_chat_id: r.telegram_chat_id,
+  }));
 }
 
 /**
@@ -64,6 +73,7 @@ export async function createNotificationForAdmins(input: CreateNotifInput): Prom
   created: number;
   skipped: number;
   mail_sent: number;
+  telegram_sent: number;
 }> {
   const db = getDb();
   const admins = await getOrgAdmins(input.organizationId);
@@ -72,12 +82,13 @@ export async function createNotificationForAdmins(input: CreateNotifInput): Prom
       { organizationId: input.organizationId, dedupeKey: input.dedupeKey },
       'createNotificationForAdmins: no admins found',
     );
-    return { created: 0, skipped: 0, mail_sent: 0 };
+    return { created: 0, skipped: 0, mail_sent: 0, telegram_sent: 0 };
   }
 
   let created = 0;
   let skipped = 0;
   let mail_sent = 0;
+  let telegram_sent = 0;
 
   for (const admin of admins) {
     const userDedupeKey = `${input.dedupeKey}:${admin.user_id}`;
@@ -106,13 +117,13 @@ export async function createNotificationForAdmins(input: CreateNotifInput): Prom
       created++;
 
       if (input.sendMail !== false) {
+        // E-posta
         const mailResult = await sendNotificationEmail({
           to: admin.email,
           title: input.title,
           body: input.body,
           actionUrl: input.actionUrl,
         });
-
         await db
           .update(notifications)
           .set({
@@ -121,15 +132,35 @@ export async function createNotificationForAdmins(input: CreateNotifInput): Prom
             email_message_id: mailResult.message_id ?? null,
           })
           .where(eq(notifications.id, result[0]!.id));
-
         if (mailResult.delivered === 'email') mail_sent++;
+
+        // Telegram (chat_id varsa)
+        if (admin.telegram_chat_id) {
+          const tgMessage = buildNotificationMessage({
+            title: input.title,
+            body: input.body,
+            actionUrl: input.actionUrl,
+          });
+          const tgResult = await sendTelegramMessage({
+            chatId: admin.telegram_chat_id,
+            text: tgMessage,
+          });
+          await db
+            .update(notifications)
+            .set({
+              telegram_mode: tgResult.delivered,
+              telegram_sent_at: tgResult.delivered === 'sent' ? new Date() : null,
+            })
+            .where(eq(notifications.id, result[0]!.id));
+          if (tgResult.delivered === 'sent') telegram_sent++;
+        }
       }
     } catch (err) {
       logger.error({ err, dedupeKey: userDedupeKey }, 'createNotificationForAdmins failed');
     }
   }
 
-  return { created, skipped, mail_sent };
+  return { created, skipped, mail_sent, telegram_sent };
 }
 
 /**
