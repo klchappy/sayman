@@ -49,10 +49,8 @@ let TOKEN = null;
 async function api(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
-  if (CURRENT_TENANT) {
-    headers['X-Sayman-Org'] = CURRENT_TENANT.orgSlug;
-    headers['X-Sayman-Tenant'] = CURRENT_TENANT.tenantSlug;
-  }
+  if (CURRENT_TENANT?.orgSlug) headers['X-Sayman-Org'] = CURRENT_TENANT.orgSlug;
+  if (CURRENT_TENANT?.tenantSlug) headers['X-Sayman-Tenant'] = CURRENT_TENANT.tenantSlug;
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
@@ -148,27 +146,43 @@ async function main() {
     return r.body.data;
   });
 
-  // --- 3. DB'ye direkt 2 tenant insert ---
-  const TENANT_INSAAT_ID = (
-    await sql(
-      `INSERT INTO tenants (organization_id, slug, name, sector, active_modules)
-       VALUES ($1, 'smoke-insaat', 'Smoke Insaat', 'insaat', '{}'::text[])
-       RETURNING id`,
-      [ORG_ID],
-    )
-  )[0].id;
+  // --- 3. POST /tenants ile 2 tenant olustur (Faz F endpoint) ---
+  useTenant(ORG_SLUG, null); // org-only header
+  const insaatTenant = await step('POST /tenants (insaat, default modules)', async () => {
+    const r = await api('POST', '/tenants', {
+      slug: 'smoke-insaat',
+      name: 'Smoke Insaat',
+      sector: 'insaat',
+      // active_modules omitted → backend defaults to SECTOR_DEFAULT_MODULES.insaat
+    });
+    expect(r.status === 201, `POST /tenants status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.data.slug === 'smoke-insaat', 'slug mismatch');
+    return r.body.data;
+  });
 
   // hukuk tenant'i: active_modules'u DARALT — Faz E filtre testi icin
-  // sadece finance + dashboard + notifications acik; guarantees KAPALI
-  const TENANT_HUKUK_ID = (
-    await sql(
-      `INSERT INTO tenants (organization_id, slug, name, sector, active_modules)
-       VALUES ($1, 'smoke-hukuk', 'Smoke Hukuk', 'hukuk',
-               ARRAY['finance','dashboard','notifications','tasks']::text[])
-       RETURNING id`,
-      [ORG_ID],
-    )
-  )[0].id;
+  const hukukTenant = await step('POST /tenants (hukuk, narrow modules)', async () => {
+    const r = await api('POST', '/tenants', {
+      slug: 'smoke-hukuk',
+      name: 'Smoke Hukuk',
+      sector: 'hukuk',
+      active_modules: ['finance', 'dashboard', 'notifications', 'tasks'],
+    });
+    expect(r.status === 201, `POST /tenants status ${r.status}: ${JSON.stringify(r.body)}`);
+    return r.body.data;
+  });
+
+  const TENANT_INSAAT_ID = insaatTenant.id;
+  const TENANT_HUKUK_ID = hukukTenant.id;
+
+  // --- 3b. PATCH /tenants/:id — sector degistirme + modules ekleme testi ---
+  await step('PATCH /tenants/:id (modify active_modules)', async () => {
+    const r = await api('PATCH', `/tenants/${TENANT_HUKUK_ID}`, {
+      active_modules: ['finance', 'dashboard', 'notifications', 'tasks', 'reports'],
+    });
+    expect(r.status === 200, `PATCH status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.data.active_modules.includes('reports'), 'reports should be added');
+  });
 
   console.log(`   tenants: insaat=${TENANT_INSAAT_ID} hukuk=${TENANT_HUKUK_ID}\n`);
 

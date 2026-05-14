@@ -1,15 +1,70 @@
 /**
- * /v1/tenants — tenant resolve + active-tenant ctx.
+ * /v1/tenants — tenant resolve + CRUD.
  *
- * GET /v1/tenants/me → şu anki subdomain'den çözülen aktif tenant bilgisi
- * GET /v1/tenants?org=kilic → bir organization'ın tenant listesi
+ * GET    /v1/tenants/me               → şu anki subdomain'den çözülen aktif tenant
+ * GET    /v1/tenants?org=kilic        → bir organization'ın tenant listesi
+ * POST   /v1/tenants                  → yeni tenant (super_admin/yönetici)
+ * PATCH  /v1/tenants/:id              → güncelle (name, sector, active_modules)
+ * DELETE /v1/tenants/:id              → soft delete (is_active=false)
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
-import { SECTOR_DEFAULT_MODULES, SECTOR_LABELS, type Sector } from '@sayman/shared';
+import { z } from 'zod';
+import {
+  MODULES,
+  SECTORS,
+  SECTOR_DEFAULT_MODULES,
+  SECTOR_LABELS,
+  type Sector,
+} from '@sayman/shared';
 import { getDb, organizations, tenants } from '@sayman/db';
+import { HttpError, requireOrg } from '../lib/helpers';
+import { auditFromRequest } from '../lib/audit';
+import { requireAuth } from '../middleware/auth';
 
 export const tenantsRouter = Router();
+
+const slugify = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[çÇ]/g, 'c')
+    .replace(/[ğĞ]/g, 'g')
+    .replace(/[ıİ]/g, 'i')
+    .replace(/[öÖ]/g, 'o')
+    .replace(/[şŞ]/g, 's')
+    .replace(/[üÜ]/g, 'u')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+
+const moduleSchema = z.enum(MODULES);
+const sectorSchema = z.enum(SECTORS);
+
+const createSchema = z.object({
+  slug: z
+    .string()
+    .min(2)
+    .max(40)
+    .regex(/^[a-z0-9-]+$/, 'Yalnız küçük harf, rakam ve tire')
+    .optional(),
+  name: z.string().min(2).max(120),
+  sector: sectorSchema,
+  active_modules: z.array(moduleSchema).optional(),
+});
+
+const updateSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  sector: sectorSchema.optional(),
+  active_modules: z.array(moduleSchema).optional(),
+});
+
+const ALLOWED_WRITE_ROLES = new Set([
+  'super_admin',
+  'organization_admin',
+  'yonetici',
+]);
+
+// --- GET /tenants/me --------------------------------------------------------
 
 tenantsRouter.get('/tenants/me', (req, res) => {
   const ctx = req.saymanContext;
@@ -23,6 +78,8 @@ tenantsRouter.get('/tenants/me', (req, res) => {
   }
   res.json({ data: ctx });
 });
+
+// --- GET /tenants?org=... ---------------------------------------------------
 
 tenantsRouter.get('/tenants', async (req, res, next) => {
   try {
@@ -51,7 +108,150 @@ tenantsRouter.get('/tenants', async (req, res, next) => {
           : [...SECTOR_DEFAULT_MODULES[t.sector as Sector]],
     }));
 
-    res.json({ data: enriched, count: enriched.length, organization: { id: org.id, slug: org.slug, name: org.name } });
+    res.json({
+      data: enriched,
+      count: enriched.length,
+      organization: { id: org.id, slug: org.slug, name: org.name },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- POST /tenants ----------------------------------------------------------
+
+tenantsRouter.post('/tenants', requireAuth, requireOrg, async (req, res, next) => {
+  try {
+    if (!ALLOWED_WRITE_ROLES.has(req.effectiveRole ?? '')) {
+      throw new HttpError(403, 'Tenant açmak için yönetici yetkisi gerekli', 'FORBIDDEN');
+    }
+
+    const body = createSchema.parse(req.body);
+    const db = getDb();
+
+    // Slug uniqueness (org içinde)
+    const baseSlug = body.slug ?? slugify(body.name);
+    if (!baseSlug) throw new HttpError(400, 'Slug üretilemedi', 'INVALID_SLUG');
+
+    let finalSlug = baseSlug;
+    for (let i = 1; i < 50; i++) {
+      const [exists] = await db
+        .select()
+        .from(tenants)
+        .where(
+          and(
+            eq(tenants.organization_id, req.activeOrgId!),
+            eq(tenants.slug, finalSlug),
+          ),
+        );
+      if (!exists) break;
+      finalSlug = `${baseSlug}-${i}`;
+    }
+
+    const activeModules =
+      body.active_modules ?? [...SECTOR_DEFAULT_MODULES[body.sector]];
+
+    const [row] = await db
+      .insert(tenants)
+      .values({
+        organization_id: req.activeOrgId!,
+        slug: finalSlug,
+        name: body.name,
+        sector: body.sector,
+        active_modules: activeModules,
+      })
+      .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'tenant.create',
+      target_type: 'tenants',
+      target_id: row?.id,
+      details: { slug: finalSlug, sector: body.sector, modules_count: activeModules.length },
+    });
+
+    res.status(201).json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- PATCH /tenants/:id -----------------------------------------------------
+
+tenantsRouter.patch('/tenants/:id', requireAuth, requireOrg, async (req, res, next) => {
+  try {
+    if (!ALLOWED_WRITE_ROLES.has(req.effectiveRole ?? '')) {
+      throw new HttpError(403, 'Tenant güncellemek için yönetici yetkisi gerekli', 'FORBIDDEN');
+    }
+
+    const body = updateSchema.parse(req.body);
+    const db = getDb();
+
+    const [existing] = await db
+      .select()
+      .from(tenants)
+      .where(
+        and(
+          eq(tenants.id, String(req.params.id ?? '')),
+          eq(tenants.organization_id, req.activeOrgId!),
+        ),
+      );
+    if (!existing) throw new HttpError(404, 'Tenant bulunamadı', 'NOT_FOUND');
+
+    const [row] = await db
+      .update(tenants)
+      .set({ ...body, updated_at: new Date() })
+      .where(eq(tenants.id, existing.id))
+      .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'tenant.update',
+      target_type: 'tenants',
+      target_id: existing.id,
+      details: body,
+    });
+
+    res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- DELETE /tenants/:id ----------------------------------------------------
+
+tenantsRouter.delete('/tenants/:id', requireAuth, requireOrg, async (req, res, next) => {
+  try {
+    if (!ALLOWED_WRITE_ROLES.has(req.effectiveRole ?? '')) {
+      throw new HttpError(403, 'Tenant kapatmak için yönetici yetkisi gerekli', 'FORBIDDEN');
+    }
+    const db = getDb();
+    const [row] = await db
+      .update(tenants)
+      .set({ is_active: false, updated_at: new Date() })
+      .where(
+        and(
+          eq(tenants.id, String(req.params.id ?? '')),
+          eq(tenants.organization_id, req.activeOrgId!),
+        ),
+      )
+      .returning();
+    if (!row) throw new HttpError(404, 'Tenant bulunamadı', 'NOT_FOUND');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'tenant.delete',
+      target_type: 'tenants',
+      target_id: row.id,
+    });
+
+    res.json({ data: row });
   } catch (err) {
     next(err);
   }
