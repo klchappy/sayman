@@ -21,3 +21,5 @@ export * from './invitations';
 export * from './subsidiaries';
 export * from './api-tokens';
 export * from './attachments';
+export * from './fx-rates';
+export * from './webhooks';

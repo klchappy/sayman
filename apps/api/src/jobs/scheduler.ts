@@ -9,13 +9,20 @@
 import cron from 'node-cron';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { runDeliverWebhooks } from './deliver-webhooks';
+import { runFetchFxRates } from './fetch-fx-rates';
 import { runGeneratePeriods } from './generate-periods';
 import { runSendReminders } from './send-reminders';
 import { runUpdateStatuses } from './update-statuses';
 
 const TZ = 'Europe/Istanbul';
 
-export type JobName = 'generate-periods' | 'send-reminders' | 'update-statuses';
+export type JobName =
+  | 'generate-periods'
+  | 'send-reminders'
+  | 'update-statuses'
+  | 'fetch-fx-rates'
+  | 'deliver-webhooks';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -26,6 +33,10 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runSendReminders();
     case 'update-statuses':
       return runUpdateStatuses();
+    case 'fetch-fx-rates':
+      return runFetchFxRates();
+    case 'deliver-webhooks':
+      return runDeliverWebhooks();
   }
 }
 
@@ -68,6 +79,27 @@ export function startCronJobs() {
     { timezone: TZ },
   );
 
+  // Weekday 16:00 TR — TCMB FX rate fetch (Cumartesi/Pazar XML yok ama job graceful)
+  cron.schedule(
+    '0 16 * * *',
+    () => {
+      runFetchFxRates().catch((err) => logger.error({ err }, 'fetch-fx-rates crashed'));
+    },
+    { timezone: TZ },
+  );
+
+  // Every minute — webhook delivery worker (kuyruktan POST + retry)
+  cron.schedule(
+    '* * * * *',
+    () => {
+      runDeliverWebhooks().catch((err) => logger.error({ err }, 'deliver-webhooks crashed'));
+    },
+    { timezone: TZ },
+  );
+
   started = true;
-  logger.info({ tz: TZ }, 'cron jobs scheduled (generate@03:00, reminders@09:00, status@:05)');
+  logger.info(
+    { tz: TZ },
+    'cron jobs scheduled (generate@03:00, reminders@09:00, status@:05, fx@16:00, webhooks@*)',
+  );
 }

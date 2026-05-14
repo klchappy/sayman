@@ -5,6 +5,7 @@ import {
   Building,
   Building2,
   CheckSquare,
+  FileText,
   FileUp,
   Home,
   HomeIcon,
@@ -92,6 +93,7 @@ const navItems: NavItem[] = [
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
   { to: '/users', label: 'Kullanıcılar', icon: UserCog, group: 'Sistem' },
   { to: '/import', label: 'Toplu Yükleme', icon: FileUp, group: 'Sistem', requires: 'imports' },
+  { to: '/ocr', label: 'OCR (Belge Oku)', icon: FileText, group: 'Sistem' },
   { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },
 ];

@@ -28,6 +28,11 @@ import { pdfRouter } from './pdf';
 import { apiTokensRouter } from './api-tokens';
 import { attachmentsRouter } from './attachments';
 import { efaturaRouter } from './efatura';
+import { fxRatesRouter } from './fx-rates';
+import { webhooksRouter } from './webhooks';
+import { reportsRouter } from './reports';
+import { openApiRouter } from './openapi';
+import { realtimeRouter } from './realtime';
 
 export const apiRouter = Router();
 
@@ -91,3 +96,18 @@ apiRouter.use(attachmentsRouter);
 
 // e-Fatura UBL/XML import (GIB)
 apiRouter.use(efaturaRouter);
+
+// FX rates (TCMB)
+apiRouter.use(fxRatesRouter);
+
+// Outbound webhooks
+apiRouter.use(webhooksRouter);
+
+// PDF rapor uretici
+apiRouter.use(reportsRouter);
+
+// OpenAPI / Swagger
+apiRouter.use(openApiRouter);
+
+// Realtime (SSE) bildirim akisi
+apiRouter.use(realtimeRouter);

@@ -1,147 +1,207 @@
-# SAYMAN — Multi-Tenant Muhasebe Operasyon Platformu
+# Sayman
 
-> **Sayman** (eski Türkçe: muhasebeci, kasiyer), birden fazla holding/grubun ve her grup içinde birden fazla sektörün (tekstil, enerji, inşaat, gayrimenkul, kişisel, sanayi, hukuk, …) muhasebe ve finans operasyonlarını **tek çatı altında** yürüten multi-tenant SaaS platformudur.
+Multi-tenant muhasebe operasyon SaaS platformu.
 
-Bu repo, anonimleştirilmiş `muhasebe-operasyon-seed` paketinden 2026-05-13 tarihinde türetildi (17 faz Django kodu + 60 doküman). Faz A → H roadmap'i ile multi-group + schema-per-tenant SaaS'e dönüştürülüyor.
+**Production:** https://sayman.deploi.net · API: https://api.sayman.deploi.net/v1
 
-## Mimari Özeti
+---
 
-```
-SYSTEM
-├── PUBLIC SCHEMA (Control Plane — sistem geneli)
-│   ├── Group ────────── holding/müşteri (Kılıç Holding, Yılmaz Holding, …)
-│   ├── User ─────────── tek hesap, birden fazla Group'a bağlanabilir
-│   ├── UserGroupRole ─── group-default rol (örn. Muhasebeci@Kılıç)
-│   ├── UserTenantOverride── tenant-bazlı istisna (Hukuk'a girmesin)
-│   ├── TenantRegistry ── Group altındaki sektör listesi + config
-│   ├── Subscription ──── billing/abonelik (Iyzico)
-│   ├── Bank, Institution ── her zaman group-shared
-│   ├── Person, Company, Property + share_scope[]── opsiyonel paylaşım
-│   └── AuditLog ──────── group-level
-│
-└── TENANT SCHEMAS (Data Plane — schema-per-tenant, naming: g{group_id}_{tenant_slug})
-    ├── g1_tekstil       ─→ Fatura, Ödeme, Abonelik
-    ├── g1_enerji
-    ├── g1_insaat
-    ├── g1_gayrimenkul   ─→ EmlakVergisi, SiteX, Kira
-    ├── g1_kisisel
-    ├── g1_sanayi
-    ├── g1_hukuk
-    └── g2_tekstil       ─→ ikinci müşteri olduğunda
-```
+## Mimari
 
-## Yapı
+- **Frontend** (`apps/web`): Vite + React 18 + Tailwind + TanStack Query + Zustand + react-router 7
+- **Backend** (`apps/api`): Express + TypeScript + Drizzle ORM 0.45 + node-postgres + pino
+- **DB**: PostgreSQL (Supabase Pro)
+- **Storage**: Supabase Storage bucket `sayman-attachments`
+- **Mail**: Resend (`noreply@sayman.deploi.net`, verified domain)
+- **Cron**: `node-cron` in-process, Europe/Istanbul TZ
+- **Deploy**: Coolify (Hetzner CX22 + Cloudflare DNS)
+
+## Çoklu kiracılık (multi-tenant)
+
+3 katman:
 
 ```
-backend/        Django 6 / Python 3.12+
-  apps/
-    tenancy/      [YENİ — Faz A] Group + TenantRegistry + TenantMiddleware
-    accounts/     User + UserGroupRole + UserTenantOverride
-    parties/      Sahis/Sirket/Mulk + share_scope[] (Group-shared)
-    finance/      Fatura/Odeme (Tenant-private)
-    ... (orijinal 19 app)
-  config/       Settings (base/local/local_pg/production)
-  templates/    Django template'ler
-  static/       CSS/JS varlıkları
-  tests/        pytest-django
-preview/        Vite + React design canvas (orijinal seed)
-deploy/         Coolify + Nginx + systemd + gunicorn
-_docs/          Faz raporları + PHASE_A_… (yeni)
-_analysis/      Analiz / doğrulama raporları
+Organization (Kılıç Holding)
+  └── Tenant (Kılıç İnşaat, Kılıç Tekstil, ...)
+        └── Subsidiary (İstanbul Şubesi, Genel Müdürlük, ...)  -- opsiyonel
 ```
 
-## Hızlı Başlangıç (Docker — önerilen)
+- **Tenant header**: `X-Sayman-Org: kilic`, `X-Sayman-Tenant: insaat`
+- **Subdomain alternatif**: `*.sayman.deploi.net` DNS wildcard hazır (routing manuel kurulum)
+- Master data (`persons`, `companies`, `properties`) **organization-scope** + `share_scope` ile tenant filtrelemesi
+- Finance/ödeme/teminat **tenant-scope** + opsiyonel `subsidiary_id`
 
-Lokal makinada Python kurulu olmasına gerek yok. Sadece Docker Desktop yeterli.
+## Sektörler
 
-```powershell
-cd C:\Users\kaank\sayman
+`tekstil / enerji / insaat / gayrimenkul / kisisel / sanayi / hukuk / diger`
 
-# 1) PostgreSQL container'ını başlat
-docker compose up -d db
+Her sektörün **default açık modülleri** vardır (`packages/shared/src/sectors.ts → SECTOR_DEFAULT_MODULES`). Tenant oluşturulurken bu set kopyalanır, sonra UI'dan elle değiştirilebilir.
 
-# 2) Backend image'ını build et
-docker compose build web
+## Modüller (14)
 
-# 3) Public schema migration (sadece SHARED_APPS)
-docker compose run --rm web python manage.py migrate_schemas --shared
+`finance, subscriptions, regular_payments, official_payments, pruva, properties, guarantees, integrators, imports, notifications, tasks, chat, dashboard, reports`
 
-# 4) İlk organization + 7 sektör tenant'ı seed
-docker compose run --rm web python manage.py bootstrap_sayman `
-    --org-name "Kılıç Holding" --org-slug kilic `
-    --base-domain localhost --ensure-public
+## Roller (7)
 
-# 5) Superuser oluştur
-docker compose run --rm web python manage.py createsuperuser
+`super_admin, organization_admin, yonetici, muhasebeci, denetci, personel, musavir`
 
-# 6) Web sunucuyu başlat (port 8200)
-docker compose up -d web
-docker compose logs -f web   # log takibi
+Permission matrisi: `packages/shared/src/roles.ts → ROLE_PERMISSIONS`.
+
+---
+
+## Lokal kurulum
+
+```bash
+git clone https://github.com/klchappy/sayman.git
+cd sayman
+pnpm install
+cp .env.example .env
+# DATABASE_URL, JWT_SECRET, RESEND_API_KEY, vb. doldur
+pnpm db:migrate
+pnpm dev   # Web :5278 + API :4300
 ```
 
-### Erişim
+## Geliştirme komutları
 
-| URL | Schema | Açıklama |
-|---|---|---|
-| http://localhost:8200/admin/ | `public` | Control plane — Organization/Tenant/User yönetimi |
-| http://tekstil.kilic.localhost:8200/admin/ | `g3_tekstil` | Tekstil tenant admin |
-| http://enerji.kilic.localhost:8200/admin/ | `g3_enerji` | Enerji tenant admin |
-| http://insaat.kilic.localhost:8200/admin/ | `g3_insaat` | İnşaat tenant admin |
-| http://gayrimenkul.kilic.localhost:8200/admin/ | `g3_gayrimenkul` | Gayrimenkul tenant admin |
-| http://kisisel.kilic.localhost:8200/admin/ | `g3_kisisel` | Kişisel tenant admin |
-| http://sanayi.kilic.localhost:8200/admin/ | `g3_sanayi` | Sanayi tenant admin |
-| http://hukuk.kilic.localhost:8200/admin/ | `g3_hukuk` | Hukuk tenant admin |
+| Komut | Açıklama |
+|---|---|
+| `pnpm dev` | Web + API paralel |
+| `pnpm typecheck` | Tüm paketler tip kontrolü |
+| `pnpm db:generate` | Drizzle schema → migration SQL |
+| `pnpm db:migrate` | Migration uygula |
+| `pnpm db:seed` | Kılıç Holding + 7 tenant seed |
+| `pnpm db:studio` | Drizzle Studio (DB GUI) |
 
-**Not:** Windows 10+ otomatik `*.localhost` → `127.0.0.1` resolve eder; `hosts` dosyası düzenlemeye gerek yok.
+## API yüzey özeti
 
-### Yararlı Docker Komutları
+| Alan | Endpoint örnek |
+|---|---|
+| Auth | `/v1/auth/local/sign-in`, `/auth/local/sign-up-org`, `/auth/logout`, `/auth/sessions` |
+| Me | `/v1/me`, `/users/me/permissions`, `/users/me/telegram` |
+| Org/Tenant | `/v1/organizations`, `/tenants` (CRUD) |
+| Master data | `/v1/persons`, `/companies`, `/properties`, `/banks`, `/institutions` |
+| Finance | `/v1/payables`, `/payments` |
+| Yinelenen | `/v1/subscriptions`, `/regular-payments`, `/official-payments`, `/guarantees` |
+| Operasyon | `/v1/tasks`, `/notifications`, `/security/audit` |
+| Kullanıcı yönetimi | `/v1/users`, `/users/invite`, `/users/accept-invite` |
+| Import | `/v1/import/:resource` (CSV/XLSX/JSON), `/import/resources` |
+| e-Fatura | `/v1/efatura/parse`, `/efatura/import`, `/efatura/import-zip` |
+| Attachments | `/v1/attachments` (Supabase Storage) |
+| API Tokens | `/v1/api-tokens` (programmatic erişim) |
+| Webhooks | `/v1/webhooks` (outbound, HMAC imzalı) |
+| PDF | `/v1/pdf/payable/:id`, `/pdf/guarantee/:id` |
+| Reports | `/v1/reports/monthly-summary`, `/reports/guarantees-summary` |
+| Search | `/v1/search?q=...` (Cmd+K) |
+| FX Rates | `/v1/fx-rates/latest`, `/fx-rates/:currency` |
+| Realtime | `/v1/realtime/notifications` (SSE) |
+| Dashboard | `/v1/dashboard/summary` |
+| Docs | `/v1/docs` (Swagger UI), `/v1/openapi.json` |
 
-```powershell
-# Container durumu
-docker compose ps
+Tam liste: https://api.sayman.deploi.net/v1/docs
 
-# PostgreSQL shell
-docker compose exec db psql -U sayman_user -d sayman_dev
+## Cron jobs (TZ Europe/Istanbul)
 
-# Schema'ları listele
-docker compose exec db psql -U sayman_user -d sayman_dev -c "\dn"
+| Saat | İş |
+|---|---|
+| Daily 03:00 | `generate-periods` — kira/guarantee/resmi-ödeme periyotları 3 ay ileri |
+| Daily 09:00 | `send-reminders` — T-60/T-30/T-7 commitment + T-7/T-1 ödeme uyarısı (mail + telegram) |
+| Hourly :05 | `update-statuses` — pending → approaching → overdue |
+| Daily 16:00 | `fetch-fx-rates` — TCMB kapanış kurları |
+| Every minute | `deliver-webhooks` — kuyrukta bekleyen webhook POST + retry |
 
-# Django shell (multi-tenant aware)
-docker compose run --rm web python manage.py shell
+Manuel tetik: `POST /v1/jobs/run-now/:job` (super_admin).
 
-# Belirli tenant'a tenant_command çalıştır
-docker compose run --rm web python manage.py tenant_command shell --schema=g3_tekstil
+## Programmatic erişim
 
-# Tüm container'ları durdur
-docker compose down
+```bash
+# Security sayfasından "Yeni Token Üret"
+TOKEN=st_xxxxxxxxxxxx
 
-# Volume'ları da temizle (DB sıfırla)
-docker compose down -v
+curl -H "Authorization: Bearer $TOKEN" \
+     -H "X-Sayman-Org: kilic" \
+     -H "X-Sayman-Tenant: insaat" \
+     https://api.sayman.deploi.net/v1/payables
 ```
 
-## Settings Ortamları
+**Webhooks**: Security → Webhook Endpoints → Yeni. HMAC-SHA256 imza `X-Sayman-Signature` header'da. Receiver doğrulama:
 
-| Ortam | DJANGO_SETTINGS_MODULE | DB |
-|---|---|---|
-| Lokal Docker | `config.settings.local_pg` | PostgreSQL (compose service `db`) |
-| Lokal native | `config.settings.local` | SQLite (sadece public schema testi; multi-tenant runtime için PG zorunlu) |
-| Production | `config.settings.production` | PostgreSQL (env'den) |
+```js
+const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+const ok = req.headers['x-sayman-signature'] === `sha256=${expected}`;
+```
 
-## Roadmap
+## Dosya yapısı
 
-- ✅ Seed paket (17 faz tek-tenant muhasebe sistemi)
-- ✅ **Faz A.0 — Multi-Tenant Scaffold** (django-tenants kuruldu; 1 organization + 7 tenant + schema izolasyon doğrulandı)
-- 🚧 **Faz A.1 — Tenant Switcher UI + Subdomain prod hazırlık**
-- ⏳ Faz B — Hibrit Auth & Permission (UserGroupRole + UserTenantOverride)
-- ⏳ Faz C — Group-Shared Master Data (`share_scope[]`)
-- ⏳ Faz D — DRF REST API
-- ⏳ Faz E — Sektör Konfig Sistemi (`TenantConfig.sector` + `active_modules[]`)
-- ⏳ Faz F — SaaS Onboarding + Billing (Iyzico)
-- ⏳ Faz G — Production Deploy (Coolify wildcard SSL)
-- ⏳ Faz H — Damga / Santral API köprüleri
+```
+sayman/
+├── apps/
+│   ├── api/    (@sayman/api)
+│   │   └── src/
+│   │       ├── config/        env, logger
+│   │       ├── lib/           email, telegram, sentry, webhooks, helpers
+│   │       ├── middleware/    auth, tenant-context, permission, rate-limit
+│   │       ├── jobs/          cron (generate-periods, reminders, fx, webhooks, ...)
+│   │       └── routes/        25+ route file
+│   └── web/    (@sayman/web)
+│       └── src/
+│           ├── components/    AppShell, CommandPalette, AttachmentBox, ErrorBoundary
+│           ├── lib/           api, auth, use-subsidiaries
+│           └── pages/         30+ sayfa
+├── packages/
+│   ├── db/     (@sayman/db) Drizzle schema + migrations (10+)
+│   └── shared/ (@sayman/shared) zod + enum + role/module matrisleri
+├── scripts/
+│   ├── smoke-master-data.mjs  prod uçtan uca test (60+ step)
+│   └── coolify-set-envs.mjs   env push helper
+└── infra/
+    └── docker-compose.yml     lokal Postgres 16
+```
 
-Detay: `_docs/PHASE_A_MULTI_TENANT_PLAN.md`.
+## Test
+
+```bash
+node scripts/smoke-master-data.mjs   # Production smoke test
+```
+
+Auth, master data, finance, yinelenen, kullanıcı yönetimi, import (CSV/XLSX), e-fatura, dashboard, cron jobs, search, PDF, attachments, API tokens — hepsi prod'a karşı test edilir.
+
+## Deploy
+
+GitHub'a push → Coolify webhook tetikler → auto-deploy.
+
+Manuel:
+```bash
+curl -X POST "https://coolify.deploi.net/api/v1/deploy?uuid=xdy5msb04a8pq8iyz21n0lnf" \
+  -H "Authorization: Bearer $COOLIFY_TOKEN"
+```
+
+## Konfigürasyon
+
+`.env` (opsiyonel olanlar yoksa **graceful fallback** moduna geçer):
+
+```
+# Zorunlu
+DATABASE_URL=postgresql://...
+JWT_SECRET=<min-32-char>
+
+# Mail gateway (opsiyonel — yoksa "fallback_link" mode)
+RESEND_API_KEY=re_...
+EMAIL_FROM=noreply@your-domain.com
+
+# Telegram bildirim (opsiyonel)
+TELEGRAM_BOT_TOKEN=<bot-token>
+
+# Hata izleme (opsiyonel)
+SENTRY_DSN=https://...
+
+# Supabase Storage (attachments için zorunlu)
+SUPABASE_URL=https://....supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Public URL'ler (mail/davet linki için)
+PUBLIC_WEB_URL=https://sayman.deploi.net
+```
 
 ## Lisans
 
-Proprietary. © 2026 Kaan Kılıç. Tüm hakları saklıdır.
+Proprietary — Kaan Kılıç, 2026.
