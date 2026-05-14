@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import { env, isProd } from './config/env';
 import { logger } from './config/logger';
+import { startCronJobs } from './jobs/scheduler';
 import { errorHandler, notFound } from './middleware/error';
 import { apiLimiter } from './middleware/rate-limit';
 import { apiRouter } from './routes';
@@ -71,4 +72,6 @@ app.listen(env.PORT, () => {
     { port: env.PORT, env: env.NODE_ENV },
     `🪙 Sayman API ${isProd ? 'production' : 'dev'} → http://localhost:${env.PORT}`,
   );
+  // Cron scheduler boot (Europe/Istanbul TZ)
+  startCronJobs();
 });

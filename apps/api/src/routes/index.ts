@@ -19,6 +19,7 @@ import { regularPaymentsRouter } from './regular-payments';
 import { officialPaymentsRouter } from './official-payments';
 import { guaranteesRouter } from './guarantees';
 import { usersRouter } from './users';
+import { jobsRouter } from './jobs';
 
 export const apiRouter = Router();
 
@@ -55,3 +56,6 @@ apiRouter.use(guaranteesRouter);
 
 // Kullanıcı yönetimi (org-scope + invite akışı)
 apiRouter.use(usersRouter);
+
+// Cron manuel tetik (super_admin)
+apiRouter.use(jobsRouter);

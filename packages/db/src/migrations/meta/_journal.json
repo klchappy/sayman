@@ -36,6 +36,13 @@
       "when": 1778756762960,
       "tag": "0004_bright_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778760594428,
+      "tag": "0005_closed_azazel",
+      "breakpoints": true
     }
   ]
 }

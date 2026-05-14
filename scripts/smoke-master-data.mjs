@@ -443,16 +443,22 @@ async function main() {
   });
 
   let inviteId, inviteToken;
+  // Davet smoke testte gercek bir address'e gitsin diye .test yerine sayman.test domain (Resend bounce eder ama delivered=email isaretler)
+  // Gercek inbox testi icin kullanicinin kendi adresine gonderebiliriz; smoke icin yeterli
   const INVITED_EMAIL = `invited-${STAMP}@sayman.test`;
-  await step('POST /users/invite (muhasebeci role)', async () => {
+  await step('POST /users/invite (muhasebeci role, mail gateway)', async () => {
     const r = await api('POST', '/users/invite', {
       email: INVITED_EMAIL,
       role: 'muhasebeci',
     });
     expect(r.status === 201, `status ${r.status}: ${JSON.stringify(r.body)}`);
     expect(r.body.action_link?.includes('accept-invite'), 'action_link missing');
+    expect(
+      ['email', 'fallback_link'].includes(r.body.delivered),
+      `delivered: ${r.body.delivered}`,
+    );
+    console.log(`     delivered=${r.body.delivered} message_id=${r.body.message_id ?? '-'}`);
     inviteId = r.body.data.id;
-    // Token'i action_link'ten parse et (prod'da response.body.token gizli)
     const url = new URL(r.body.action_link);
     inviteToken = r.body.token ?? url.searchParams.get('token');
     expect(inviteToken, 'token cikarilamadi');
@@ -519,6 +525,32 @@ async function main() {
   });
 
   // Switch back to tenant context for cleanup below
+  useTenant(ORG_SLUG, SLUG_INSAAT);
+
+  // --- 11c. Cron jobs (Faz I) — super_admin manual trigger ---
+  useTenant(ORG_SLUG, null);
+
+  await step('POST /jobs/run-now/generate-periods', async () => {
+    const r = await api('POST', '/jobs/run-now/generate-periods');
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(typeof r.body.data.result.regular_created === 'number', 'regular_created missing');
+    console.log(`     +regular=${r.body.data.result.regular_created} +official=${r.body.data.result.official_created} +guarantee=${r.body.data.result.guarantee_created}`);
+  });
+
+  await step('POST /jobs/run-now/update-statuses', async () => {
+    const r = await api('POST', '/jobs/run-now/update-statuses');
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(typeof r.body.data.result.approaching_count === 'number', 'approaching_count missing');
+    console.log(`     approaching=${r.body.data.result.approaching_count} overdue=${r.body.data.result.overdue_count}`);
+  });
+
+  await step('POST /jobs/run-now/send-reminders', async () => {
+    const r = await api('POST', '/jobs/run-now/send-reminders');
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(typeof r.body.data.result.mail_sent === 'number', 'mail_sent missing');
+    console.log(`     subs=${r.body.data.result.subscriptions_notified} gtee=${r.body.data.result.guarantees_notified} mail_sent=${r.body.data.result.mail_sent}`);
+  });
+
   useTenant(ORG_SLUG, SLUG_INSAAT);
 
   // --- 12. Org-scope master data: hukuk tenant'tan da görünmeli (share_scope) ---

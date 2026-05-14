@@ -13,6 +13,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { tenants } from './tenants';
@@ -58,12 +59,20 @@ export const notifications = pgTable(
 
     metadata: jsonb('metadata').default({}).notNull(),
 
+    /** Idempotency: gunde aynı kaynak+tip+gun icin tek bildirim. */
+    dedupe_key: text('dedupe_key'),
+
     read_at: timestamp('read_at', { withTimezone: true }),
     dismissed_at: timestamp('dismissed_at', { withTimezone: true }),
 
-    /** Telegram gönderim durumu (Faz F'de aktif) */
-    telegram_mode: text('telegram_mode'), // 'dry_run' | 'test' | 'live' | null
+    /** Telegram gönderim durumu (Faz N'de aktif) */
+    telegram_mode: text('telegram_mode'),
     telegram_sent_at: timestamp('telegram_sent_at', { withTimezone: true }),
+
+    /** Resend e-posta gönderim durumu (Faz J + I) */
+    email_status: text('email_status'),
+    email_sent_at: timestamp('email_sent_at', { withTimezone: true }),
+    email_message_id: text('email_message_id'),
 
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -72,6 +81,7 @@ export const notifications = pgTable(
     unreadIdx: index('idx_notifications_unread').on(table.user_id, table.created_at),
     tenantIdx: index('idx_notifications_tenant').on(table.tenant_id),
     relatedIdx: index('idx_notifications_related').on(table.related_table, table.related_id),
+    dedupeUq: uniqueIndex('uq_notifications_dedupe').on(table.dedupe_key).where(sql`dedupe_key IS NOT NULL`),
   }),
 );
 
