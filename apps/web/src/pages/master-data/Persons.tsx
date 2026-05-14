@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, UserCircle } from 'lucide-react';
+import { Pencil, Plus, Trash2, UserCircle } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -24,8 +24,12 @@ function maskTC(tc: string | null) {
 
 export function PersonsPage() {
   const active = useAuth((s) => s.active);
+  const me = useAuth((s) => s.me);
   const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Person | 'new' | null>(null);
+
+  const role = me?.organizations.find((o) => o.slug === active.orgSlug)?.role;
+  const canEdit = ['super_admin', 'organization_admin', 'yonetici', 'muhasebeci'].includes(role ?? '');
 
   const personsQuery = useQuery({
     queryKey: ['persons', active.orgSlug, active.tenantSlug],
@@ -60,16 +64,23 @@ export function PersonsPage() {
           <p className="text-xs uppercase tracking-wider text-brand-500 mb-1">Master Data</p>
           <h1 className="text-2xl font-semibold text-brand-900">Şahıslar</h1>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
-        >
-          <Plus className="size-4" />
-          Yeni Şahıs
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setEditing('new')}
+            className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            <Plus className="size-4" />
+            Yeni Şahıs
+          </button>
+        )}
       </header>
 
-      {showForm && <PersonForm onClose={() => setShowForm(false)} />}
+      {editing && (
+        <PersonForm
+          initial={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <div className="card overflow-x-auto">
         {personsQuery.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
@@ -87,12 +98,12 @@ export function PersonsPage() {
                 <th className="py-2 px-2">Telefon</th>
                 <th className="py-2 px-2">Aile Grubu</th>
                 <th className="py-2 px-2">Görünür</th>
-                <th className="py-2 px-2"></th>
+                <th className="py-2 px-2 text-right">İşlem</th>
               </tr>
             </thead>
             <tbody>
               {personsQuery.data.map((p) => (
-                <tr key={p.id} className={`border-b border-brand-50 ${!p.is_active ? 'opacity-50' : ''}`}>
+                <tr key={p.id} className={`border-b border-brand-50 hover:bg-brand-50 ${!p.is_active ? 'opacity-50' : ''}`}>
                   <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2">
                     <UserCircle className="size-4 text-brand-400" />
                     {p.full_name}
@@ -107,16 +118,26 @@ export function PersonsPage() {
                       <span className="text-xs text-brand-600">{(p.share_scope as string[]).join(', ')}</span>
                     )}
                   </td>
-                  <td className="py-2 px-2">
-                    {p.is_active && (
-                      <button
-                        onClick={() => {
-                          if (confirm(`"${p.full_name}" arşivlensin mi?`)) deleteMutation.mutate(p.id);
-                        }}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                  <td className="py-2 px-2 text-right">
+                    {canEdit && p.is_active && (
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => setEditing(p)}
+                          className="text-brand-600 hover:bg-brand-100 p-1.5 rounded"
+                          title="Düzenle"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`"${p.full_name}" arşivlensin mi?`)) deleteMutation.mutate(p.id);
+                          }}
+                          className="text-red-500 hover:bg-red-50 p-1.5 rounded"
+                          title="Arşivle"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -129,37 +150,50 @@ export function PersonsPage() {
   );
 }
 
-function PersonForm({ onClose }: { onClose: () => void }) {
+function PersonForm({ initial, onClose }: { initial: Person | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [fullName, setFullName] = useState('');
-  const [tc, setTc] = useState('');
-  const [phone, setPhone] = useState('');
-  const [familyGroup, setFamilyGroup] = useState('');
-  const [shareAll, setShareAll] = useState(true);
-  const [shareSelected, setShareSelected] = useState<string[]>([]);
+  const [fullName, setFullName] = useState(initial?.full_name ?? '');
+  const [tc, setTc] = useState(initial?.national_id ?? '');
+  const [phone, setPhone] = useState(initial?.phone ?? '');
+  const [familyGroup, setFamilyGroup] = useState(initial?.family_group ?? '');
+  const [shareAll, setShareAll] = useState(initial ? initial.share_scope === '*' : true);
+  const [shareSelected, setShareSelected] = useState<string[]>(
+    initial && Array.isArray(initial.share_scope) ? initial.share_scope : [],
+  );
   const [error, setError] = useState<string | null>(null);
+  const isEdit = !!initial;
 
-  const create = useMutation({
+  const save = useMutation({
     mutationFn: async () => {
-      await api.post('/persons', {
+      const body = {
         full_name: fullName,
         national_id: tc || null,
         phone: phone || null,
         family_group: familyGroup || null,
         share_scope: shareAll ? '*' : shareSelected,
-      });
+      };
+      if (isEdit) {
+        await api.patch(`/persons/${initial!.id}`, body);
+      } else {
+        await api.post('/persons', body);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['persons'] });
       onClose();
     },
-    onError: (err) => setError(String((err as Error).message)),
+    onError: (err) => {
+      const e = err as { response?: { data?: { error?: string; message?: string } } };
+      setError(e.response?.data?.message ?? e.response?.data?.error ?? (err as Error).message);
+    },
   });
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 grid place-items-center p-4">
       <div className="bg-white rounded-xl max-w-lg w-full p-6">
-        <h3 className="font-semibold text-brand-900 mb-4">Yeni Şahıs</h3>
+        <h3 className="font-semibold text-brand-900 mb-4">
+          {isEdit ? `${initial!.full_name} — Düzenle` : 'Yeni Şahıs'}
+        </h3>
         <div className="space-y-3">
           <Field label="Ad Soyad *" value={fullName} onChange={setFullName} required />
           <Field label="TC No" value={tc} onChange={setTc} placeholder="11 hane" />
@@ -207,12 +241,12 @@ function PersonForm({ onClose }: { onClose: () => void }) {
                 if (!fullName) return setError('Ad Soyad zorunlu');
                 if (!shareAll && shareSelected.length === 0)
                   return setError('En az 1 tenant seç veya "tüm" işaretle');
-                create.mutate();
+                save.mutate();
               }}
-              disabled={create.isPending}
+              disabled={save.isPending}
               className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60"
             >
-              {create.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+              {save.isPending ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
             </button>
           </div>
         </div>

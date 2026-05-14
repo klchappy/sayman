@@ -194,10 +194,10 @@ async function main() {
     expect(r.status === 200, `/tenants status ${r.status}`);
     expect(r.body.data.length === 2, `expected 2 tenants, got ${r.body.data.length}`);
 
-    const insaat = r.body.data.find((t) => t.slug === 'smoke-insaat');
-    const hukuk = r.body.data.find((t) => t.slug === 'smoke-hukuk');
-    expect(insaat, 'smoke-insaat not found');
-    expect(hukuk, 'smoke-hukuk not found');
+    const insaat = r.body.data.find((t) => t.slug === SLUG_INSAAT);
+    const hukuk = r.body.data.find((t) => t.slug === SLUG_HUKUK);
+    expect(insaat, `${SLUG_INSAAT} not found`);
+    expect(hukuk, `${SLUG_HUKUK} not found`);
 
     // insaat: active_modules boş → SECTOR_DEFAULT_MODULES.insaat (guarantees var)
     expect(
@@ -280,6 +280,47 @@ async function main() {
       expect(r.status === 200, `${ep} status ${r.status}`);
       expect(Array.isArray(r.body.data), `${ep} data not array`);
     }
+  });
+
+  // --- 6b. PATCH master data — admin tarafindan duzenleme ---
+  await step('PATCH /persons/:id (Smoke Person → Updated Person)', async () => {
+    const r = await api('PATCH', `/persons/${personId}`, { full_name: 'Updated Person' });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.full_name === 'Updated Person', 'name update failed');
+  });
+
+  await step('PATCH /companies/:id (Smoke Company → Updated A.S.)', async () => {
+    const r = await api('PATCH', `/companies/${companyId}`, {
+      name: 'Updated A.S.',
+      short_name: 'UPD',
+    });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.name === 'Updated A.S.', 'company name update failed');
+    expect(r.body.data.short_name === 'UPD', 'short_name update failed');
+  });
+
+  await step('PATCH /banks/:id (rename Smoke Bank)', async () => {
+    const r = await api('PATCH', `/banks/${bankId}`, { name: 'Smoke Bank Renamed' });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.name === 'Smoke Bank Renamed', 'bank name update failed');
+  });
+
+  await step('PATCH /institutions/:id (rename Smoke IGDAS)', async () => {
+    const r = await api('PATCH', `/institutions/${institutionId}`, {
+      name: 'Smoke IGDAS Renamed',
+      institution_type: 'IGDAS',
+    });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.name === 'Smoke IGDAS Renamed', 'institution name update failed');
+  });
+
+  await step('PATCH /properties/:id (rename + change type)', async () => {
+    const r = await api('PATCH', `/properties/${propertyId}`, {
+      name: 'Smoke Daire Renamed',
+      property_type: 'Daire',
+    });
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.name === 'Smoke Daire Renamed', 'property name update failed');
   });
 
   // --- 7. Finance: payable yarat ---

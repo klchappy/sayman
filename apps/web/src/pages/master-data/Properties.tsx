@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Home, Plus, Trash2 } from 'lucide-react';
+import { Home, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { SECTOR_LABELS, SECTORS, type Sector } from '@sayman/shared';
 import { api } from '../../lib/api';
@@ -22,8 +22,12 @@ const TYPE_OPTIONS = ['Ev', 'Daire', 'İşyeri', 'Arsa', 'Bina', 'Depo', 'Diğer
 
 export function PropertiesPage() {
   const active = useAuth((s) => s.active);
+  const me = useAuth((s) => s.me);
   const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Property | 'new' | null>(null);
+
+  const role = me?.organizations.find((o) => o.slug === active.orgSlug)?.role;
+  const canEdit = ['super_admin', 'organization_admin', 'yonetici', 'muhasebeci'].includes(role ?? '');
 
   const q = useQuery({
     queryKey: ['properties', active.orgSlug, active.tenantSlug],
@@ -56,16 +60,23 @@ export function PropertiesPage() {
             Ev, daire, işyeri, arsa, bina vb. — emlak vergisi ve SiteX aidat kaynağı
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
-        >
-          <Plus className="size-4" />
-          Yeni Mülk
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setEditing('new')}
+            className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            <Plus className="size-4" />
+            Yeni Mülk
+          </button>
+        )}
       </header>
 
-      {showForm && <PropertyForm onClose={() => setShowForm(false)} />}
+      {editing && (
+        <PropertyForm
+          initial={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <div className="card overflow-x-auto">
         {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
@@ -81,12 +92,12 @@ export function PropertiesPage() {
                 <th className="py-2 px-2">Belediye</th>
                 <th className="py-2 px-2">Sicil/Daire</th>
                 <th className="py-2 px-2">Görünür</th>
-                <th className="py-2 px-2"></th>
+                <th className="py-2 px-2 text-right">İşlem</th>
               </tr>
             </thead>
             <tbody>
               {q.data.map((p) => (
-                <tr key={p.id} className={`border-b border-brand-50 ${!p.is_active ? 'opacity-50' : ''}`}>
+                <tr key={p.id} className={`border-b border-brand-50 hover:bg-brand-50 ${!p.is_active ? 'opacity-50' : ''}`}>
                   <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2">
                     <Home className="size-4 text-brand-400" />
                     {p.name}
@@ -103,16 +114,26 @@ export function PropertiesPage() {
                       <span className="text-xs text-brand-600">{(p.share_scope as string[]).join(', ')}</span>
                     )}
                   </td>
-                  <td className="py-2 px-2">
-                    {p.is_active && (
-                      <button
-                        onClick={() => {
-                          if (confirm(`"${p.name}" arşivlensin mi?`)) del.mutate(p.id);
-                        }}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                  <td className="py-2 px-2 text-right">
+                    {canEdit && p.is_active && (
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => setEditing(p)}
+                          className="text-brand-600 hover:bg-brand-100 p-1.5 rounded"
+                          title="Düzenle"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`"${p.name}" arşivlensin mi?`)) del.mutate(p.id);
+                          }}
+                          className="text-red-500 hover:bg-red-50 p-1.5 rounded"
+                          title="Arşivle"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -125,38 +146,49 @@ export function PropertiesPage() {
   );
 }
 
-function PropertyForm({ onClose }: { onClose: () => void }) {
+function PropertyForm({ initial, onClose }: { initial: Property | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [name, setName] = useState('');
-  const [type, setType] = useState('');
-  const [municipality, setMunicipality] = useState('');
-  const [registry, setRegistry] = useState('');
-  const [siteUnit, setSiteUnit] = useState('');
-  const [shareAll, setShareAll] = useState(true);
-  const [shareSelected, setShareSelected] = useState<string[]>([]);
+  const [name, setName] = useState(initial?.name ?? '');
+  const [type, setType] = useState(initial?.property_type ?? '');
+  const [municipality, setMunicipality] = useState(initial?.municipality ?? '');
+  const [registry, setRegistry] = useState(initial?.registry_number ?? '');
+  const [siteUnit, setSiteUnit] = useState(initial?.site_unit_code ?? '');
+  const [shareAll, setShareAll] = useState(initial ? initial.share_scope === '*' : true);
+  const [shareSelected, setShareSelected] = useState<string[]>(
+    initial && Array.isArray(initial.share_scope) ? initial.share_scope : [],
+  );
   const [error, setError] = useState<string | null>(null);
+  const isEdit = !!initial;
 
-  const create = useMutation({
-    mutationFn: async () =>
-      api.post('/properties', {
+  const save = useMutation({
+    mutationFn: async () => {
+      const body = {
         name,
         property_type: type || null,
         municipality: municipality || null,
         registry_number: registry || null,
         site_unit_code: siteUnit || null,
         share_scope: shareAll ? '*' : shareSelected,
-      }),
+      };
+      if (isEdit) await api.patch(`/properties/${initial!.id}`, body);
+      else await api.post('/properties', body);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['properties'] });
       onClose();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    },
   });
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 grid place-items-center p-4">
       <div className="bg-white rounded-xl max-w-xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="font-semibold text-brand-900 mb-4">Yeni Mülk</h3>
+        <h3 className="font-semibold text-brand-900 mb-4">
+          {isEdit ? `${initial!.name} — Düzenle` : 'Yeni Mülk'}
+        </h3>
         <div className="space-y-3">
           <TextField label="Mülk Adı *" value={name} onChange={setName} placeholder="Acıbadem Daire 5" />
           <label className="block">
@@ -225,12 +257,12 @@ function PropertyForm({ onClose }: { onClose: () => void }) {
                 setError(null);
                 if (!name) return setError('Mülk adı zorunlu');
                 if (!shareAll && shareSelected.length === 0) return setError('En az 1 tenant seç');
-                create.mutate();
+                save.mutate();
               }}
-              disabled={create.isPending}
+              disabled={save.isPending}
               className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60"
             >
-              {create.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+              {save.isPending ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
             </button>
           </div>
         </div>

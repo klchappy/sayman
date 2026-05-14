@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building, Plus, Trash2 } from 'lucide-react';
+import { Building, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -15,8 +15,12 @@ const TYPE_OPTIONS = ['TT', 'CK', 'IGDAS', 'IBB', 'BAGKUR', 'SSK', 'BES', 'ITO',
 
 export function InstitutionsPage() {
   const active = useAuth((s) => s.active);
+  const me = useAuth((s) => s.me);
   const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Institution | 'new' | null>(null);
+
+  const role = me?.organizations.find((o) => o.slug === active.orgSlug)?.role;
+  const canEdit = ['super_admin', 'organization_admin', 'yonetici', 'muhasebeci'].includes(role ?? '');
 
   const q = useQuery({
     queryKey: ['institutions', active.orgSlug],
@@ -47,16 +51,23 @@ export function InstitutionsPage() {
           <h1 className="text-2xl font-semibold text-brand-900">Kurumlar</h1>
           <p className="text-sm text-brand-500 mt-1">Telekom, elektrik, doğalgaz, BAĞKUR vb.</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
-        >
-          <Plus className="size-4" />
-          Yeni Kurum
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setEditing('new')}
+            className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            <Plus className="size-4" />
+            Yeni Kurum
+          </button>
+        )}
       </header>
 
-      {showForm && <InstitutionForm onClose={() => setShowForm(false)} />}
+      {editing && (
+        <InstitutionForm
+          initial={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <div className="card overflow-x-auto">
         {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
@@ -69,12 +80,12 @@ export function InstitutionsPage() {
               <tr className="text-left text-brand-500 text-xs uppercase border-b border-brand-100">
                 <th className="py-2 px-2">Ad</th>
                 <th className="py-2 px-2">Tip</th>
-                <th className="py-2 px-2"></th>
+                <th className="py-2 px-2 text-right">İşlem</th>
               </tr>
             </thead>
             <tbody>
               {q.data.map((it) => (
-                <tr key={it.id} className={`border-b border-brand-50 ${!it.is_active ? 'opacity-50' : ''}`}>
+                <tr key={it.id} className={`border-b border-brand-50 hover:bg-brand-50 ${!it.is_active ? 'opacity-50' : ''}`}>
                   <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2">
                     <Building className="size-4 text-brand-400" />
                     {it.name}
@@ -87,15 +98,25 @@ export function InstitutionsPage() {
                     )}
                   </td>
                   <td className="py-2 px-2 text-right">
-                    {it.is_active && (
-                      <button
-                        onClick={() => {
-                          if (confirm(`"${it.name}" arşivlensin mi?`)) del.mutate(it.id);
-                        }}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                    {canEdit && it.is_active && (
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => setEditing(it)}
+                          className="text-brand-600 hover:bg-brand-100 p-1.5 rounded"
+                          title="Düzenle"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`"${it.name}" arşivlensin mi?`)) del.mutate(it.id);
+                          }}
+                          className="text-red-500 hover:bg-red-50 p-1.5 rounded"
+                          title="Arşivle"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -108,25 +129,35 @@ export function InstitutionsPage() {
   );
 }
 
-function InstitutionForm({ onClose }: { onClose: () => void }) {
+function InstitutionForm({ initial, onClose }: { initial: Institution | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [name, setName] = useState('');
-  const [type, setType] = useState('');
+  const [name, setName] = useState(initial?.name ?? '');
+  const [type, setType] = useState(initial?.institution_type ?? '');
   const [error, setError] = useState<string | null>(null);
+  const isEdit = !!initial;
 
-  const create = useMutation({
-    mutationFn: async () => api.post('/institutions', { name, institution_type: type || null }),
+  const save = useMutation({
+    mutationFn: async () => {
+      const body = { name, institution_type: type || null };
+      if (isEdit) await api.patch(`/institutions/${initial!.id}`, body);
+      else await api.post('/institutions', body);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['institutions'] });
       onClose();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    },
   });
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 grid place-items-center p-4">
       <div className="bg-white rounded-xl max-w-md w-full p-6">
-        <h3 className="font-semibold text-brand-900 mb-4">Yeni Kurum</h3>
+        <h3 className="font-semibold text-brand-900 mb-4">
+          {isEdit ? `${initial!.name} — Düzenle` : 'Yeni Kurum'}
+        </h3>
         <div className="space-y-3">
           <label className="block">
             <span className="text-xs uppercase tracking-wide text-brand-500">Kurum Adı *</span>
@@ -161,12 +192,12 @@ function InstitutionForm({ onClose }: { onClose: () => void }) {
               onClick={() => {
                 setError(null);
                 if (!name) return setError('Kurum adı zorunlu');
-                create.mutate();
+                save.mutate();
               }}
-              disabled={create.isPending}
+              disabled={save.isPending}
               className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60"
             >
-              {create.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+              {save.isPending ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, Trash2 } from 'lucide-react';
+import { Building2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { SECTOR_LABELS, SECTORS, type Sector } from '@sayman/shared';
 import { api } from '../../lib/api';
@@ -17,8 +17,12 @@ interface Company {
 
 export function CompaniesPage() {
   const active = useAuth((s) => s.active);
+  const me = useAuth((s) => s.me);
   const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Company | 'new' | null>(null);
+
+  const role = me?.organizations.find((o) => o.slug === active.orgSlug)?.role;
+  const canEdit = ['super_admin', 'organization_admin', 'yonetici', 'muhasebeci'].includes(role ?? '');
 
   const q = useQuery({
     queryKey: ['companies', active.orgSlug, active.tenantSlug],
@@ -53,16 +57,23 @@ export function CompaniesPage() {
           <p className="text-xs uppercase tracking-wider text-brand-500 mb-1">Master Data</p>
           <h1 className="text-2xl font-semibold text-brand-900">Şirketler</h1>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
-        >
-          <Plus className="size-4" />
-          Yeni Şirket
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setEditing('new')}
+            className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            <Plus className="size-4" />
+            Yeni Şirket
+          </button>
+        )}
       </header>
 
-      {showForm && <CompanyForm onClose={() => setShowForm(false)} />}
+      {editing && (
+        <CompanyForm
+          initial={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <div className="card overflow-x-auto">
         {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
@@ -78,12 +89,12 @@ export function CompaniesPage() {
                 <th className="py-2 px-2">Vergi No</th>
                 <th className="py-2 px-2">Sicil No</th>
                 <th className="py-2 px-2">Görünür</th>
-                <th className="py-2 px-2"></th>
+                <th className="py-2 px-2 text-right">İşlem</th>
               </tr>
             </thead>
             <tbody>
               {q.data.map((c) => (
-                <tr key={c.id} className={`border-b border-brand-50 ${!c.is_active ? 'opacity-50' : ''}`}>
+                <tr key={c.id} className={`border-b border-brand-50 hover:bg-brand-50 ${!c.is_active ? 'opacity-50' : ''}`}>
                   <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2">
                     <Building2 className="size-4 text-brand-400" />
                     {c.name}
@@ -98,16 +109,26 @@ export function CompaniesPage() {
                       <span className="text-xs text-brand-600">{(c.share_scope as string[]).join(', ')}</span>
                     )}
                   </td>
-                  <td className="py-2 px-2">
-                    {c.is_active && (
-                      <button
-                        onClick={() => {
-                          if (confirm(`"${c.name}" arşivlensin mi?`)) deleteMutation.mutate(c.id);
-                        }}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                  <td className="py-2 px-2 text-right">
+                    {canEdit && c.is_active && (
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => setEditing(c)}
+                          className="text-brand-600 hover:bg-brand-100 p-1.5 rounded"
+                          title="Düzenle"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`"${c.name}" arşivlensin mi?`)) deleteMutation.mutate(c.id);
+                          }}
+                          className="text-red-500 hover:bg-red-50 p-1.5 rounded"
+                          title="Arşivle"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -120,37 +141,50 @@ export function CompaniesPage() {
   );
 }
 
-function CompanyForm({ onClose }: { onClose: () => void }) {
+function CompanyForm({ initial, onClose }: { initial: Company | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [name, setName] = useState('');
-  const [shortName, setShortName] = useState('');
-  const [tax, setTax] = useState('');
-  const [reg, setReg] = useState('');
-  const [shareAll, setShareAll] = useState(true);
-  const [shareSelected, setShareSelected] = useState<string[]>([]);
+  const [name, setName] = useState(initial?.name ?? '');
+  const [shortName, setShortName] = useState(initial?.short_name ?? '');
+  const [tax, setTax] = useState(initial?.tax_number ?? '');
+  const [reg, setReg] = useState(initial?.registry_number ?? '');
+  const [shareAll, setShareAll] = useState(initial ? initial.share_scope === '*' : true);
+  const [shareSelected, setShareSelected] = useState<string[]>(
+    initial && Array.isArray(initial.share_scope) ? initial.share_scope : [],
+  );
   const [error, setError] = useState<string | null>(null);
+  const isEdit = !!initial;
 
-  const create = useMutation({
+  const save = useMutation({
     mutationFn: async () => {
-      await api.post('/companies', {
+      const body = {
         name,
         short_name: shortName || null,
         tax_number: tax || null,
         registry_number: reg || null,
         share_scope: shareAll ? '*' : shareSelected,
-      });
+      };
+      if (isEdit) {
+        await api.patch(`/companies/${initial!.id}`, body);
+      } else {
+        await api.post('/companies', body);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] });
       onClose();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    },
   });
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 grid place-items-center p-4">
       <div className="bg-white rounded-xl max-w-lg w-full p-6">
-        <h3 className="font-semibold text-brand-900 mb-4">Yeni Şirket</h3>
+        <h3 className="font-semibold text-brand-900 mb-4">
+          {isEdit ? `${initial!.name} — Düzenle` : 'Yeni Şirket'}
+        </h3>
         <div className="space-y-3">
           <TextField label="Unvan *" value={name} onChange={setName} />
           <TextField label="Kısa Ad" value={shortName} onChange={setShortName} />
@@ -197,12 +231,12 @@ function CompanyForm({ onClose }: { onClose: () => void }) {
                 setError(null);
                 if (!name) return setError('Unvan zorunlu');
                 if (!shareAll && shareSelected.length === 0) return setError('En az 1 tenant seç');
-                create.mutate();
+                save.mutate();
               }}
-              disabled={create.isPending}
+              disabled={save.isPending}
               className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60"
             >
-              {create.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+              {save.isPending ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
             </button>
           </div>
         </div>
