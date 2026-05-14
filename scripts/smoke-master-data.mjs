@@ -177,6 +177,18 @@ async function main() {
   const TENANT_INSAAT_ID = insaatTenant.id;
   const TENANT_HUKUK_ID = hukukTenant.id;
 
+  // --- 3a. PATCH /organizations/:slug — org duzenle (yeni eklenen) ---
+  await step('PATCH /organizations/:slug (plan + email)', async () => {
+    const r = await api('PATCH', `/organizations/${ORG_SLUG}`, {
+      name: TEST_ORG_NAME + ' (Updated)',
+      plan: 'pro',
+      contact_email: TEST_EMAIL,
+    });
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.data.plan === 'pro', `plan beklenmedik: ${r.body.data.plan}`);
+    expect(r.body.data.name.endsWith('(Updated)'), 'name update failed');
+  });
+
   // --- 3b. PATCH /tenants/:id — sector degistirme + modules ekleme testi ---
   await step('PATCH /tenants/:id (modify active_modules)', async () => {
     const r = await api('PATCH', `/tenants/${TENANT_HUKUK_ID}`, {
