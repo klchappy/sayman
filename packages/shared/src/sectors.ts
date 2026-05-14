@@ -56,6 +56,46 @@ export const MODULES = [
 export type Module = (typeof MODULES)[number];
 
 /**
+ * Modül isimlerinin kullanıcıya gösterilen TR karşılığı.
+ */
+export const MODULE_LABELS: Record<Module, string> = {
+  finance: 'Fatura',
+  subscriptions: 'Abonelik',
+  regular_payments: 'Kira & Düzenli',
+  official_payments: 'Resmi Ödeme',
+  pruva: 'Pruva',
+  properties: 'Mülk',
+  guarantees: 'Teminat',
+  integrators: 'Entegratör',
+  imports: 'Toplu Yükleme',
+  notifications: 'Bildirim',
+  tasks: 'Görev',
+  chat: 'Sohbet',
+  dashboard: 'Dashboard',
+  reports: 'Rapor',
+};
+
+/**
+ * Modül için tek cümlelik tooltip açıklaması (UI hover).
+ */
+export const MODULE_DESCRIPTIONS: Record<Module, string> = {
+  finance: 'Fatura/borç kayıtları + ödeme takibi (payable_items).',
+  subscriptions: 'Telekom, yazılım, üyelik aboneliği + taahhüt sözleşmeleri.',
+  regular_payments: 'Kira, leasing, sabit aylık ödemeler — yıllık artışla otomatik dönem.',
+  official_payments: 'BAGKUR / SSK / BES / İTO / vergi gibi periyodik resmi ödemeler.',
+  pruva: 'Pruva34 site yönetimi entegrasyonu (gayrimenkul tenantları için aidat).',
+  properties: 'Ev, daire, işyeri, arsa master data — emlak vergisi ve aidat kaynağı.',
+  guarantees: 'Banka teminat mektupları + periyodik komisyon ödemeleri.',
+  integrators: 'Enerji üretim/dağıtım veya benzeri entegratör API\'leri.',
+  imports: 'Excel/CSV listelerinin toplu yüklenmesi (dry-run preview).',
+  notifications: 'Sistem içi bildirim merkezi (mail + Telegram + in-app).',
+  tasks: 'Görev/iş takibi (atama, vade, onay).',
+  chat: 'Tenant içi sohbet / not paylaşımı (Telegram entegrasyonlu).',
+  dashboard: 'Sektörel KPI özet ekranı (nakit akışı, yaklaşan vade, vb.).',
+  reports: 'Rapor üreteçleri — aylık kapanış, vergi özeti, kira tahsilat.',
+};
+
+/**
  * Sektör başına default açık modül seti. Yeni tenant kurulduğunda bu set
  * `tenants.active_modules` JSON'una yazılır; sonra editör'den değiştirilebilir.
  */

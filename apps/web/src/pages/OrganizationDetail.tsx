@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   MODULES,
+  MODULE_DESCRIPTIONS,
+  MODULE_LABELS,
   PLANS,
   SECTORS,
   SECTOR_DEFAULT_MODULES,
@@ -230,13 +232,20 @@ function TenantCard({
           {tenant.active_modules.slice(0, 6).map((m) => (
             <span
               key={m}
-              className="text-[10px] font-mono px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded"
+              title={MODULE_DESCRIPTIONS[m as Module] ?? m}
+              className="text-[10px] font-mono px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded cursor-help"
             >
               {m}
             </span>
           ))}
           {tenant.active_modules.length > 6 && (
-            <span className="text-[10px] text-brand-400">
+            <span
+              className="text-[10px] text-brand-400 cursor-help"
+              title={tenant.active_modules
+                .slice(6)
+                .map((m) => `${m}: ${MODULE_DESCRIPTIONS[m as Module] ?? ''}`)
+                .join('\n')}
+            >
               +{tenant.active_modules.length - 6}
             </span>
           )}
@@ -462,6 +471,7 @@ function TenantForm({
               {MODULES.map((m) => (
                 <label
                   key={m}
+                  title={MODULE_DESCRIPTIONS[m]}
                   className={`flex items-center gap-2 px-2 py-1.5 rounded border text-xs cursor-pointer transition ${
                     modules.has(m)
                       ? 'bg-brand-50 border-brand-300 text-brand-900'
@@ -474,7 +484,10 @@ function TenantForm({
                     onChange={() => toggleModule(m)}
                     className="size-3.5"
                   />
-                  <span className="font-mono">{m}</span>
+                  <span>
+                    <span className="font-medium">{MODULE_LABELS[m]}</span>
+                    <span className="block text-[10px] font-mono text-brand-400">{m}</span>
+                  </span>
                 </label>
               ))}
             </div>

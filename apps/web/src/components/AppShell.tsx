@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import type { Module } from '@sayman/shared';
+import { MODULE_DESCRIPTIONS, type Module } from '@sayman/shared';
 import { api, bindActiveAccessor } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { CommandPalette } from './CommandPalette';
@@ -292,10 +292,12 @@ function SearchTrigger() {
 }
 
 function NavLinkItem({ item }: { item: NavItem }) {
+  const tooltip = item.requires ? MODULE_DESCRIPTIONS[item.requires] : undefined;
   return (
     <NavLink
       to={item.to}
       end={item.end}
+      title={tooltip}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
           isActive
