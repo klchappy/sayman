@@ -619,18 +619,74 @@ usersRouter.patch(
     try {
       const body = roleUpdateSchema.parse(req.body);
       const db = getDb();
+      const targetUserId = String(req.params.id ?? '');
+
+      // Kendi rolünü değiştirme yasak
+      if (req.authUser?.id === targetUserId) {
+        throw new HttpError(403, 'Kendi rolünü değiştiremezsin', 'SELF_DEMOTE');
+      }
+
+      // Mevcut rolü çek
+      const [current] = await db
+        .select()
+        .from(userOrganizationRoles)
+        .where(
+          and(
+            eq(userOrganizationRoles.user_id, targetUserId),
+            eq(userOrganizationRoles.organization_id, req.activeOrgId!),
+          ),
+        );
+      if (!current) throw new HttpError(404, 'Kullanıcı bu org\'da bulunamadı', 'NOT_FOUND');
+
+      // Hierarchy: super_admin sadece super_admin tarafından değiştirilebilir
+      const actorRole = req.effectiveRole as Role;
+      if (current.role === 'super_admin' && actorRole !== 'super_admin') {
+        throw new HttpError(
+          403,
+          'super_admin rolünü sadece başka bir super_admin değiştirebilir',
+          'HIERARCHY_BLOCKED',
+        );
+      }
+      // Yeni rol super_admin atanıyorsa: sadece super_admin atayabilir
+      if (body.role === 'super_admin' && actorRole !== 'super_admin') {
+        throw new HttpError(
+          403,
+          'super_admin rolünü sadece başka bir super_admin atayabilir',
+          'HIERARCHY_BLOCKED',
+        );
+      }
+
+      // Son super_admin'i demote engelle (organization_admin tek başına kalmasın güvenli olur)
+      if (current.role === 'super_admin' && body.role !== 'super_admin') {
+        const [countResult] = await db
+          .select({ count: sql<string>`COUNT(*)` })
+          .from(userOrganizationRoles)
+          .where(
+            and(
+              eq(userOrganizationRoles.organization_id, req.activeOrgId!),
+              eq(userOrganizationRoles.role, 'super_admin'),
+            ),
+          );
+        const total = Number(countResult?.count ?? 0);
+        if (total <= 1) {
+          throw new HttpError(
+            403,
+            'Org\'daki son super_admin\'i demote edemezsin (önce başka birini super_admin yap)',
+            'LAST_SUPER_ADMIN',
+          );
+        }
+      }
 
       const [row] = await db
         .update(userOrganizationRoles)
         .set({ role: body.role })
         .where(
           and(
-            eq(userOrganizationRoles.user_id, String(req.params.id ?? '')),
+            eq(userOrganizationRoles.user_id, targetUserId),
             eq(userOrganizationRoles.organization_id, req.activeOrgId!),
           ),
         )
         .returning();
-      if (!row) throw new HttpError(404, 'Kullanıcı bu org\'da bulunamadı', 'NOT_FOUND');
 
       await auditFromRequest(req, {
         organization_id: req.activeOrgId!,
@@ -638,8 +694,8 @@ usersRouter.patch(
         actor_email: req.authUser?.email,
         action: 'user.role_changed',
         target_type: 'user_organization_roles',
-        target_id: row.user_id,
-        details: { new_role: body.role },
+        target_id: row!.user_id,
+        details: { old_role: current.role, new_role: body.role },
       });
 
       res.json({ data: row });
@@ -721,6 +777,48 @@ usersRouter.delete(
       // Self-remove engelle
       if (req.authUser?.id === userId) {
         throw new HttpError(400, 'Kendi rolünü kaldıramazsın', 'SELF_REMOVE');
+      }
+
+      // Hedef kullanıcının mevcut rolünü çek
+      const [target] = await db
+        .select()
+        .from(userOrganizationRoles)
+        .where(
+          and(
+            eq(userOrganizationRoles.user_id, userId),
+            eq(userOrganizationRoles.organization_id, req.activeOrgId!),
+          ),
+        );
+      if (!target) throw new HttpError(404, 'Kullanıcı bu org\'da bulunamadı', 'NOT_FOUND');
+
+      // Hierarchy: super_admin'i sadece super_admin kaldırabilir
+      const actorRole = req.effectiveRole as Role;
+      if (target.role === 'super_admin' && actorRole !== 'super_admin') {
+        throw new HttpError(
+          403,
+          'super_admin\'i sadece başka bir super_admin kaldırabilir',
+          'HIERARCHY_BLOCKED',
+        );
+      }
+
+      // Son super_admin koruması
+      if (target.role === 'super_admin') {
+        const [countResult] = await db
+          .select({ count: sql<string>`COUNT(*)` })
+          .from(userOrganizationRoles)
+          .where(
+            and(
+              eq(userOrganizationRoles.organization_id, req.activeOrgId!),
+              eq(userOrganizationRoles.role, 'super_admin'),
+            ),
+          );
+        if (Number(countResult?.count ?? 0) <= 1) {
+          throw new HttpError(
+            403,
+            'Org\'daki son super_admin\'i kaldıramazsın',
+            'LAST_SUPER_ADMIN',
+          );
+        }
       }
 
       // Role sil

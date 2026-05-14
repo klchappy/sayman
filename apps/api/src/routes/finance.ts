@@ -5,10 +5,11 @@
  * Şahıs/Şirket FK'leri public schema'da (share_scope'lu), ama burası
  * tenant-private tablo.
  */
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  companies,
   getDb,
   payableItems,
   paymentTransactions,
@@ -70,12 +71,31 @@ payablesRouter.post('/payables', requireAuth, requireTenant, async (req, res, ne
   try {
     const body = createPayableSchema.parse(req.body);
     const db = getDb();
+
+    // Auto-match: company_id yoksa supplier_name veya title üzerinden şirkete eşle
+    let companyId = body.company_id ?? null;
+    if (!companyId && (body.supplier_name || body.title)) {
+      const lookupName = body.supplier_name ?? body.title;
+      const [match] = await db
+        .select({ id: companies.id })
+        .from(companies)
+        .where(
+          and(
+            eq(companies.organization_id, req.activeOrgId!),
+            eq(companies.is_active, true),
+            or(ilike(companies.name, lookupName), ilike(companies.short_name, lookupName)),
+          ),
+        )
+        .limit(1);
+      if (match) companyId = match.id;
+    }
+
     const [row] = await db
       .insert(payableItems)
       .values({
         tenant_id: req.activeTenantId!,
         owner_type: body.owner_type,
-        company_id: body.company_id ?? null,
+        company_id: companyId,
         person_id: body.person_id ?? null,
         title: body.title,
         category: body.category ?? null,

@@ -1,5 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, Layers, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Building2,
+  Clock,
+  Coins,
+  Layers,
+  Pencil,
+  Plus,
+  Receipt,
+  Repeat,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -36,6 +49,44 @@ type OrgDetail = {
   tenants: Tenant[];
 };
 
+interface ConsolidatedSummary {
+  organization: { id: string; slug: string; name: string; plan: Plan };
+  tenant_count: number;
+  consolidated: {
+    total_payables: number;
+    total_paid: number;
+    total_open: number;
+    overdue_count: number;
+    approaching_count: number;
+    active_subscriptions: number;
+    monthly_subscription: number;
+    active_guarantees: number;
+    guarantees_total: number;
+  };
+  per_tenant: Array<{
+    tenant_id: string;
+    tenant_slug: string;
+    tenant_name: string;
+    sector: Sector;
+    total_payables: number;
+    total_paid: number;
+    total_open: number;
+    overdue_count: number;
+    active_subscriptions: number;
+    monthly_subscription: number;
+    active_guarantees: number;
+    guarantees_total: number;
+  }>;
+}
+
+function fmtTRY(v: number) {
+  return new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: 'TRY',
+    maximumFractionDigits: 0,
+  }).format(v);
+}
+
 const PLAN_LABEL: Record<Plan, string> = {
   trial: 'Deneme',
   basic: 'Temel',
@@ -63,6 +114,15 @@ export function OrganizationDetailPage() {
     queryKey: ['organizations', slug],
     queryFn: async () => {
       const res = await api.get<{ data: OrgDetail }>(`/organizations/${slug}`);
+      return res.data.data;
+    },
+    enabled: !!slug,
+  });
+
+  const summaryQuery = useQuery({
+    queryKey: ['organizations', slug, 'summary'],
+    queryFn: async () => {
+      const res = await api.get<{ data: ConsolidatedSummary }>(`/organizations/${slug}/summary`);
       return res.data.data;
     },
     enabled: !!slug,
@@ -129,6 +189,101 @@ export function OrganizationDetailPage() {
             />
           )}
 
+          {/* Konsolide özet — tüm tenant'lar toplam */}
+          {summaryQuery.data && summaryQuery.data.tenant_count > 0 && (
+            <section className="mb-6">
+              <h2 className="text-sm font-semibold text-brand-700 mb-3 flex items-center gap-2">
+                <Layers className="size-4" />
+                Konsolide Özet ({summaryQuery.data.tenant_count} tenant)
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <ConsoldCard
+                  icon={<Receipt className="size-4" />}
+                  label="Toplam Fatura"
+                  value={fmtTRY(summaryQuery.data.consolidated.total_payables)}
+                />
+                <ConsoldCard
+                  icon={<Coins className="size-4" />}
+                  label="Açık Bakiye"
+                  value={fmtTRY(summaryQuery.data.consolidated.total_open)}
+                  highlight={summaryQuery.data.consolidated.total_open > 0 ? 'amber' : undefined}
+                />
+                <ConsoldCard
+                  icon={<AlertCircle className="size-4" />}
+                  label="Geciken Fatura"
+                  value={String(summaryQuery.data.consolidated.overdue_count)}
+                  highlight={
+                    summaryQuery.data.consolidated.overdue_count > 0 ? 'red' : undefined
+                  }
+                />
+                <ConsoldCard
+                  icon={<Clock className="size-4" />}
+                  label="Yaklaşan (≤3 gün)"
+                  value={String(summaryQuery.data.consolidated.approaching_count)}
+                />
+                <ConsoldCard
+                  icon={<Repeat className="size-4" />}
+                  label="Aktif Abonelik"
+                  value={`${summaryQuery.data.consolidated.active_subscriptions} adet`}
+                  subValue={fmtTRY(summaryQuery.data.consolidated.monthly_subscription) + ' / ay'}
+                />
+                <ConsoldCard
+                  icon={<ShieldCheck className="size-4" />}
+                  label="Teminat Mektubu"
+                  value={`${summaryQuery.data.consolidated.active_guarantees} adet`}
+                  subValue={fmtTRY(summaryQuery.data.consolidated.guarantees_total)}
+                />
+              </div>
+
+              {/* Per-tenant tablo */}
+              <div className="card overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-brand-500 text-xs uppercase border-b border-brand-100">
+                      <th className="py-2 px-2">Tenant</th>
+                      <th className="py-2 px-2 text-right">Toplam</th>
+                      <th className="py-2 px-2 text-right">Açık</th>
+                      <th className="py-2 px-2 text-center">Geciken</th>
+                      <th className="py-2 px-2 text-center">Abone</th>
+                      <th className="py-2 px-2 text-center">Teminat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryQuery.data.per_tenant.map((t) => (
+                      <tr key={t.tenant_id} className="border-b border-brand-50 hover:bg-brand-50/50">
+                        <td className="py-2 px-2">
+                          <p className="font-medium text-brand-900">{t.tenant_name}</p>
+                          <p className="text-xs text-brand-500 font-mono">{t.tenant_slug}</p>
+                        </td>
+                        <td className="py-2 px-2 font-mono text-right text-brand-700">
+                          {fmtTRY(t.total_payables)}
+                        </td>
+                        <td className="py-2 px-2 font-mono text-right text-amber-700">
+                          {fmtTRY(t.total_open)}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {t.overdue_count > 0 ? (
+                            <span className="badge bg-red-100 text-red-700">{t.overdue_count}</span>
+                          ) : (
+                            <span className="text-brand-300">-</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center text-brand-700">
+                          {t.active_subscriptions > 0 ? t.active_subscriptions : '-'}
+                        </td>
+                        <td className="py-2 px-2 text-center text-brand-700">
+                          {t.active_guarantees > 0
+                            ? `${t.active_guarantees} (${fmtTRY(t.guarantees_total)})`
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {showNewTenant && (
             <TenantForm
               orgSlug={detailQuery.data.slug}
@@ -171,6 +326,43 @@ export function OrganizationDetailPage() {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+function ConsoldCard({
+  icon,
+  label,
+  value,
+  subValue,
+  highlight,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  subValue?: string;
+  highlight?: 'amber' | 'red';
+}) {
+  const cls =
+    highlight === 'amber'
+      ? 'border-amber-200 bg-amber-50'
+      : highlight === 'red'
+        ? 'border-red-200 bg-red-50'
+        : 'border-brand-100 bg-white';
+  const valCls =
+    highlight === 'amber'
+      ? 'text-amber-800'
+      : highlight === 'red'
+        ? 'text-red-700'
+        : 'text-brand-900';
+  return (
+    <div className={`rounded-lg p-3 border ${cls}`}>
+      <div className="flex items-center gap-2 text-xs uppercase text-brand-500 mb-1">
+        {icon}
+        {label}
+      </div>
+      <p className={`text-lg font-semibold font-mono ${valCls}`}>{value}</p>
+      {subValue && <p className="text-xs text-brand-500 mt-0.5">{subValue}</p>}
     </div>
   );
 }

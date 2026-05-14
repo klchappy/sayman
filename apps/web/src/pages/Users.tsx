@@ -162,7 +162,13 @@ export function UsersPage() {
               </thead>
               <tbody>
                 {usersQ.data.map((u) => (
-                  <UserRow key={u.user_id} u={u} canEdit={canInvite} isMe={u.user_id === me?.user.id} />
+                  <UserRow
+                    key={u.user_id}
+                    u={u}
+                    canEdit={canInvite}
+                    isMe={u.user_id === me?.user.id}
+                    myRole={myRole}
+                  />
                 ))}
               </tbody>
             </table>
@@ -173,9 +179,22 @@ export function UsersPage() {
   );
 }
 
-function UserRow({ u, canEdit, isMe }: { u: OrgUser; canEdit: boolean; isMe: boolean }) {
+function UserRow({
+  u,
+  canEdit,
+  isMe,
+  myRole,
+}: {
+  u: OrgUser;
+  canEdit: boolean;
+  isMe: boolean;
+  myRole: Role | undefined;
+}) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+
+  // Hierarchy: super_admin'i yalnız başka bir super_admin değiştirebilir
+  const canEditThisUser = canEdit && !(u.role === 'super_admin' && myRole !== 'super_admin');
 
   const remove = useMutation({
     mutationFn: async () => {
@@ -199,12 +218,18 @@ function UserRow({ u, canEdit, isMe }: { u: OrgUser; canEdit: boolean; isMe: boo
               qc.invalidateQueries({ queryKey: ['users'] });
             }}
             userId={u.user_id}
+            myRole={myRole}
           />
         ) : (
           <button
-            onClick={() => canEdit && !isMe && setEditing(true)}
-            disabled={!canEdit || isMe}
+            onClick={() => canEditThisUser && !isMe && setEditing(true)}
+            disabled={!canEditThisUser || isMe}
             className="cursor-pointer disabled:cursor-default"
+            title={
+              u.role === 'super_admin' && myRole !== 'super_admin'
+                ? 'super_admin rolünü sadece başka bir super_admin değiştirebilir'
+                : undefined
+            }
           >
             <span className={`badge ${ROLE_BADGE_COLOR[u.role]}`}>{u.role_label}</span>
           </button>
@@ -227,7 +252,7 @@ function UserRow({ u, canEdit, isMe }: { u: OrgUser; canEdit: boolean; isMe: boo
         {u.last_login_at ? new Date(u.last_login_at).toLocaleString('tr-TR') : '-'}
       </td>
       <td className="py-3 px-2 text-right">
-        {canEdit && !isMe && (
+        {canEditThisUser && !isMe && (
           <button
             onClick={() => {
               if (confirm(`${u.full_name} kullanıcısını org'dan çıkar?`)) remove.mutate();
@@ -240,6 +265,14 @@ function UserRow({ u, canEdit, isMe }: { u: OrgUser; canEdit: boolean; isMe: boo
           </button>
         )}
         {isMe && <span className="text-xs text-brand-400 italic">sen</span>}
+        {u.role === 'super_admin' && myRole !== 'super_admin' && !isMe && (
+          <span
+            className="text-xs text-brand-300 italic"
+            title="super_admin korunmaktadır"
+          >
+            🔒
+          </span>
+        )}
       </td>
     </tr>
   );
@@ -248,13 +281,21 @@ function UserRow({ u, canEdit, isMe }: { u: OrgUser; canEdit: boolean; isMe: boo
 function RolePicker({
   current,
   userId,
+  myRole,
   onChange,
 }: {
   current: Role;
   userId: string;
+  myRole: Role | undefined;
   onChange: () => void;
 }) {
   const [value, setValue] = useState<Role>(current);
+
+  // Hierarchy: super_admin sadece super_admin tarafından atanabilir
+  const allowedRoles = ROLES.filter((r) => {
+    if (r === 'super_admin' && myRole !== 'super_admin') return false;
+    return true;
+  });
 
   const update = useMutation({
     mutationFn: async () => {
@@ -270,7 +311,7 @@ function RolePicker({
         onChange={(e) => setValue(e.target.value as Role)}
         className="rounded border border-brand-200 px-2 py-1 text-xs bg-white"
       >
-        {ROLES.map((r) => (
+        {allowedRoles.map((r) => (
           <option key={r} value={r}>
             {ROLE_LABELS[r]}
           </option>

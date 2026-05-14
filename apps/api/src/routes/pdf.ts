@@ -1,8 +1,12 @@
 /**
  * /v1/pdf/payable/:id, /v1/pdf/guarantee/:id — PDF export.
  *
- * pdfkit ile sunucu-side PDF üretimi. Bir kaynak (payable veya guarantee)
- * için tek sayfalık özet PDF + Sayman branding.
+ * Brand-tutarli A4 layout (lib/pdf-helpers.ts ortak yapı):
+ *   - Mavi başlık bandı + logo + tenant adı
+ *   - Title + subtitle
+ *   - Key-value sections (alternating bg)
+ *   - Footer + page number
+ *   - AI-friendly metadata (PDF Info dict + gizli JSON annotation)
  */
 import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
@@ -17,55 +21,18 @@ import {
   tenants,
 } from '@sayman/db';
 import { HttpError, requireTenant } from '../lib/helpers';
+import {
+  drawKV,
+  drawPdfFooter,
+  drawPdfHeader,
+  drawSectionTitle,
+  fmtDate,
+  fmtTRY,
+  setAiMetadata,
+} from '../lib/pdf-helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const pdfRouter = Router();
-
-const BRAND_COLOR = '#0a2540';
-const ACCENT = '#3b82f6';
-
-function fmtTRY(v: string | number | null | undefined): string {
-  if (v == null) return '-';
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function drawHeader(doc: PDFKit.PDFDocument, title: string, tenantName: string) {
-  doc.fillColor(BRAND_COLOR).fontSize(20).text('Sayman', 50, 50);
-  doc.fillColor('#6b7280').fontSize(10).text('Muhasebe Operasyon', 50, 75);
-  doc.fillColor(BRAND_COLOR).fontSize(16).text(title, 50, 110);
-  doc.fillColor('#9ca3af').fontSize(10).text(tenantName, 50, 130);
-  doc.moveTo(50, 155).lineTo(545, 155).strokeColor('#e5e7eb').lineWidth(1).stroke();
-  doc.y = 175;
-}
-
-function drawKV(doc: PDFKit.PDFDocument, key: string, val: string, y?: number) {
-  if (y !== undefined) doc.y = y;
-  const startY = doc.y;
-  doc.fillColor('#6b7280').fontSize(10).text(key, 50, startY, { width: 150 });
-  doc.fillColor(BRAND_COLOR).fontSize(11).text(val, 200, startY, { width: 345 });
-  doc.y = startY + 20;
-}
-
-function drawFooter(doc: PDFKit.PDFDocument) {
-  const y = doc.page.height - 70;
-  doc.moveTo(50, y).lineTo(545, y).strokeColor('#e5e7eb').stroke();
-  doc
-    .fillColor('#9ca3af')
-    .fontSize(8)
-    .text(
-      `Sayman — Muhasebe Operasyon Platformu  ·  Oluşturulma: ${new Date().toLocaleString('tr-TR')}`,
-      50,
-      y + 10,
-      { width: 495, align: 'center' },
-    );
-}
-
-// --- Payable PDF ----------------------------------------------------------
 
 pdfRouter.get('/pdf/payable/:id', requireAuth, requireTenant, async (req, res, next) => {
   try {
@@ -74,6 +41,7 @@ pdfRouter.get('/pdf/payable/:id', requireAuth, requireTenant, async (req, res, n
       .select({
         payable: payableItems,
         tenant_name: tenants.name,
+        org_name: tenants.organization_id, // org_id; ad için ayrı join lazım, basitlik için tenant.name yeterli
         company_name: companies.name,
         subsidiary_name: subsidiaries.name,
       })
@@ -96,43 +64,71 @@ pdfRouter.get('/pdf/payable/:id', requireAuth, requireTenant, async (req, res, n
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
 
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
     doc.pipe(res);
 
-    drawHeader(doc, 'Fatura Özeti', row.tenant_name);
+    // AI metadata — pdf info + gizli JSON
+    setAiMetadata(doc, {
+      title: `Fatura ${p.invoice_number ?? p.id.slice(0, 8)}`,
+      docType: 'payable',
+      tenant: row.tenant_name,
+      structured: {
+        id: p.id,
+        invoice_number: p.invoice_number,
+        title: p.title,
+        supplier_name: row.company_name ?? p.supplier_name,
+        amount: p.amount,
+        paid_amount: p.paid_amount,
+        currency: p.currency,
+        status: p.status,
+        issue_date: p.issue_date,
+        due_date: p.due_date,
+        subsidiary: row.subsidiary_name,
+      },
+    });
 
+    drawPdfHeader(doc, {
+      title: 'Fatura',
+      subtitle: p.invoice_number ? `No: ${p.invoice_number}` : undefined,
+      tenantName: row.tenant_name,
+    });
+
+    drawSectionTitle(doc, 'Genel Bilgiler');
     drawKV(doc, 'Başlık', p.title);
     drawKV(doc, 'Fatura No', p.invoice_number ?? '-');
     drawKV(doc, 'Dönem', p.period_label ?? '-');
     drawKV(doc, 'Tedarikçi', row.company_name ?? p.supplier_name ?? '-');
     if (row.subsidiary_name) drawKV(doc, 'Yan Şirket', row.subsidiary_name);
-    drawKV(doc, 'Düzenleme', p.issue_date ?? '-');
-    drawKV(doc, 'Vade', p.due_date ?? '-');
 
-    doc.y += 20;
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#e5e7eb').stroke();
-    doc.y += 15;
+    drawSectionTitle(doc, 'Tarihler');
+    drawKV(doc, 'Düzenleme', fmtDate(p.issue_date));
+    drawKV(doc, 'Vade', fmtDate(p.due_date));
 
-    drawKV(doc, 'Tutar', fmtTRY(p.amount));
+    drawSectionTitle(doc, 'Tutarlar');
+    drawKV(doc, 'Tutar', fmtTRY(p.amount), { bold: true });
     drawKV(doc, 'Ödenen', fmtTRY(p.paid_amount));
-    drawKV(doc, 'Kalan', fmtTRY(Number(p.amount) - Number(p.paid_amount)));
+    drawKV(doc, 'Kalan', fmtTRY(Number(p.amount) - Number(p.paid_amount)), { bold: true });
     drawKV(doc, 'Durum', p.status);
 
     if (p.notes) {
-      doc.y += 20;
-      doc.fillColor('#6b7280').fontSize(10).text('Notlar', 50, doc.y);
-      doc.y += 15;
-      doc.fillColor(BRAND_COLOR).fontSize(10).text(p.notes, 50, doc.y, { width: 495 });
+      drawSectionTitle(doc, 'Notlar');
+      doc.fillColor('#1f2937').fontSize(10).font('Helvetica').text(p.notes, 50, doc.y, {
+        width: doc.page.width - 100,
+      });
     }
 
-    drawFooter(doc);
+    // Footer her sayfa için
+    const range = doc.bufferedPageRange();
+    for (let i = 0; i < range.count; i++) {
+      doc.switchToPage(range.start + i);
+      drawPdfFooter(doc, i + 1);
+    }
+
     doc.end();
   } catch (err) {
     next(err);
   }
 });
-
-// --- Guarantee PDF --------------------------------------------------------
 
 pdfRouter.get('/pdf/guarantee/:id', requireAuth, requireTenant, async (req, res, next) => {
   try {
@@ -165,36 +161,62 @@ pdfRouter.get('/pdf/guarantee/:id', requireAuth, requireTenant, async (req, res,
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
 
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
     doc.pipe(res);
 
-    drawHeader(doc, 'Teminat Mektubu Özeti', row.tenant_name);
+    setAiMetadata(doc, {
+      title: `Teminat ${g.letter_no ?? g.id.slice(0, 8)}`,
+      docType: 'guarantee',
+      tenant: row.tenant_name,
+      structured: {
+        id: g.id,
+        letter_no: g.letter_no,
+        beneficiary: g.beneficiary_name,
+        bank: row.bank_name,
+        amount: g.amount,
+        currency: g.currency,
+        issue_date: g.issue_date,
+        expiry_date: g.expiry_date,
+        commission_rate: g.commission_rate,
+        status: g.status,
+      },
+    });
 
-    drawKV(doc, 'Lehdar', g.beneficiary_name);
-    drawKV(doc, 'Mektup No', g.letter_no ?? '-');
+    drawPdfHeader(doc, {
+      title: 'Teminat Mektubu',
+      subtitle: g.letter_no ? `No: ${g.letter_no}` : undefined,
+      tenantName: row.tenant_name,
+    });
+
+    drawSectionTitle(doc, 'Taraflar');
+    drawKV(doc, 'Lehdar', g.beneficiary_name, { bold: true });
     drawKV(doc, 'Banka', row.bank_name ?? '-');
     drawKV(doc, 'Düzenleyen Şirket', row.issuer_name ?? '-');
     if (row.subsidiary_name) drawKV(doc, 'Yan Şirket', row.subsidiary_name);
 
-    doc.y += 20;
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#e5e7eb').stroke();
-    doc.y += 15;
+    drawSectionTitle(doc, 'Tutar & Vade');
+    drawKV(doc, 'Tutar', `${fmtTRY(g.amount).replace('₺', '')} ${g.currency}`, { bold: true });
+    drawKV(doc, 'Düzenleme Tarihi', fmtDate(g.issue_date));
+    drawKV(doc, 'Vade Tarihi', fmtDate(g.expiry_date));
 
-    drawKV(doc, 'Tutar', fmtTRY(g.amount));
-    drawKV(doc, 'Düzenleme Tarihi', g.issue_date ?? '-');
-    drawKV(doc, 'Vade Tarihi', g.expiry_date ?? '-');
-    drawKV(doc, 'Komisyon Oranı', g.commission_rate ? `%${g.commission_rate}` : '-');
-    drawKV(doc, 'Komisyon Periyodu', `${g.commission_frequency_months ?? 3} ay`);
+    drawSectionTitle(doc, 'Komisyon');
+    drawKV(doc, 'Oran', g.commission_rate ? `%${g.commission_rate}` : '-');
+    drawKV(doc, 'Periyot', `${g.commission_frequency_months ?? 3} ay`);
     drawKV(doc, 'Durum', g.status);
 
     if (g.notes) {
-      doc.y += 20;
-      doc.fillColor('#6b7280').fontSize(10).text('Notlar', 50, doc.y);
-      doc.y += 15;
-      doc.fillColor(BRAND_COLOR).fontSize(10).text(g.notes, 50, doc.y, { width: 495 });
+      drawSectionTitle(doc, 'Notlar');
+      doc.fillColor('#1f2937').fontSize(10).font('Helvetica').text(g.notes, 50, doc.y, {
+        width: doc.page.width - 100,
+      });
     }
 
-    drawFooter(doc);
+    const range = doc.bufferedPageRange();
+    for (let i = 0; i < range.count; i++) {
+      doc.switchToPage(range.start + i);
+      drawPdfFooter(doc, i + 1);
+    }
+
     doc.end();
   } catch (err) {
     next(err);

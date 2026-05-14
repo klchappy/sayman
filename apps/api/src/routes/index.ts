@@ -33,6 +33,7 @@ import { webhooksRouter } from './webhooks';
 import { reportsRouter } from './reports';
 import { openApiRouter } from './openapi';
 import { realtimeRouter } from './realtime';
+import { smartImportRouter } from './smart-import';
 
 export const apiRouter = Router();
 
@@ -111,3 +112,6 @@ apiRouter.use(openApiRouter);
 
 // Realtime (SSE) bildirim akisi
 apiRouter.use(realtimeRouter);
+
+// Smart import: tek dosya, auto-detect tip + yonlendirme
+apiRouter.use(smartImportRouter);

@@ -9,11 +9,14 @@
  * Genel akış: import endpoint zod validate eder, geçersiz satırları errors listesinde döndürür,
  * dry_run=false ise transaction ile insert eder.
  */
+import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  banks,
   companies,
   guarantees,
   getDb,
+  institutions,
   payableItems,
   persons,
   properties,
@@ -103,6 +106,8 @@ const regularPaymentsRowSchema = z.object({
 
 const guaranteesRowSchema = z.object({
   beneficiary_name: z.string().min(2).max(255),
+  /** Banka adı (master'da varsa otomatik bank_id eşleşir) */
+  bank_name: z.string().max(255).optional().nullable(),
   letter_no: z.string().max(64).optional().nullable(),
   amount: z.string().regex(/^-?\d+(\.\d{1,2})?$/),
   currency: z.string().length(3).default('TRY'),
@@ -116,6 +121,81 @@ const guaranteesRowSchema = z.object({
 // ============================================================================
 // EXPORTS
 // ============================================================================
+
+/**
+ * Auto-match: bir isim alanı veriliyorsa (supplier_name, company_name, vb.)
+ * org içindeki companies/persons/institutions/banks'tan case-insensitive
+ * ad eşleşmesi ile id bulup row'a otomatik ekler.
+ *
+ * Eşleşme bulunamazsa "match_missing" listesine eklenir, row yine de insert edilir
+ * (sadece raw text alanlar dolu kalır).
+ */
+async function matchCompanyByName(
+  orgId: string,
+  name: string,
+): Promise<string | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: companies.id })
+    .from(companies)
+    .where(
+      and(
+        eq(companies.organization_id, orgId),
+        eq(companies.is_active, true),
+        or(ilike(companies.name, name), ilike(companies.short_name, name)),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
+
+async function matchPersonByName(orgId: string, name: string): Promise<string | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: persons.id })
+    .from(persons)
+    .where(
+      and(
+        eq(persons.organization_id, orgId),
+        eq(persons.is_active, true),
+        ilike(persons.full_name, name),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
+
+async function matchInstitutionByName(orgId: string, name: string): Promise<string | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: institutions.id })
+    .from(institutions)
+    .where(
+      and(
+        eq(institutions.organization_id, orgId),
+        eq(institutions.is_active, true),
+        ilike(institutions.name, name),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
+
+async function matchBankByName(orgId: string, name: string): Promise<string | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({ id: banks.id })
+    .from(banks)
+    .where(
+      and(
+        eq(banks.organization_id, orgId),
+        eq(banks.is_active, true),
+        or(ilike(banks.name, name), ilike(banks.short_code, name)),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
 
 export type ImportScope = 'org' | 'tenant';
 
@@ -170,13 +250,23 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
   payables: {
     scope: 'tenant',
     schema: payablesRowSchema,
-    description: 'Fatura/borç kayıtları (tenant-scope)',
-    insert: async (rows, { tenantId }) => {
+    description: 'Fatura/borç kayıtları (tenant-scope) — supplier_name otomatik şirketle eşleşir',
+    insert: async (rows, { orgId, tenantId }) => {
       const db = getDb();
       if (!tenantId) throw new Error('tenant context required');
+      // Auto-match: supplier_name → company_id
+      const matched = await Promise.all(
+        rows.map(async (r) => {
+          let company_id = r.company_id ?? null;
+          if (!company_id && r.supplier_name) {
+            company_id = await matchCompanyByName(orgId, r.supplier_name);
+          }
+          return { ...r, company_id };
+        }),
+      );
       const inserted = await db
         .insert(payableItems)
-        .values(rows.map((r) => ({ tenant_id: tenantId, ...r })))
+        .values(matched.map((r) => ({ tenant_id: tenantId, ...r })))
         .returning({ id: payableItems.id });
       return inserted.map((x) => x.id);
     },
@@ -184,13 +274,30 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
   subscriptions: {
     scope: 'tenant',
     schema: subscriptionsRowSchema,
-    description: 'Abonelik & taahhüt (tenant-scope)',
-    insert: async (rows, { tenantId }) => {
+    description: 'Abonelik & taahhüt (tenant-scope) — institution/company otomatik eşleşir',
+    insert: async (rows, { orgId, tenantId }) => {
       const db = getDb();
       if (!tenantId) throw new Error('tenant context required');
+      // Auto-match: package_name içerebileceği institution adı (TT, CK, vb.)
+      const matched = await Promise.all(
+        rows.map(async (r) => {
+          let institution_id: string | null = null;
+          if (r.package_name) {
+            institution_id = await matchInstitutionByName(orgId, r.package_name);
+            if (!institution_id) {
+              // Paket içinde ilk kelime de denenebilir (örn. "Türk Telekom Fiber" → "Türk Telekom")
+              const firstWord = r.package_name.split(' ').slice(0, 2).join(' ');
+              if (firstWord !== r.package_name) {
+                institution_id = await matchInstitutionByName(orgId, firstWord);
+              }
+            }
+          }
+          return { ...r, institution_id };
+        }),
+      );
       const inserted = await db
         .insert(subscriptions)
-        .values(rows.map((r) => ({ tenant_id: tenantId, ...r })))
+        .values(matched.map((r) => ({ tenant_id: tenantId, ...r })))
         .returning({ id: subscriptions.id });
       return inserted.map((x) => x.id);
     },
@@ -212,13 +319,25 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
   guarantees: {
     scope: 'tenant',
     schema: guaranteesRowSchema,
-    description: 'Teminat mektupları (tenant-scope)',
-    insert: async (rows, { tenantId }) => {
+    description: 'Teminat mektupları (tenant-scope) — beneficiary/bank otomatik eşleşir',
+    insert: async (rows, { orgId, tenantId }) => {
       const db = getDb();
       if (!tenantId) throw new Error('tenant context required');
+      const matched = await Promise.all(
+        rows.map(async (r) => {
+          // beneficiary_name → issuer_company_id (kendi şirket olduğu varsayım) veya bırak
+          // bank_name → bank_id
+          let bank_id: string | null = null;
+          if (r.bank_name) {
+            bank_id = await matchBankByName(orgId, r.bank_name);
+          }
+          const { bank_name: _bn, ...rest } = r;
+          return { ...rest, bank_id };
+        }),
+      );
       const inserted = await db
         .insert(guarantees)
-        .values(rows.map((r) => ({ tenant_id: tenantId, ...r })))
+        .values(matched.map((r) => ({ tenant_id: tenantId, ...r })))
         .returning({ id: guarantees.id });
       return inserted.map((x) => x.id);
     },

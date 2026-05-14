@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, FileCode, FileUp, Upload, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileCode, FileUp, Sparkles, Upload, X } from 'lucide-react';
 import { useState } from 'react';
+import { Dropzone } from '../components/Dropzone';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -168,7 +169,7 @@ export function ImportPage() {
     );
   }
 
-  const [mode, setMode] = useState<'bulk' | 'efatura'>('bulk');
+  const [mode, setMode] = useState<'smart' | 'bulk' | 'efatura'>('smart');
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -185,6 +186,17 @@ export function ImportPage() {
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-4 border-b border-brand-100">
+        <button
+          onClick={() => setMode('smart')}
+          className={`px-4 py-2 text-sm border-b-2 -mb-px flex items-center gap-1.5 ${
+            mode === 'smart'
+              ? 'border-brand-900 text-brand-900 font-medium'
+              : 'border-transparent text-brand-500 hover:text-brand-700'
+          }`}
+        >
+          <Sparkles className="size-4" />
+          Akıllı Yükleme
+        </button>
         <button
           onClick={() => setMode('bulk')}
           className={`px-4 py-2 text-sm border-b-2 -mb-px ${
@@ -207,6 +219,7 @@ export function ImportPage() {
         </button>
       </div>
 
+      {mode === 'smart' && <SmartImportSection />}
       {mode === 'efatura' && <EfaturaSection />}
 
       {mode === 'bulk' && (
@@ -251,28 +264,16 @@ export function ImportPage() {
 
       {/* Step 2: CSV upload */}
       <div className="card mb-4">
-        <p className="text-xs uppercase tracking-wide text-brand-500 mb-2">2. CSV yükle</p>
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={onDragDrop}
-          className="border-2 border-dashed border-brand-200 rounded-lg p-6 text-center hover:border-brand-400 transition"
-        >
-          <Upload className="size-8 mx-auto text-brand-300 mb-2" />
-          <p className="text-sm text-brand-600 mb-2">CSV / XLSX sürükle bırak veya seç</p>
-          <input
-            type="file"
-            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-            onChange={onFileChange}
-            className="hidden"
-            id="csv-upload"
-          />
-          <label
-            htmlFor="csv-upload"
-            className="inline-block bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm cursor-pointer"
-          >
-            Dosya Seç
-          </label>
-        </div>
+        <p className="text-xs uppercase tracking-wide text-brand-500 mb-2">2. CSV / XLSX yükle</p>
+        <Dropzone
+          accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          label="CSV veya XLSX sürükle bırak"
+          hint="Header satırı zorunlu. Maks 500 satır."
+          onFile={(f) => {
+            const ev = { target: { files: [f] as unknown as FileList } } as unknown as React.ChangeEvent<HTMLInputElement>;
+            onFileChange(ev);
+          }}
+        />
         {xlsxBase64 && (
           <div className="mt-3 flex items-center justify-between text-xs text-emerald-700">
             <span>📊 Excel yüklendi: <strong>{xlsxFilename}</strong> ({Math.round((xlsxBase64.length * 0.75) / 1024)} KB)</span>
@@ -406,6 +407,244 @@ export function ImportPage() {
         </div>
       )}
         </>
+      )}
+    </div>
+  );
+}
+
+// --- Smart Import Section (auto-route) --------------------------------------
+
+interface SmartResult {
+  type: string;
+  action?: string;
+  hint?: string;
+  parsed?: any;
+  file_count?: number;
+  by_extension?: Record<string, number>;
+  route?: string;
+  files?: Array<{ name: string; ext: string }>;
+  detected_resource?: string | null;
+  row_count?: number;
+  headers?: string[];
+  sample_valid?: unknown[];
+  sample_errors?: Array<{ row: number; error: string }>;
+  format?: string;
+  mime?: string;
+  size_bytes?: number;
+}
+
+function SmartImportSection() {
+  const active = useAuth((s) => s.active);
+  const [result, setResult] = useState<SmartResult | null>(null);
+  const [filename, setFilename] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function onFile(file: File) {
+    setFilename(file.name);
+    setResult(null);
+    setError(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post<{ data: SmartResult }>('/smart-import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setResult(res.data.data);
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // İkinci adım: yükle ve onayla (sadece e-fatura için şimdilik)
+  async function confirmImport() {
+    if (!result) return;
+    setUploading(true);
+    setError(null);
+    try {
+      if (result.type === 'efatura_xml' && result.parsed) {
+        // XML body'i tekrar göndermek için tekrar okumamız gerekti — basitlik: kullanıcı XML'i yeniden yükledi varsayımı yerine
+        // sadece bilgi göster:
+        alert('e-Fatura preview yapıldı. Onaylamak için "e-Fatura XML" sekmesinden gerçek import yapın.');
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (!active.tenantSlug) {
+    return (
+      <div className="card text-center">
+        <p className="text-amber-700 text-sm">Tenant seçilmedi. Üst köşeden bir tenant seç.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      <div className="mb-4">
+        <h2 className="font-semibold text-brand-900 flex items-center gap-2 mb-1">
+          <Sparkles className="size-5" />
+          Akıllı Dosya Yönlendirme
+        </h2>
+        <p className="text-sm text-brand-500">
+          CSV, XLSX, XML, ZIP, PDF, JPG — herhangi bir dosya at, Sayman tipi tespit edip uygun
+          işleme yönlendirir (e-fatura parse, bulk import, attachment).
+        </p>
+      </div>
+
+      <Dropzone
+        accept=".csv,.xlsx,.xls,.xml,.zip,.pdf,.jpg,.jpeg,.png,.webp"
+        label={uploading ? 'Yükleniyor…' : 'Dosya sürükle bırak veya seç (CSV/XLSX/XML/ZIP/PDF/IMG)'}
+        hint="Maks 30 MB. ZIP içindeki tüm dosyalar analizi edilir."
+        onFile={onFile}
+        disabled={uploading}
+      />
+
+      {filename && !uploading && (
+        <p className="text-xs text-brand-500 mt-2">Yüklenen: <strong>{filename}</strong></p>
+      )}
+
+      {error && (
+        <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2">
+          <AlertCircle className="size-4 mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-4 space-y-3">
+          {/* Genel sonuç kartı */}
+          <div className="bg-brand-50 rounded-lg p-4 border border-brand-200">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="size-5 text-emerald-600" />
+              <strong className="text-brand-900">Tespit: {result.type}</strong>
+            </div>
+            {result.action && (
+              <p className="text-xs text-brand-600 font-mono bg-white px-2 py-1 rounded">
+                → {result.action}
+              </p>
+            )}
+            {result.hint && <p className="text-sm text-brand-700 mt-2">{result.hint}</p>}
+          </div>
+
+          {/* e-Fatura preview */}
+          {result.type === 'efatura_xml' && result.parsed && (
+            <div className="card">
+              <h3 className="font-medium mb-2">Fatura Bilgileri</h3>
+              <dl className="grid grid-cols-2 gap-2 text-sm">
+                <dt className="text-brand-500">Fatura No</dt>
+                <dd className="font-mono">{result.parsed.invoice_number}</dd>
+                <dt className="text-brand-500">Düzenleme</dt>
+                <dd>{result.parsed.issue_date ?? '-'}</dd>
+                <dt className="text-brand-500">Vade</dt>
+                <dd>{result.parsed.due_date ?? '-'}</dd>
+                <dt className="text-brand-500">Tedarikçi</dt>
+                <dd>{result.parsed.supplier_name ?? '-'}</dd>
+                <dt className="text-brand-500">VKN/TCKN</dt>
+                <dd className="font-mono">{result.parsed.supplier_tax_number ?? '-'}</dd>
+                <dt className="text-brand-500">Tutar</dt>
+                <dd className="font-mono font-semibold">
+                  {result.parsed.amount} {result.parsed.currency}
+                </dd>
+              </dl>
+              <button
+                onClick={() => alert('Onaylamak için "e-Fatura XML" sekmesinden devam et.')}
+                className="mt-3 text-xs text-brand-700 hover:underline"
+              >
+                → Onaylayıp payable_items'a kaydet
+              </button>
+            </div>
+          )}
+
+          {/* ZIP analiz */}
+          {result.type === 'zip' && (
+            <div className="card">
+              <h3 className="font-medium mb-2">ZIP İçeriği</h3>
+              <p className="text-sm text-brand-700 mb-2">
+                <strong>{result.file_count}</strong> dosya, ana rota:{' '}
+                <span className="font-mono bg-brand-50 px-2 py-0.5 rounded">{result.route}</span>
+              </p>
+              {result.by_extension && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {Object.entries(result.by_extension).map(([ext, n]) => (
+                    <span
+                      key={ext}
+                      className="text-xs bg-brand-50 px-2 py-0.5 rounded text-brand-700 font-mono"
+                    >
+                      .{ext}: {n}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {result.files && result.files.length > 0 && (
+                <details>
+                  <summary className="text-xs text-brand-600 cursor-pointer">
+                    Dosya listesi
+                  </summary>
+                  <ul className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+                    {result.files.map((f, i) => (
+                      <li key={i} className="text-xs font-mono text-brand-700">
+                        {f.name}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+
+          {/* CSV/XLSX detected */}
+          {result.type === 'tabular' && (
+            <div className="card">
+              <h3 className="font-medium mb-2">Tablo Analizi</h3>
+              <div className="grid grid-cols-3 gap-2 mb-3 text-sm">
+                <div>
+                  <span className="text-brand-500 text-xs">Format</span>
+                  <p className="font-mono">{result.format}</p>
+                </div>
+                <div>
+                  <span className="text-brand-500 text-xs">Satır</span>
+                  <p className="font-mono">{result.row_count}</p>
+                </div>
+                <div>
+                  <span className="text-brand-500 text-xs">Resource</span>
+                  <p className="font-mono">
+                    {result.detected_resource ? (
+                      <span className="text-emerald-700">{result.detected_resource}</span>
+                    ) : (
+                      <span className="text-amber-700">tespit edilemedi</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              {result.headers && (
+                <div className="mb-2">
+                  <p className="text-xs text-brand-500 mb-1">Header'lar:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {result.headers.map((h, i) => (
+                      <span
+                        key={i}
+                        className="text-[10px] font-mono bg-brand-50 px-1.5 py-0.5 rounded"
+                      >
+                        {h}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {result.detected_resource && (
+                <p className="text-xs text-brand-600 mt-2">
+                  → "CSV / XLSX Toplu" sekmesinden bu resource'u seç + dosyayı tekrar yükle.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
