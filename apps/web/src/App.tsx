@@ -18,6 +18,8 @@ import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
 import { AIAssistantPage } from './pages/AIAssistant';
 import { BulkCategorizePage } from './pages/BulkCategorize';
+import { CariDetailPage, CariListPage } from './pages/Cari';
+import { ErpConnectionsPage } from './pages/ErpConnections';
 import { ForecastPage } from './pages/Forecast';
 import { ImportPage } from './pages/Import';
 import { InboundWebhooksPage } from './pages/InboundWebhooks';
@@ -104,6 +106,9 @@ export default function App() {
         <Route path="/tools/bulk-categorize" element={<BulkCategorizePage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/payment-approvals" element={<PaymentApprovalsPage />} />
+        <Route path="/erp" element={<ErpConnectionsPage />} />
+        <Route path="/cari" element={<CariListPage />} />
+        <Route path="/cari/:id" element={<CariDetailPage />} />
 
         <Route path="/orgs" element={<HomePage />} />
         <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />

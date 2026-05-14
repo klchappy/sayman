@@ -136,6 +136,15 @@ integrationsStatusRouter.get(
           'Her gün 16:00 TR\'de TCMB XML\'den güncel kur çeker. USD/EUR/GBP destekli.',
         env_keys: [],
       },
+      {
+        key: 'erp_integration',
+        name: 'ERP / Muhasebe Yazılımı Bağlantısı',
+        category: 'integration',
+        configured: true,
+        description:
+          'Paraşüt, Logo, Mikro gibi muhasebe yazılımlarıyla cari hesap + ekstre senkronizasyonu. Saatlik otomatik sync.',
+        env_keys: [],
+      },
     ];
 
     res.json({ data: integrations, meta: { env_has_db: Boolean(env.DATABASE_URL) } });

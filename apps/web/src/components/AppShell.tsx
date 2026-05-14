@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Database,
   Inbox,
   Network,
   Plug,
@@ -68,6 +69,8 @@ const navItems: NavItem[] = [
     requires: 'finance',
     group: 'Finans',
   },
+  { to: '/cari', label: 'Cari Hesaplar', icon: Users, group: 'Muhasebe' },
+  { to: '/erp', label: 'ERP Bağlantıları', icon: Database, group: 'Muhasebe' },
   {
     to: '/subscriptions',
     label: 'Abonelikler',

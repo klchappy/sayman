@@ -50,6 +50,8 @@ import { inboxRouter } from './inbox';
 import { excelExportRouter } from './excel-export';
 import { recurringDetectRouter } from './recurring-detect';
 import { paymentApprovalsRouter } from './payment-approvals';
+import { erpRouter } from './erp';
+import { cariRouter } from './cari';
 
 export const apiRouter = Router();
 
@@ -179,3 +181,9 @@ apiRouter.use(recurringDetectRouter);
 
 // Çift onaylı ödeme akışı (>= 50K TRY)
 apiRouter.use(paymentApprovalsRouter);
+
+// ERP bağlantı yönetimi (Paraşüt, Logo, Manuel CSV)
+apiRouter.use(erpRouter);
+
+// Cari hesap + ekstre okuma
+apiRouter.use(cariRouter);

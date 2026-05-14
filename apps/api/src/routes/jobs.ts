@@ -20,6 +20,7 @@ const ALLOWED_JOBS: JobName[] = [
   'detect-anomalies',
   'generate-ai-summary',
   'embed-payables',
+  'sync-erp-connections',
 ];
 
 export const jobsRouter = Router();

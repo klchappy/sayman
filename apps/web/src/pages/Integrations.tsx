@@ -15,6 +15,7 @@ import {
   Brain,
   CheckCircle2,
   Cloud,
+  Database,
   DollarSign,
   ExternalLink,
   Hexagon,
@@ -70,6 +71,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   webhooks_inbound: Webhook,
   api_tokens: Key,
   fx_rates: DollarSign,
+  erp_integration: Database,
 };
 
 const LINKS: Record<string, string> = {
@@ -79,6 +81,7 @@ const LINKS: Record<string, string> = {
   webhooks_inbound: '/integrations/inbound-webhooks',
   api_tokens: '/security',
   claude: '/ai',
+  erp_integration: '/erp',
 };
 
 export function IntegrationsPage() {

@@ -16,6 +16,7 @@ import { runFetchFxRates } from './fetch-fx-rates';
 import { runGenerateAiSummary } from './generate-ai-summary';
 import { runGeneratePeriods } from './generate-periods';
 import { runSendReminders } from './send-reminders';
+import { runSyncErpConnections } from './sync-erp-connections';
 import { runUpdateStatuses } from './update-statuses';
 
 const TZ = 'Europe/Istanbul';
@@ -28,7 +29,8 @@ export type JobName =
   | 'deliver-webhooks'
   | 'detect-anomalies'
   | 'generate-ai-summary'
-  | 'embed-payables';
+  | 'embed-payables'
+  | 'sync-erp-connections';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -49,6 +51,8 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runGenerateAiSummary();
     case 'embed-payables':
       return runEmbedPayables();
+    case 'sync-erp-connections':
+      return runSyncErpConnections();
   }
 }
 
@@ -138,9 +142,20 @@ export function startCronJobs() {
     { timezone: TZ },
   );
 
+  // Hourly :45 — ERP bağlantılarını sync et (sync_interval_hours dolanlar)
+  cron.schedule(
+    '45 * * * *',
+    () => {
+      runSyncErpConnections().catch((err) =>
+        logger.error({ err }, 'sync-erp-connections crashed'),
+      );
+    },
+    { timezone: TZ },
+  );
+
   started = true;
   logger.info(
     { tz: TZ },
-    'cron jobs scheduled (ai-summary@07:00, embed@:30, generate@03:00, reminders@09:00, anomaly@10:00, status@:05, fx@16:00, webhooks@*)',
+    'cron jobs scheduled (ai-summary@07:00, embed@:30, erp-sync@:45, generate@03:00, reminders@09:00, anomaly@10:00, status@:05, fx@16:00, webhooks@*)',
   );
 }
