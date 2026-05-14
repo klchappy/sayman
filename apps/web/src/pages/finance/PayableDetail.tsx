@@ -1,5 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, FileDown, Pencil, Plus, Receipt, Tag } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  FileDown,
+  Loader2,
+  Pencil,
+  Plus,
+  Receipt,
+  Sparkles,
+  Tag,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -124,6 +134,8 @@ export function PayableDetailPage() {
         supplier={p.supplier_name}
         notes={p.notes}
       />
+
+      <AiExplainBox payableId={p.id} />
 
       <div className="grid md:grid-cols-2 gap-4 mb-6">
         <AttachmentBox relatedTable="payable_items" relatedId={p.id} />
@@ -306,6 +318,73 @@ function PaymentForm({
           {isPending ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// --- AI açıklama (Claude) ---
+function AiExplainBox({ payableId }: { payableId: string }) {
+  const [open, setOpen] = useState(false);
+  const q = useQuery({
+    queryKey: ['ai-explain', payableId],
+    enabled: open,
+    queryFn: async () => {
+      const res = await api.get<{
+        data: {
+          answer: string;
+          stats: {
+            history_count: number;
+            mean_amount: number;
+            current_vs_mean_ratio: number;
+          };
+        };
+      }>(`/ai/explain/payable/${payableId}`);
+      return res.data.data;
+    },
+  });
+
+  return (
+    <div className="card mb-6 bg-gradient-to-br from-purple-50 to-blue-50 border-purple-200">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-brand-900 flex items-center gap-2">
+          <Sparkles className="size-5 text-purple-600" />
+          AI Açıklama
+        </h3>
+        {!open && (
+          <button
+            onClick={() => setOpen(true)}
+            className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1"
+          >
+            <Sparkles className="size-3" />
+            "Niye dikkat çekici?" sor
+          </button>
+        )}
+      </div>
+      {open && (
+        <>
+          {q.isLoading && (
+            <p className="text-sm text-brand-500 flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              Claude düşünüyor (tedarikçi geçmişi taranıyor)…
+            </p>
+          )}
+          {q.data && (
+            <>
+              <p className="text-sm text-brand-900 whitespace-pre-line">{q.data.answer}</p>
+              <p className="text-[10px] text-brand-400 mt-2 font-mono">
+                {q.data.stats.history_count} geçmiş kayıt · ortalama{' '}
+                {q.data.stats.mean_amount.toLocaleString('tr-TR')} TL · ratio{' '}
+                {q.data.stats.current_vs_mean_ratio}x
+              </p>
+            </>
+          )}
+          {q.error && (
+            <p className="text-sm text-amber-700 bg-amber-50 p-2 rounded">
+              {(q.error as Error).message ?? 'AI yanıt veremedi.'}
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }

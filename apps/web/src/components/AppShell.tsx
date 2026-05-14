@@ -14,8 +14,10 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Inbox,
   Network,
   Plug,
+  Tag,
   TrendingUp,
   X,
   Receipt,
@@ -33,6 +35,7 @@ import { MODULE_DESCRIPTIONS, type Module } from '@sayman/shared';
 import { api, bindActiveAccessor } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { CommandPalette } from './CommandPalette';
+import { ShortcutsHelp } from './ShortcutsHelp';
 import { TenantSwitcher } from './TenantSwitcher';
 
 interface NavItem {
@@ -45,6 +48,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, requires: 'dashboard' },
   { to: '/ai', label: 'AI Asistan', icon: Sparkles },
   { to: '/payables', label: 'Faturalar', icon: Receipt, requires: 'finance', group: 'Finans' },
@@ -100,6 +104,20 @@ const navItems: NavItem[] = [
   { to: '/master-data/banks', label: 'Bankalar', icon: Landmark, group: 'Master Data' },
   { to: '/master-data/institutions', label: 'Kurumlar', icon: Building, group: 'Master Data' },
   { to: '/subsidiaries', label: 'Yan Şirketler', icon: Network, group: 'Master Data' },
+  {
+    to: '/suppliers',
+    label: 'Tedarikçi Karneleri',
+    icon: Building2,
+    group: 'Analitik',
+    requires: 'finance',
+  },
+  {
+    to: '/tools/bulk-categorize',
+    label: 'Toplu Kategorize',
+    icon: Tag,
+    group: 'Araçlar',
+    requires: 'finance',
+  },
 
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
   { to: '/users', label: 'Kullanıcılar', icon: UserCog, group: 'Sistem' },
@@ -279,6 +297,7 @@ export function AppShell() {
         </main>
       </div>
       <CommandPalette />
+      <ShortcutsHelp />
     </div>
   );
 }

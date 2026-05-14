@@ -44,6 +44,9 @@ import { semanticSearchRouter } from './semantic-search';
 import { integrationsStatusRouter } from './integrations-status';
 import { whatsappRouter } from './whatsapp';
 import { pushRouter } from './push';
+import { aiExplainRouter } from './ai-explain';
+import { supplierScorecardRouter } from './supplier-scorecard';
+import { inboxRouter } from './inbox';
 
 export const apiRouter = Router();
 
@@ -155,3 +158,12 @@ apiRouter.use(whatsappRouter);
 
 // Mobil/web push token kayıt
 apiRouter.use(pushRouter);
+
+// AI: belirli payable için "niye anomali?" Claude açıklaması
+apiRouter.use(aiExplainRouter);
+
+// Tedarikçi performans karnesi
+apiRouter.use(supplierScorecardRouter);
+
+// Eylem-odaklı inbox (bugün ne yapmam gerek)
+apiRouter.use(inboxRouter);

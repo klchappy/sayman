@@ -16,11 +16,18 @@ import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
 import { AIAssistantPage } from './pages/AIAssistant';
+import { BulkCategorizePage } from './pages/BulkCategorize';
 import { ForecastPage } from './pages/Forecast';
 import { ImportPage } from './pages/Import';
 import { InboundWebhooksPage } from './pages/InboundWebhooks';
+import { InboxPage } from './pages/Inbox';
 import { IntegrationsPage } from './pages/Integrations';
 import { OCRPage } from './pages/OCR';
+import { OnboardingPage } from './pages/Onboarding';
+import {
+  SupplierScorecardDetailPage,
+  SupplierScorecardListPage,
+} from './pages/SupplierScorecard';
 import { SubsidiariesPage } from './pages/Subsidiaries';
 import { UsersPage } from './pages/Users';
 import { BanksPage } from './pages/master-data/Banks';
@@ -87,6 +94,11 @@ export default function App() {
         <Route path="/integrations" element={<IntegrationsPage />} />
         <Route path="/integrations/inbound-webhooks" element={<InboundWebhooksPage />} />
         <Route path="/forecast" element={<ForecastPage />} />
+        <Route path="/inbox" element={<InboxPage />} />
+        <Route path="/suppliers" element={<SupplierScorecardListPage />} />
+        <Route path="/suppliers/:name" element={<SupplierScorecardDetailPage />} />
+        <Route path="/tools/bulk-categorize" element={<BulkCategorizePage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
 
         <Route path="/orgs" element={<HomePage />} />
         <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />
