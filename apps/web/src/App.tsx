@@ -19,8 +19,12 @@ import { CompaniesPage } from './pages/master-data/Companies';
 import { InstitutionsPage } from './pages/master-data/Institutions';
 import { PersonsPage } from './pages/master-data/Persons';
 import { PropertiesPage } from './pages/master-data/Properties';
+import { GuaranteesPage } from './pages/finance/Guarantees';
+import { OfficialPaymentsPage } from './pages/finance/OfficialPayments';
 import { PayableDetailPage } from './pages/finance/PayableDetail';
 import { PayablesPage } from './pages/finance/Payables';
+import { RegularPaymentsPage } from './pages/finance/RegularPayments';
+import { SubscriptionsPage } from './pages/finance/Subscriptions';
 
 export default function App() {
   const init = useAuth((s) => s.init);
@@ -49,6 +53,10 @@ export default function App() {
 
         <Route path="/payables" element={<PayablesPage />} />
         <Route path="/payables/:id" element={<PayableDetailPage />} />
+        <Route path="/subscriptions" element={<SubscriptionsPage />} />
+        <Route path="/regular-payments" element={<RegularPaymentsPage />} />
+        <Route path="/official-payments" element={<OfficialPaymentsPage />} />
+        <Route path="/guarantees" element={<GuaranteesPage />} />
 
         <Route path="/master-data/persons" element={<PersonsPage />} />
         <Route path="/master-data/companies" element={<CompaniesPage />} />

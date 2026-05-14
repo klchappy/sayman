@@ -6,12 +6,15 @@ import {
   Building2,
   CheckSquare,
   Home,
+  HomeIcon,
   Landmark,
   Layers,
   LayoutDashboard,
   LogOut,
   Receipt,
+  Repeat,
   Shield,
+  ShieldCheck,
   Users,
 } from 'lucide-react';
 import { useEffect } from 'react';
@@ -32,7 +35,36 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, requires: 'dashboard' },
-  { to: '/payables', label: 'Faturalar', icon: Receipt, requires: 'finance' },
+  { to: '/payables', label: 'Faturalar', icon: Receipt, requires: 'finance', group: 'Finans' },
+  {
+    to: '/subscriptions',
+    label: 'Abonelikler',
+    icon: Repeat,
+    requires: 'subscriptions',
+    group: 'Finans',
+  },
+  {
+    to: '/regular-payments',
+    label: 'Kira & Düzenli',
+    icon: HomeIcon,
+    requires: 'regular_payments',
+    group: 'Finans',
+  },
+  {
+    to: '/official-payments',
+    label: 'Resmi Ödemeler',
+    icon: Landmark,
+    requires: 'official_payments',
+    group: 'Finans',
+  },
+  {
+    to: '/guarantees',
+    label: 'Teminat Mektupları',
+    icon: ShieldCheck,
+    requires: 'guarantees',
+    group: 'Finans',
+  },
+
   { to: '/tasks', label: 'Görevler', icon: CheckSquare, requires: 'tasks' },
   { to: '/notifications', label: 'Bildirimler', icon: Bell },
 

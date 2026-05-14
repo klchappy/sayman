@@ -14,6 +14,10 @@ import { propertiesRouter } from './master-data/properties';
 import { payablesRouter, paymentsRouter } from './finance';
 import { tasksRouter } from './tasks';
 import { notificationsRouter } from './notifications';
+import { subscriptionsRouter } from './subscriptions';
+import { regularPaymentsRouter } from './regular-payments';
+import { officialPaymentsRouter } from './official-payments';
+import { guaranteesRouter } from './guarantees';
 
 export const apiRouter = Router();
 
@@ -41,3 +45,9 @@ apiRouter.use(paymentsRouter);
 // Operasyon (tenant-scope + user-scope)
 apiRouter.use(tasksRouter);
 apiRouter.use(notificationsRouter);
+
+// Yinelenen ödeme modülleri (tenant-scope)
+apiRouter.use(subscriptionsRouter);
+apiRouter.use(regularPaymentsRouter);
+apiRouter.use(officialPaymentsRouter);
+apiRouter.use(guaranteesRouter);
