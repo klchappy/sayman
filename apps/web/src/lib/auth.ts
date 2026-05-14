@@ -1,15 +1,21 @@
 /**
- * Auth + active tenant store — Supabase session + organization/tenant seçimi.
+ * Auth + active tenant store — Hibrit Supabase + Local Auth.
+ *
+ * Strategy:
+ *   - Supabase env varsa → Supabase session
+ *   - Supabase env yoksa → POST /auth/local/sign-in + localStorage token
+ *   - me her iki modda da /v1/me'den gelir (orgs + tenant_overrides)
  *
  * activeOrg + activeTenant: kullanıcının hangi organization ve tenant'ta
- * çalıştığını tutar. Axios interceptor her request öncesi bu değerleri
- * X-Sayman-Org / X-Sayman-Tenant header'larına yapıştırır.
+ * çalıştığını tutar. Axios her request öncesi bu değerleri header'a yapıştırır.
  */
 import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api } from './api';
 import { getSupabase, isSupabaseConfigured } from './supabase';
+
+const LOCAL_TOKEN_KEY = 'sayman-local-token';
 
 export interface MeOrganization {
   id: string;
@@ -46,6 +52,8 @@ export interface ActiveSelection {
 
 interface AuthState {
   session: Session | null;
+  /** Local auth modunda kullanılır — Supabase modunda undefined. */
+  localToken: string | null;
   me: MeData | null;
   active: ActiveSelection;
   loading: boolean;
@@ -57,9 +65,9 @@ interface AuthState {
   setActive: (a: Partial<ActiveSelection>) => void;
 }
 
-function applyToken(session: Session | null) {
-  if (session?.access_token) {
-    api.defaults.headers.common['Authorization'] = `Bearer ${session.access_token}`;
+function applyToken(token: string | null) {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   } else {
     delete api.defaults.headers.common['Authorization'];
   }
@@ -69,32 +77,50 @@ export const useAuth = create<AuthState>()(
   persist(
     (set, get) => ({
       session: null,
+      localToken: null,
       me: null,
       active: { orgSlug: null, tenantSlug: null },
       loading: false,
       initialized: false,
 
       async init() {
-        if (!isSupabaseConfigured) {
-          set({ initialized: true });
-          return;
-        }
-        const supabase = getSupabase();
-        const { data } = await supabase.auth.getSession();
-        applyToken(data.session);
-        set({ session: data.session });
-
-        supabase.auth.onAuthStateChange((_event, session) => {
-          applyToken(session);
-          set({ session });
-          if (!session) set({ me: null, active: { orgSlug: null, tenantSlug: null } });
-        });
-
-        if (data.session) {
+        // 1. Local token varsa onu önce dene (her iki mod için)
+        const storedLocal = localStorage.getItem(LOCAL_TOKEN_KEY);
+        if (storedLocal) {
+          applyToken(storedLocal);
+          set({ localToken: storedLocal });
           try {
             await get().refreshMe();
+            set({ initialized: true });
+            return;
           } catch {
-            // /v1/me 404 → public.users profili eksik
+            localStorage.removeItem(LOCAL_TOKEN_KEY);
+            applyToken(null);
+            set({ localToken: null });
+          }
+        }
+
+        // 2. Supabase env varsa onu da restore et
+        if (isSupabaseConfigured) {
+          const supabase = getSupabase();
+          const { data } = await supabase.auth.getSession();
+          if (data.session) {
+            applyToken(data.session.access_token);
+            set({ session: data.session });
+          }
+
+          supabase.auth.onAuthStateChange((_event, session) => {
+            applyToken(session?.access_token ?? null);
+            set({ session });
+            if (!session) set({ me: null, active: { orgSlug: null, tenantSlug: null } });
+          });
+
+          if (data.session) {
+            try {
+              await get().refreshMe();
+            } catch {
+              // /v1/me 404 → public.users profili eksik
+            }
           }
         }
         set({ initialized: true });
@@ -103,11 +129,28 @@ export const useAuth = create<AuthState>()(
       async signIn(email, password) {
         set({ loading: true });
         try {
-          const supabase = getSupabase();
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-          applyToken(data.session);
-          set({ session: data.session });
+          if (isSupabaseConfigured) {
+            // Önce Supabase dene
+            const supabase = getSupabase();
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            if (!error && data.session) {
+              applyToken(data.session.access_token);
+              set({ session: data.session });
+              await get().refreshMe();
+              return;
+            }
+            // Supabase başarısız → local'e fallback (hibrit)
+          }
+
+          // Local auth
+          const res = await api.post<{ access_token: string }>('/auth/local/sign-in', {
+            identifier: email,
+            password,
+          });
+          const token = res.data.access_token;
+          localStorage.setItem(LOCAL_TOKEN_KEY, token);
+          applyToken(token);
+          set({ localToken: token, session: null });
           await get().refreshMe();
         } finally {
           set({ loading: false });
@@ -115,12 +158,26 @@ export const useAuth = create<AuthState>()(
       },
 
       async signOut() {
+        const { localToken } = get();
+        if (localToken) {
+          try {
+            await api.post('/auth/logout');
+          } catch {
+            // backend down → ignore
+          }
+          localStorage.removeItem(LOCAL_TOKEN_KEY);
+        }
         if (isSupabaseConfigured) {
           const supabase = getSupabase();
-          await supabase.auth.signOut();
+          await supabase.auth.signOut().catch(() => undefined);
         }
         applyToken(null);
-        set({ session: null, me: null, active: { orgSlug: null, tenantSlug: null } });
+        set({
+          session: null,
+          localToken: null,
+          me: null,
+          active: { orgSlug: null, tenantSlug: null },
+        });
       },
 
       async refreshMe() {

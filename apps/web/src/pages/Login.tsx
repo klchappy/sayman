@@ -2,7 +2,6 @@ import { LogIn } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { isSupabaseConfigured } from '../lib/supabase';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -21,21 +20,6 @@ export function LoginPage() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }
-
-  if (!isSupabaseConfigured) {
-    return (
-      <div className="min-h-full grid place-items-center px-6">
-        <div className="card max-w-md text-center">
-          <h1 className="text-xl font-semibold mb-2">Supabase yapılandırılmamış</h1>
-          <p className="text-sm text-brand-600">
-            <code className="font-mono">VITE_SUPABASE_URL</code> ve{' '}
-            <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> env değişkenleri eksik.
-            Production'da Coolify'da Build Arguments olarak set edilmelidir.
-          </p>
-        </div>
-      </div>
-    );
   }
 
   return (

@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const initialized = useAuth((s) => s.initialized);
   const session = useAuth((s) => s.session);
+  const localToken = useAuth((s) => s.localToken);
   const init = useAuth((s) => s.init);
   const location = useLocation();
 
@@ -18,7 +19,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!session) {
+  // Hibrit: Supabase session veya local token varsa giriş yapılmış say
+  const authed = !!session || !!localToken;
+  if (!authed) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
