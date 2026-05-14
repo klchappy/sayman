@@ -125,16 +125,26 @@ interface DispatchEmailResult {
 }
 
 export async function dispatchForgotEmail(input: DispatchEmailInput): Promise<DispatchEmailResult> {
-  const { token } = await createResetToken(input.account.id, input.ip, input.user_agent);
+  const { token, expires_at } = await createResetToken(input.account.id, input.ip, input.user_agent);
   const webUrl = env.PUBLIC_WEB_URL ?? env.CLIENT_URL;
   const action_link = `${webUrl}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
-  // Faz 4+ : Resend/SMTP gateway. Şimdilik fallback.
+  // Resend gateway varsa mail at; yoksa fallback
+  const { sendPasswordResetEmail } = await import('./email');
+  const result = await sendPasswordResetEmail({
+    to: input.account.email,
+    resetUrl: action_link,
+    expiresAt: expires_at,
+  });
+
   logger.info(
-    { email: input.account.email, action_link_hint: action_link.slice(0, 60) + '…' },
-    'Password reset email dispatch (link_generated mode)',
+    { email: input.account.email, delivered: result.delivered },
+    'Password reset email dispatched',
   );
-  return { delivered: 'link_generated', action_link };
+  return {
+    delivered: result.delivered === 'email' ? 'sent' : 'link_generated',
+    action_link,
+  };
 }
 
 interface DispatchPhoneInput {

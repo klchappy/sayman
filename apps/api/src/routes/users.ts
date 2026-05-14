@@ -39,6 +39,7 @@ import {
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
 import { env } from '../config/env';
+import { sendInviteEmail } from '../lib/email';
 import { HttpError, requireOrg } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { signLocalJwt } from '../lib/local-auth';
@@ -245,11 +246,29 @@ usersRouter.post(
 
       const acceptUrl = `${env.PUBLIC_WEB_URL ?? 'https://sayman.deploi.net'}/auth/accept-invite?token=${tokenPlain}`;
 
-      // Gateway yoksa caller (UI) link gösterir
+      // Org adını çek (e-posta için)
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, req.activeOrgId!));
+
+      const mailResult = await sendInviteEmail({
+        to: email,
+        inviterName: req.authUser?.full_name ?? req.authUser?.email ?? null,
+        orgName: org?.name ?? 'Sayman',
+        roleLabel: body.role,
+        acceptUrl,
+        expiresAt: expires_at,
+      });
+
+      // Gateway varsa: mail atıldı. Yoksa: caller (UI) link gösterir.
       res.status(201).json({
         data: row,
+        delivered: mailResult.delivered,
+        message_id: mailResult.message_id,
+        // Fallback mode'da action_link UI'da gösterilir; email mode'da da paylaşılabilir
         action_link: acceptUrl,
-        // Plain token yalnız ilk response'da döner (test/dev için); prod'da email gateway gönderir
+        // Plain token yalnız dev'de döner; prod'da gizli
         token: env.NODE_ENV === 'production' ? undefined : tokenPlain,
       });
     } catch (err) {

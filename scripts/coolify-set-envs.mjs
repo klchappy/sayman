@@ -54,7 +54,7 @@ async function bulkEnvs(appUuid, envObj) {
   return true;
 }
 
-console.log('=== sayman-api env (10 değişken) ===');
+console.log('=== sayman-api env (13 değişken) ===');
 await bulkEnvs(API_UUID, {
   NODE_ENV: 'production',
   PORT: '4300',
@@ -66,6 +66,9 @@ await bulkEnvs(API_UUID, {
   SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
   JWT_SECRET: env.JWT_SECRET,
+  RESEND_API_KEY: env.RESEND_API_KEY,
+  EMAIL_FROM: env.EMAIL_FROM,
+  PUBLIC_WEB_URL: env.PUBLIC_WEB_URL ?? PROD_CLIENT_URL,
 });
 
 console.log('\n=== sayman-web build args (3 değişken) ===');

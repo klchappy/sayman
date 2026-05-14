@@ -47,6 +47,17 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().url().optional(),
   ),
+
+  /** Resend e-posta gateway (opsiyonel — yapılandırılmazsa fallback_link mode) */
+  RESEND_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(10).optional(),
+  ),
+  /** Gönderen adresi — Resend'de verify edilmiş domain'den. Örn: noreply@sayman.deploi.net */
+  EMAIL_FROM: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().email().optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);
@@ -57,4 +68,5 @@ export const isDev = env.NODE_ENV === 'development';
 export const isConfigured = {
   db: Boolean(env.DATABASE_URL),
   supabase: Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
+  email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
 };
