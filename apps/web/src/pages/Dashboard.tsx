@@ -177,6 +177,9 @@ export function DashboardPage() {
           {/* === Forecast Widget === */}
           {has('finance') && <ForecastWidget />}
 
+          {/* === Alacak KPI Widget === */}
+          {has('finance') && <SalesKpiWidget />}
+
           {/* === Cashflow chart === */}
           {has('finance') && (
             <section className="card mb-6">
@@ -555,6 +558,76 @@ function ForecastWidget() {
           />
         </ComposedChart>
       </ResponsiveContainer>
+    </section>
+  );
+}
+
+interface SalesSummaryData {
+  total_amount: number;
+  paid_amount: number;
+  outstanding: number;
+  overdue_count: number;
+  overdue_amount: number;
+  collected_this_month: number;
+  invoice_count: number;
+}
+
+function SalesKpiWidget() {
+  const q = useQuery({
+    queryKey: ['sales-summary-dashboard'],
+    queryFn: async () => {
+      const res = await api.get<{ data: SalesSummaryData }>('/sales-invoices/summary');
+      return res.data.data;
+    },
+  });
+
+  if (!q.data || q.data.invoice_count === 0) return null;
+
+  return (
+    <section className="card mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+          <Coins className="size-5 text-emerald-600" />
+          Alacak Özet
+        </h2>
+        <Link
+          to="/sales-invoices"
+          className="text-xs text-brand-600 dark:text-slate-400 hover:text-brand-900"
+        >
+          Tümü →
+        </Link>
+      </div>
+      <div className="grid sm:grid-cols-4 gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Toplam Alacak</p>
+          <p className="text-xl font-semibold font-mono mt-1 text-brand-900 dark:text-slate-100">
+            {fmtTRY(q.data.outstanding)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Geciken</p>
+          <p
+            className={`text-xl font-semibold font-mono mt-1 ${
+              q.data.overdue_count > 0 ? 'text-red-600' : 'text-brand-900 dark:text-slate-100'
+            }`}
+          >
+            {fmtTRY(q.data.overdue_amount)}
+          </p>
+          <p className="text-[10px] text-brand-400">{q.data.overdue_count} fatura</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Bu Ay Tahsil</p>
+          <p className="text-xl font-semibold font-mono mt-1 text-emerald-700 dark:text-emerald-400">
+            {fmtTRY(q.data.collected_this_month)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Fatura Sayısı</p>
+          <p className="text-xl font-semibold mt-1 text-brand-900 dark:text-slate-100">
+            {q.data.invoice_count}
+          </p>
+        </div>
+      </div>
     </section>
   );
 }

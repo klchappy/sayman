@@ -22,8 +22,11 @@ import type {
   NormalizedCariAccount,
   NormalizedCariMovement,
   NormalizedInvoice,
+  NormalizedSalesInvoice,
+  NormalizedStockItem,
   PushPayloadPayable,
   PushPayloadPayment,
+  PushPayloadSalesInvoice,
   PushResult,
   TestResult,
 } from './types';
@@ -105,6 +108,40 @@ interface ParasutPurchaseBill {
   relationships?: {
     supplier?: { data?: { id: string; type: string } };
     contact?: { data?: { id: string; type: string } };
+  };
+}
+
+interface ParasutSalesInvoice {
+  id: string;
+  attributes: {
+    description?: string;
+    invoice_no?: string;
+    issue_date?: string;
+    due_date?: string;
+    net_total?: string;
+    gross_total?: string;
+    remaining?: string;
+    currency?: string;
+    payment_status?: string;
+    [k: string]: unknown;
+  };
+  relationships?: {
+    contact?: { data?: { id: string; type: string } };
+  };
+}
+
+interface ParasutProduct {
+  id: string;
+  attributes: {
+    code?: string;
+    name?: string;
+    unit?: string;
+    purchase_price?: string;
+    sale_price?: string;
+    currency?: string;
+    inventory_tracking?: boolean;
+    stock_count?: string;
+    [k: string]: unknown;
   };
 }
 
@@ -483,5 +520,194 @@ export const parasutAdapter: ErpAdapter = {
     }
     const data = (await res.json()) as { data: { id: string } };
     return { external_id: data.data.id, raw_response: data };
+  },
+
+  /**
+   * Paraşüt satış faturalarını (sales_invoices) çek.
+   * Sayman sales_invoices'a yansır.
+   */
+  async syncSalesInvoices(
+    config: AdapterConfig,
+    since: string | null,
+  ): Promise<NormalizedSalesInvoice[]> {
+    const cfg = config as ParasutConfig;
+    const token = await getToken(cfg);
+    const sinceFilter = since ? `&filter[issue_date_after]=${since}` : '';
+    const all: NormalizedSalesInvoice[] = [];
+    let page = 1;
+    while (true) {
+      const res = await fetch(
+        `${PARASUT_BASE}/v4/${cfg.company_id}/sales_invoices?page[size]=${PAGE_SIZE}&page[number]=${page}&include=contact${sinceFilter}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) {
+        if (res.status === 404) break;
+        throw new Error(`Paraşüt sales_invoices ${res.status}`);
+      }
+      const data = (await res.json()) as ParasutListResponse<ParasutSalesInvoice> & {
+        included?: Array<{ id: string; type: string; attributes: { name?: string } }>;
+      };
+      const customerNameById = new Map<string, string>();
+      for (const inc of data.included ?? []) {
+        if (inc.type === 'contacts' && inc.attributes?.name) {
+          customerNameById.set(inc.id, inc.attributes.name);
+        }
+      }
+      for (const b of data.data) {
+        const cariExt = b.relationships?.contact?.data?.id ?? null;
+        const gross = Number(b.attributes.gross_total ?? b.attributes.net_total ?? 0);
+        const remaining = Number(b.attributes.remaining ?? gross);
+        const paid = Math.max(0, gross - remaining);
+        all.push({
+          external_id: b.id,
+          invoice_number: b.attributes.invoice_no ?? null,
+          title:
+            b.attributes.description ||
+            (customerNameById.get(cariExt ?? '') ?? `Paraşüt Satış #${b.attributes.invoice_no ?? b.id}`),
+          issue_date: b.attributes.issue_date ?? null,
+          due_date: b.attributes.due_date ?? null,
+          amount: gross,
+          currency: b.attributes.currency ?? 'TRL',
+          cari_external_id: cariExt,
+          customer_name: cariExt ? (customerNameById.get(cariExt) ?? null) : null,
+          payment_status: b.attributes.payment_status ?? null,
+          paid_amount: paid,
+          raw_data: b.attributes,
+        });
+      }
+      if (!data.meta?.total_pages || page >= data.meta.total_pages) break;
+      page++;
+      if (page > 100) break;
+    }
+    return all;
+  },
+
+  /**
+   * Paraşüt'e satış faturası (sales_invoices) oluştur.
+   */
+  async pushSalesInvoice(
+    config: AdapterConfig,
+    payload: PushPayloadSalesInvoice,
+  ): Promise<PushResult> {
+    const cfg = config as ParasutConfig;
+    const token = await getToken(cfg);
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    // Customer ID
+    let contactId = payload.cari_external_id ?? null;
+    if (!contactId && payload.customer_name) {
+      const searchRes = await fetch(
+        `${PARASUT_BASE}/v4/${cfg.company_id}/contacts?filter[name]=${encodeURIComponent(payload.customer_name)}&page[size]=5`,
+        { headers },
+      );
+      if (searchRes.ok) {
+        const data = (await searchRes.json()) as ParasutListResponse<ParasutContact>;
+        if (data.data.length > 0) contactId = data.data[0]!.id;
+      }
+      if (!contactId) {
+        const createRes = await fetch(`${PARASUT_BASE}/v4/${cfg.company_id}/contacts`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            data: {
+              type: 'contacts',
+              attributes: {
+                name: payload.customer_name,
+                account_type: 'customer',
+                contact_type: 'company',
+              },
+            },
+          }),
+        });
+        if (!createRes.ok) {
+          const errTxt = await createRes.text();
+          throw new Error(`Paraşüt müşteri yaratılamadı: ${createRes.status} ${errTxt.slice(0, 150)}`);
+        }
+        const created = (await createRes.json()) as { data: { id: string } };
+        contactId = created.data.id;
+      }
+    }
+    if (!contactId) {
+      throw new Error('Müşteri belirlenemedi (customer_name veya cari_external_id zorunlu)');
+    }
+
+    const body = {
+      data: {
+        type: 'sales_invoices',
+        attributes: {
+          item_type: 'invoice',
+          description: payload.title,
+          issue_date: payload.issue_date ?? new Date().toISOString().slice(0, 10),
+          due_date: payload.due_date ?? payload.issue_date,
+          invoice_no: payload.invoice_number ?? '',
+          currency: payload.currency,
+          gross_total: payload.amount,
+          net_total: payload.amount,
+        },
+        relationships: {
+          contact: { data: { id: contactId, type: 'contacts' } },
+        },
+      },
+    };
+
+    const res = await fetch(`${PARASUT_BASE}/v4/${cfg.company_id}/sales_invoices`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errTxt = await res.text();
+      throw new Error(`Paraşüt sales_invoice: ${res.status} ${errTxt.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { data: { id: string } };
+    return {
+      external_id: data.data.id,
+      external_url: `https://app.parasut.com/${cfg.company_id}/sales_invoices/${data.data.id}`,
+      raw_response: data,
+    };
+  },
+
+  /**
+   * Paraşüt ürünlerini ve stok bakiyesini çek.
+   * Endpoint: GET /v4/{company_id}/products
+   */
+  async syncStock(config: AdapterConfig): Promise<NormalizedStockItem[]> {
+    const cfg = config as ParasutConfig;
+    const token = await getToken(cfg);
+    const all: NormalizedStockItem[] = [];
+    let page = 1;
+    while (true) {
+      const res = await fetch(
+        `${PARASUT_BASE}/v4/${cfg.company_id}/products?page[size]=${PAGE_SIZE}&page[number]=${page}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) {
+        if (res.status === 404) break;
+        throw new Error(`Paraşüt products ${res.status}`);
+      }
+      const data = (await res.json()) as ParasutListResponse<ParasutProduct>;
+      for (const p of data.data) {
+        all.push({
+          external_id: p.id,
+          code: p.attributes.code ?? null,
+          name: p.attributes.name || `Ürün ${p.id}`,
+          unit: p.attributes.unit ?? null,
+          quantity: Number(p.attributes.stock_count ?? 0),
+          purchase_price: p.attributes.purchase_price
+            ? Number(p.attributes.purchase_price)
+            : null,
+          sale_price: p.attributes.sale_price ? Number(p.attributes.sale_price) : null,
+          currency: p.attributes.currency ?? 'TRY',
+          raw_data: p.attributes,
+        });
+      }
+      if (!data.meta?.total_pages || page >= data.meta.total_pages) break;
+      page++;
+      if (page > 100) break;
+    }
+    return all;
   },
 };

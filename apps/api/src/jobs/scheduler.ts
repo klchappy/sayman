@@ -15,6 +15,7 @@ import { runEmbedPayables } from './embed-payables';
 import { runFetchFxRates } from './fetch-fx-rates';
 import { runGenerateAiSummary } from './generate-ai-summary';
 import { runGeneratePeriods } from './generate-periods';
+import { runGenerateTaxCalendar } from './generate-tax-calendar';
 import { runSendReminders } from './send-reminders';
 import { runSyncErpConnections } from './sync-erp-connections';
 import { runUpdateStatuses } from './update-statuses';
@@ -30,7 +31,8 @@ export type JobName =
   | 'detect-anomalies'
   | 'generate-ai-summary'
   | 'embed-payables'
-  | 'sync-erp-connections';
+  | 'sync-erp-connections'
+  | 'generate-tax-calendar';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -53,6 +55,8 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runEmbedPayables();
     case 'sync-erp-connections':
       return runSyncErpConnections();
+    case 'generate-tax-calendar':
+      return runGenerateTaxCalendar();
   }
 }
 
@@ -148,6 +152,17 @@ export function startCronJobs() {
     () => {
       runSyncErpConnections().catch((err) =>
         logger.error({ err }, 'sync-erp-connections crashed'),
+      );
+    },
+    { timezone: TZ },
+  );
+
+  // Her ayın 1'i 02:00 TR — Türk vergi takvimi gelecek 90 günün event'leri
+  cron.schedule(
+    '0 2 1 * *',
+    () => {
+      runGenerateTaxCalendar().catch((err) =>
+        logger.error({ err }, 'generate-tax-calendar crashed'),
       );
     },
     { timezone: TZ },

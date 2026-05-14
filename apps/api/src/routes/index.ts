@@ -53,6 +53,9 @@ import { paymentApprovalsRouter } from './payment-approvals';
 import { erpRouter } from './erp';
 import { erpPushRouter } from './erp-push';
 import { cariRouter } from './cari';
+import { salesInvoicesRouter } from './sales-invoices';
+import { stockRouter } from './stock';
+import { taxCalendarRouter } from './tax-calendar';
 
 export const apiRouter = Router();
 
@@ -191,3 +194,12 @@ apiRouter.use(erpPushRouter);
 
 // Cari hesap + ekstre okuma
 apiRouter.use(cariRouter);
+
+// Satış faturaları (alacak tarafı)
+apiRouter.use(salesInvoicesRouter);
+
+// Stok bakiyesi (ERP'den pull)
+apiRouter.use(stockRouter);
+
+// Türk vergi takvimi (auto + manuel)
+apiRouter.use(taxCalendarRouter);

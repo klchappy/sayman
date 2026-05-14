@@ -21,6 +21,9 @@ import { BulkCategorizePage } from './pages/BulkCategorize';
 import { CariDetailPage, CariListPage } from './pages/Cari';
 import { ErpConnectionsPage } from './pages/ErpConnections';
 import { ForecastPage } from './pages/Forecast';
+import { SalesInvoicesPage } from './pages/SalesInvoices';
+import { StockPage } from './pages/Stock';
+import { TaxCalendarPage } from './pages/TaxCalendar';
 import { ImportPage } from './pages/Import';
 import { InboundWebhooksPage } from './pages/InboundWebhooks';
 import { InboxPage } from './pages/Inbox';
@@ -109,6 +112,9 @@ export default function App() {
         <Route path="/erp" element={<ErpConnectionsPage />} />
         <Route path="/cari" element={<CariListPage />} />
         <Route path="/cari/:id" element={<CariDetailPage />} />
+        <Route path="/sales-invoices" element={<SalesInvoicesPage />} />
+        <Route path="/stock" element={<StockPage />} />
+        <Route path="/tax-calendar" element={<TaxCalendarPage />} />
 
         <Route path="/orgs" element={<HomePage />} />
         <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />

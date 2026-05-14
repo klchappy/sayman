@@ -71,6 +71,48 @@ export interface NormalizedInvoice {
   raw_data?: Record<string, unknown>;
 }
 
+/** Satış faturası — Sayman sales_invoices'a yansır */
+export interface NormalizedSalesInvoice {
+  external_id: string;
+  invoice_number?: string | null;
+  title: string;
+  issue_date?: string | null;
+  due_date?: string | null;
+  amount: number;
+  currency: string;
+  cari_external_id?: string | null;
+  customer_name?: string | null;
+  payment_status?: string | null;
+  paid_amount?: number;
+  raw_data?: Record<string, unknown>;
+}
+
+export interface PushPayloadSalesInvoice {
+  sales_invoice_id: string;
+  customer_name?: string | null;
+  cari_external_id?: string | null;
+  title: string;
+  invoice_number?: string | null;
+  amount: number;
+  currency: string;
+  issue_date?: string | null;
+  due_date?: string | null;
+  notes?: string | null;
+}
+
+/** ERP stok kaydı */
+export interface NormalizedStockItem {
+  external_id: string;
+  code?: string | null;
+  name: string;
+  unit?: string | null;
+  quantity: number;
+  purchase_price?: number | null;
+  sale_price?: number | null;
+  currency: string;
+  raw_data?: Record<string, unknown>;
+}
+
 export interface PushPayloadPayable {
   /** Sayman payable id (debugging için) */
   payable_id: string;
@@ -146,6 +188,19 @@ export interface ErpAdapter {
     ctx: AdapterContext,
   ): Promise<NormalizedInvoice[]>;
 
+  /** ERP'den satis faturalari cek (Sayman alacak tarafi) */
+  syncSalesInvoices?(
+    config: AdapterConfig,
+    since: string | null,
+    ctx: AdapterContext,
+  ): Promise<NormalizedSalesInvoice[]>;
+
+  /** ERP'den stok bakiyesi cek (urunler + miktar) */
+  syncStock?(
+    config: AdapterConfig,
+    ctx: AdapterContext,
+  ): Promise<NormalizedStockItem[]>;
+
   /** Push: Sayman payable'ı ERP'ye fatura/alış faturası olarak yarat */
   pushInvoice?(
     config: AdapterConfig,
@@ -157,6 +212,13 @@ export interface ErpAdapter {
   pushPayment?(
     config: AdapterConfig,
     payload: PushPayloadPayment,
+    ctx: AdapterContext,
+  ): Promise<PushResult>;
+
+  /** Push: Sayman satis faturasi ERP'de satis faturasi olarak yarat */
+  pushSalesInvoice?(
+    config: AdapterConfig,
+    payload: PushPayloadSalesInvoice,
     ctx: AdapterContext,
   ): Promise<PushResult>;
 }
