@@ -19,6 +19,7 @@ import {
   payableStatusSchema,
   paymentMethodSchema,
   ownerTypeSchema,
+  suggestCategory,
   transactionStatusSchema,
 } from '@sayman/shared';
 import { requireAuth } from '../middleware/auth';
@@ -90,6 +91,15 @@ payablesRouter.post('/payables', requireAuth, requireTenant, async (req, res, ne
       if (match) companyId = match.id;
     }
 
+    // Auto-categorize: category yoksa title/supplier'dan öner
+    let category = body.category ?? null;
+    if (!category) {
+      const suggestion = suggestCategory(body.title, body.supplier_name, body.notes);
+      if (suggestion && suggestion.confidence >= 0.3) {
+        category = suggestion.category;
+      }
+    }
+
     const [row] = await db
       .insert(payableItems)
       .values({
@@ -98,7 +108,7 @@ payablesRouter.post('/payables', requireAuth, requireTenant, async (req, res, ne
         company_id: companyId,
         person_id: body.person_id ?? null,
         title: body.title,
-        category: body.category ?? null,
+        category,
         institution_id: body.institution_id ?? null,
         supplier_name: body.supplier_name ?? null,
         invoice_number: body.invoice_number ?? null,

@@ -11,6 +11,7 @@
  */
 import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { suggestCategory } from '@sayman/shared';
 import {
   banks,
   companies,
@@ -254,14 +255,20 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     insert: async (rows, { orgId, tenantId }) => {
       const db = getDb();
       if (!tenantId) throw new Error('tenant context required');
-      // Auto-match: supplier_name → company_id
+      // Auto-match: supplier_name → company_id + auto-categorize
       const matched = await Promise.all(
         rows.map(async (r) => {
           let company_id = r.company_id ?? null;
           if (!company_id && r.supplier_name) {
             company_id = await matchCompanyByName(orgId, r.supplier_name);
           }
-          return { ...r, company_id };
+          // Auto-categorize
+          let category = r.category ?? null;
+          if (!category) {
+            const sug = suggestCategory(r.title, r.supplier_name, r.notes);
+            if (sug && sug.confidence >= 0.3) category = sug.category;
+          }
+          return { ...r, company_id, category };
         }),
       );
       const inserted = await db

@@ -70,6 +70,12 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().url().optional(),
   ),
+
+  /** Anthropic Claude API key (AI asistan için) — sk-ant-... */
+  ANTHROPIC_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(20).optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);
@@ -83,4 +89,5 @@ export const isConfigured = {
   email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
   telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
   sentry: Boolean(env.SENTRY_DSN),
+  ai: Boolean(env.ANTHROPIC_API_KEY),
 };

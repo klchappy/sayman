@@ -21,6 +21,7 @@ import {
   Search,
   Shield,
   ShieldCheck,
+  Sparkles,
   UserCog,
   Users,
 } from 'lucide-react';
@@ -43,6 +44,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, requires: 'dashboard' },
+  { to: '/ai', label: 'AI Asistan', icon: Sparkles },
   { to: '/payables', label: 'Faturalar', icon: Receipt, requires: 'finance', group: 'Finans' },
   {
     to: '/subscriptions',

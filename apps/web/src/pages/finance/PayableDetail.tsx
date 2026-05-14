@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileDown, Plus } from 'lucide-react';
+import { ArrowLeft, FileDown, Plus, Receipt } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PAYMENT_METHODS, type PaymentMethod, type PayableStatus } from '@sayman/shared';
@@ -108,8 +108,9 @@ export function PayableDetailPage() {
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="grid md:grid-cols-2 gap-4 mb-6">
         <AttachmentBox relatedTable="payable_items" relatedId={p.id} />
+        <SimilarPayables payableId={p.id} />
       </div>
 
       <section className="card">
@@ -155,6 +156,65 @@ export function PayableDetailPage() {
         )}
       </section>
     </div>
+  );
+}
+
+// --- Benzer Faturalar (metadata score) ---
+interface SimilarItem {
+  id: string;
+  title: string;
+  supplier_name: string | null;
+  amount: string;
+  due_date: string | null;
+  status: string;
+  invoice_number: string | null;
+  category: string | null;
+  score: number;
+}
+
+function SimilarPayables({ payableId }: { payableId: string }) {
+  const q = useQuery({
+    queryKey: ['similar-payable', payableId],
+    queryFn: async () => {
+      const res = await api.get<{ data: SimilarItem[] }>(`/similar/payable/${payableId}`);
+      return res.data.data;
+    },
+  });
+
+  return (
+    <section className="card">
+      <h3 className="font-semibold text-brand-900 mb-3 flex items-center gap-2">
+        <Receipt className="size-5" />
+        Benzer Faturalar
+      </h3>
+      {q.isLoading && <p className="text-sm text-brand-500">Aranıyor…</p>}
+      {q.data && q.data.length === 0 && (
+        <p className="text-sm text-brand-500 text-center py-4">Benzer kayıt yok.</p>
+      )}
+      {q.data && q.data.length > 0 && (
+        <ul className="space-y-2 max-h-72 overflow-y-auto">
+          {q.data.map((s) => (
+            <li key={s.id}>
+              <Link
+                to={`/payables/${s.id}`}
+                className="flex items-center justify-between px-2 py-2 rounded hover:bg-brand-50 group"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-brand-900 truncate">{s.title}</p>
+                  <p className="text-xs text-brand-500 truncate">
+                    {s.supplier_name ?? '-'} · {s.due_date ?? '-'} · {s.category ?? '-'}
+                  </p>
+                </div>
+                <div className="text-right shrink-0 ml-3">
+                  <p className="font-mono text-sm text-brand-900">{fmtTRY(s.amount)}</p>
+                  <p className="text-[10px] text-brand-400">score {s.score}</p>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

@@ -10,6 +10,7 @@ import cron from 'node-cron';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { runDeliverWebhooks } from './deliver-webhooks';
+import { runDetectAnomalies } from './detect-anomalies';
 import { runFetchFxRates } from './fetch-fx-rates';
 import { runGeneratePeriods } from './generate-periods';
 import { runSendReminders } from './send-reminders';
@@ -22,7 +23,8 @@ export type JobName =
   | 'send-reminders'
   | 'update-statuses'
   | 'fetch-fx-rates'
-  | 'deliver-webhooks';
+  | 'deliver-webhooks'
+  | 'detect-anomalies';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -37,6 +39,8 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runFetchFxRates();
     case 'deliver-webhooks':
       return runDeliverWebhooks();
+    case 'detect-anomalies':
+      return runDetectAnomalies();
   }
 }
 
@@ -97,9 +101,18 @@ export function startCronJobs() {
     { timezone: TZ },
   );
 
+  // Daily 10:00 TR — anomali tespiti
+  cron.schedule(
+    '0 10 * * *',
+    () => {
+      runDetectAnomalies().catch((err) => logger.error({ err }, 'detect-anomalies crashed'));
+    },
+    { timezone: TZ },
+  );
+
   started = true;
   logger.info(
     { tz: TZ },
-    'cron jobs scheduled (generate@03:00, reminders@09:00, status@:05, fx@16:00, webhooks@*)',
+    'cron jobs scheduled (generate@03:00, reminders@09:00, anomaly@10:00, status@:05, fx@16:00, webhooks@*)',
   );
 }

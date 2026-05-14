@@ -34,6 +34,8 @@ import { reportsRouter } from './reports';
 import { openApiRouter } from './openapi';
 import { realtimeRouter } from './realtime';
 import { smartImportRouter } from './smart-import';
+import { similarRouter } from './similar';
+import { aiAssistantRouter } from './ai-assistant';
 
 export const apiRouter = Router();
 
@@ -115,3 +117,9 @@ apiRouter.use(realtimeRouter);
 
 // Smart import: tek dosya, auto-detect tip + yonlendirme
 apiRouter.use(smartImportRouter);
+
+// Benzer faturalar (metadata score)
+apiRouter.use(similarRouter);
+
+// AI asistan (Claude API doğal dil sorgu)
+apiRouter.use(aiAssistantRouter);

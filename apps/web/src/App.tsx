@@ -15,6 +15,7 @@ import { AcceptInvitePage } from './pages/auth/AcceptInvite';
 import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
+import { AIAssistantPage } from './pages/AIAssistant';
 import { ImportPage } from './pages/Import';
 import { OCRPage } from './pages/OCR';
 import { SubsidiariesPage } from './pages/Subsidiaries';
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/users" element={<UsersPage />} />
         <Route path="/import" element={<ImportPage />} />
         <Route path="/ocr" element={<OCRPage />} />
+        <Route path="/ai" element={<AIAssistantPage />} />
         <Route path="/subsidiaries" element={<SubsidiariesPage />} />
 
         <Route path="/security" element={<SecurityPage />} />
