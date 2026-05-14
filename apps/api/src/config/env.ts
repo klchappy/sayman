@@ -26,6 +26,27 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().min(20).optional(),
   ),
+
+  // SANTRAL hibrit refactor — auth + encryption
+  /** AES-GCM key derivation için ayrı bir secret (verilmezse JWT_SECRET kullanılır) */
+  ENCRYPTION_SECRET: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(32).optional(),
+  ),
+  /** Platform admin email (boot-time idempotent seed için) */
+  PLATFORM_ADMIN_EMAIL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().email().optional(),
+  ),
+  PLATFORM_ADMIN_NAME: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(2).optional(),
+  ),
+  /** Reset password linki için frontend base URL — production: https://sayman.deploi.net */
+  PUBLIC_WEB_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);
