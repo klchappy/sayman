@@ -6,8 +6,11 @@ import { meRouter } from './me';
 import { organizationsRouter } from './organizations';
 import { securityRouter } from './security';
 import { tenantsRouter } from './tenants';
-import { personsRouter } from './master-data/persons';
+import { banksRouter } from './master-data/banks';
 import { companiesRouter } from './master-data/companies';
+import { institutionsRouter } from './master-data/institutions';
+import { personsRouter } from './master-data/persons';
+import { propertiesRouter } from './master-data/properties';
 import { payablesRouter, paymentsRouter } from './finance';
 
 export const apiRouter = Router();
@@ -22,9 +25,12 @@ apiRouter.use(securityRouter);
 apiRouter.use(organizationsRouter);
 apiRouter.use(tenantsRouter);
 
-// Master data (organization-scope, share_scope filtreli)
+// Master data (organization-scope, share_scope filtreli where applicable)
 apiRouter.use(personsRouter);
 apiRouter.use(companiesRouter);
+apiRouter.use(propertiesRouter);
+apiRouter.use(banksRouter);
+apiRouter.use(institutionsRouter);
 
 // Finance (tenant-scope)
 apiRouter.use(payablesRouter);

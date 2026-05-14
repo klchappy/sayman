@@ -11,8 +11,11 @@ import { SecurityPage } from './pages/Security';
 import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
+import { BanksPage } from './pages/master-data/Banks';
 import { CompaniesPage } from './pages/master-data/Companies';
+import { InstitutionsPage } from './pages/master-data/Institutions';
 import { PersonsPage } from './pages/master-data/Persons';
+import { PropertiesPage } from './pages/master-data/Properties';
 import { PayableDetailPage } from './pages/finance/PayableDetail';
 import { PayablesPage } from './pages/finance/Payables';
 
@@ -46,6 +49,9 @@ export default function App() {
 
         <Route path="/master-data/persons" element={<PersonsPage />} />
         <Route path="/master-data/companies" element={<CompaniesPage />} />
+        <Route path="/master-data/properties" element={<PropertiesPage />} />
+        <Route path="/master-data/banks" element={<BanksPage />} />
+        <Route path="/master-data/institutions" element={<InstitutionsPage />} />
 
         <Route path="/security" element={<SecurityPage />} />
 
