@@ -6,8 +6,11 @@ import { useAuth } from './lib/auth';
 import { DashboardPage } from './pages/Dashboard';
 import { HomePage } from './pages/Home';
 import { LoginPage } from './pages/Login';
+import { AuditLogPage } from './pages/AuditLog';
+import { NotificationsPage } from './pages/Notifications';
 import { OrganizationDetailPage } from './pages/OrganizationDetail';
 import { SecurityPage } from './pages/Security';
+import { TasksPage } from './pages/Tasks';
 import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
@@ -52,6 +55,10 @@ export default function App() {
         <Route path="/master-data/properties" element={<PropertiesPage />} />
         <Route path="/master-data/banks" element={<BanksPage />} />
         <Route path="/master-data/institutions" element={<InstitutionsPage />} />
+
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/audit" element={<AuditLogPage />} />
 
         <Route path="/security" element={<SecurityPage />} />
 

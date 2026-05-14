@@ -11,3 +11,5 @@ export * from './auth';
 export * from './departments';
 export * from './sso';
 export * from './permissions';
+export * from './tasks';
+export * from './notifications';

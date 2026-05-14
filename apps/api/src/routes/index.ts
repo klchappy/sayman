@@ -12,6 +12,8 @@ import { institutionsRouter } from './master-data/institutions';
 import { personsRouter } from './master-data/persons';
 import { propertiesRouter } from './master-data/properties';
 import { payablesRouter, paymentsRouter } from './finance';
+import { tasksRouter } from './tasks';
+import { notificationsRouter } from './notifications';
 
 export const apiRouter = Router();
 
@@ -35,3 +37,7 @@ apiRouter.use(institutionsRouter);
 // Finance (tenant-scope)
 apiRouter.use(payablesRouter);
 apiRouter.use(paymentsRouter);
+
+// Operasyon (tenant-scope + user-scope)
+apiRouter.use(tasksRouter);
+apiRouter.use(notificationsRouter);

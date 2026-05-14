@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import {
+  Activity,
+  Bell,
   Building,
   Building2,
+  CheckSquare,
   Home,
   Landmark,
   Layers,
@@ -30,6 +33,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, requires: 'dashboard' },
   { to: '/payables', label: 'Faturalar', icon: Receipt, requires: 'finance' },
+  { to: '/tasks', label: 'Görevler', icon: CheckSquare, requires: 'tasks' },
+  { to: '/notifications', label: 'Bildirimler', icon: Bell },
 
   // Master data — group başlığı altında
   { to: '/master-data/persons', label: 'Şahıslar', icon: Users, group: 'Master Data' },
@@ -45,6 +50,7 @@ const navItems: NavItem[] = [
   { to: '/master-data/institutions', label: 'Kurumlar', icon: Building, group: 'Master Data' },
 
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
+  { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },
 ];
 
