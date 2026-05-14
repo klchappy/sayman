@@ -64,6 +64,13 @@
       "when": 1778766279028,
       "tag": "0008_sharp_lorna_dane",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778767000000,
+      "tag": "0009_index_audit",
+      "breakpoints": true
     }
   ]
 }

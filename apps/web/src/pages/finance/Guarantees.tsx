@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileDown, Plus, ShieldCheck } from 'lucide-react';
+import { FileDown, Paperclip, Plus, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
+import { AttachmentModal } from '../../components/AttachmentModal';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSubsidiaries } from '../../lib/use-subsidiaries';
@@ -40,6 +41,7 @@ function fmt(v: string | null) {
 export function GuaranteesPage() {
   const active = useAuth((s) => s.active);
   const [showForm, setShowForm] = useState(false);
+  const [attachmentFor, setAttachmentFor] = useState<{ id: string; title: string } | null>(null);
 
   const q = useQuery({
     queryKey: ['guarantees', active.orgSlug, active.tenantSlug],
@@ -85,6 +87,14 @@ export function GuaranteesPage() {
       </header>
 
       {showForm && <GForm onClose={() => setShowForm(false)} />}
+      {attachmentFor && (
+        <AttachmentModal
+          relatedTable="guarantees"
+          relatedId={attachmentFor.id}
+          title={`${attachmentFor.title} — Eklentiler`}
+          onClose={() => setAttachmentFor(null)}
+        />
+      )}
 
       <div className="card overflow-x-auto">
         {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
@@ -130,21 +140,30 @@ export function GuaranteesPage() {
                     </span>
                   </td>
                   <td className="py-2 px-2 text-right">
-                    <button
-                      onClick={async () => {
-                        const r = await api.get<Blob>(`/pdf/guarantee/${g.id}`, { responseType: 'blob' });
-                        const url = URL.createObjectURL(r.data);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `teminat-${g.letter_no ?? g.id.slice(0, 8)}.pdf`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="text-brand-600 hover:bg-brand-50 p-1.5 rounded inline-flex"
-                      title="PDF İndir"
-                    >
-                      <FileDown className="size-4" />
-                    </button>
+                    <div className="inline-flex gap-1">
+                      <button
+                        onClick={() => setAttachmentFor({ id: g.id, title: g.beneficiary_name })}
+                        className="text-brand-600 hover:bg-brand-50 p-1.5 rounded"
+                        title="Eklentiler"
+                      >
+                        <Paperclip className="size-4" />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const r = await api.get<Blob>(`/pdf/guarantee/${g.id}`, { responseType: 'blob' });
+                          const url = URL.createObjectURL(r.data);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `teminat-${g.letter_no ?? g.id.slice(0, 8)}.pdf`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="text-brand-600 hover:bg-brand-50 p-1.5 rounded"
+                        title="PDF İndir"
+                      >
+                        <FileDown className="size-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

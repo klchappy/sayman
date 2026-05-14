@@ -425,10 +425,27 @@ interface ParsedInvoice {
   notes: string | null;
 }
 
+interface ZipImportResult {
+  total: number;
+  success: number;
+  failed: number;
+  dry_run: boolean;
+  results: Array<{
+    file: string;
+    ok: boolean;
+    invoice_number?: string;
+    amount?: string;
+    supplier?: string | null;
+    payable_id?: string;
+    error?: string;
+  }>;
+}
+
 function EfaturaSection() {
   const [xml, setXml] = useState('');
   const [parsed, setParsed] = useState<ParsedInvoice | null>(null);
   const [imported, setImported] = useState<{ payable: { id: string; title: string } } | null>(null);
+  const [zipResult, setZipResult] = useState<ZipImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const parse = async () => {
@@ -460,11 +477,43 @@ function EfaturaSection() {
   function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
+    const isZip = f.name.toLowerCase().endsWith('.zip') || f.type === 'application/zip';
+    if (isZip) {
+      // ZIP → base64 → import-zip endpoint
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const buf = ev.target?.result as ArrayBuffer | null;
+          if (!buf) return;
+          const bytes = new Uint8Array(buf);
+          let bin = '';
+          for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]!);
+          const b64 = btoa(bin);
+          const res = await api.post<{ data: ZipImportResult }>('/efatura/import-zip', {
+            zip_base64: b64,
+            dry_run: false,
+          });
+          setZipResult(res.data.data);
+          setXml('');
+          setParsed(null);
+          setImported(null);
+          setError(null);
+        } catch (e) {
+          const err = e as { response?: { data?: { error?: string; message?: string } } };
+          setError(
+            err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message,
+          );
+        }
+      };
+      reader.readAsArrayBuffer(f);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       setXml(String(ev.target?.result ?? ''));
       setParsed(null);
       setImported(null);
+      setZipResult(null);
       setError(null);
     };
     reader.readAsText(f);
@@ -489,7 +538,7 @@ function EfaturaSection() {
       <div className="flex gap-2 mb-3">
         <input
           type="file"
-          accept=".xml,text/xml,application/xml"
+          accept=".xml,text/xml,application/xml,.zip,application/zip"
           onChange={onFileSelect}
           className="hidden"
           id="xml-upload"
@@ -499,7 +548,7 @@ function EfaturaSection() {
           className="inline-block bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm cursor-pointer"
         >
           <Upload className="inline size-4 mr-1" />
-          XML Seç
+          XML / ZIP Seç
         </label>
         <button
           onClick={parse}
@@ -509,6 +558,9 @@ function EfaturaSection() {
           Parse (Önizleme)
         </button>
       </div>
+      <p className="text-xs text-brand-400 mb-3">
+        ZIP yüklersen içindeki tüm XML'ler otomatik içe aktarılır (max 100 / ZIP).
+      </p>
 
       <textarea
         value={xml}
@@ -569,6 +621,46 @@ function EfaturaSection() {
           >
             Fatura detayına git →
           </a>
+        </div>
+      )}
+
+      {zipResult && (
+        <div className="card bg-emerald-50 border-emerald-200 mt-4">
+          <h3 className="font-semibold text-emerald-900 mb-2 flex items-center gap-2">
+            <CheckCircle2 className="size-5" />
+            ZIP İçe Aktarım Tamamlandı
+          </h3>
+          <div className="grid grid-cols-3 gap-2 mb-3 text-center text-sm">
+            <div className="bg-white rounded p-2">
+              <p className="text-xs text-brand-500">Toplam</p>
+              <p className="font-semibold">{zipResult.total}</p>
+            </div>
+            <div className="bg-white rounded p-2">
+              <p className="text-xs text-emerald-600">Başarılı</p>
+              <p className="font-semibold text-emerald-700">{zipResult.success}</p>
+            </div>
+            <div className="bg-white rounded p-2">
+              <p className="text-xs text-red-600">Hatalı</p>
+              <p className="font-semibold text-red-700">{zipResult.failed}</p>
+            </div>
+          </div>
+          <details>
+            <summary className="cursor-pointer text-sm text-brand-700">Detay (her dosya)</summary>
+            <ul className="mt-2 space-y-1 text-xs max-h-60 overflow-y-auto">
+              {zipResult.results.map((r, i) => (
+                <li
+                  key={i}
+                  className={`px-2 py-1 rounded ${r.ok ? 'bg-emerald-50' : 'bg-red-50'}`}
+                >
+                  {r.ok ? '✓' : '✗'} <strong>{r.file}</strong>
+                  {r.ok && r.invoice_number && (
+                    <> — {r.invoice_number} / {r.supplier} / {r.amount}</>
+                  )}
+                  {!r.ok && r.error && <span className="text-red-600"> — {r.error}</span>}
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       )}
     </div>

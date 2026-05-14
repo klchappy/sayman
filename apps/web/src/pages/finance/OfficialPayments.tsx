@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Landmark, Plus } from 'lucide-react';
+import { Landmark, Paperclip, Plus } from 'lucide-react';
 import { useState } from 'react';
+import { AttachmentModal } from '../../components/AttachmentModal';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSubsidiaries } from '../../lib/use-subsidiaries';
@@ -62,6 +63,7 @@ function fmt(v: string | null) {
 export function OfficialPaymentsPage() {
   const active = useAuth((s) => s.active);
   const [showForm, setShowForm] = useState(false);
+  const [attachmentFor, setAttachmentFor] = useState<{ id: string; title: string } | null>(null);
 
   const q = useQuery({
     queryKey: ['official-payments', active.orgSlug, active.tenantSlug],
@@ -107,6 +109,14 @@ export function OfficialPaymentsPage() {
       </header>
 
       {showForm && <OPForm onClose={() => setShowForm(false)} />}
+      {attachmentFor && (
+        <AttachmentModal
+          relatedTable="official_payment_profiles"
+          relatedId={attachmentFor.id}
+          title={`${attachmentFor.title} — Eklentiler`}
+          onClose={() => setAttachmentFor(null)}
+        />
+      )}
 
       <div className="card overflow-x-auto">
         {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
@@ -124,6 +134,7 @@ export function OfficialPaymentsPage() {
                 <th className="py-2 px-2">Sahip</th>
                 <th className="py-2 px-2 text-right">Tipik Tutar</th>
                 <th className="py-2 px-2">Not</th>
+                <th className="py-2 px-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -139,6 +150,17 @@ export function OfficialPaymentsPage() {
                   <td className="py-2 px-2 font-mono text-right">{fmt(p.typical_amount)}</td>
                   <td className="py-2 px-2 text-xs text-brand-600 max-w-xs truncate">
                     {p.notes ?? '-'}
+                  </td>
+                  <td className="py-2 px-2 text-right">
+                    <button
+                      onClick={() =>
+                        setAttachmentFor({ id: p.id, title: TYPE_LABEL[p.payment_type] })
+                      }
+                      className="text-brand-600 hover:bg-brand-50 p-1.5 rounded"
+                      title="Eklentiler"
+                    >
+                      <Paperclip className="size-4" />
+                    </button>
                   </td>
                 </tr>
               ))}

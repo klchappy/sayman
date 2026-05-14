@@ -4,7 +4,11 @@ import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import { env, isProd } from './config/env';
 import { logger } from './config/logger';
+import { initSentry } from './lib/sentry';
 import { startCronJobs } from './jobs/scheduler';
+
+// Sentry'i en başta init et (diğer importlar instrumentation öncesi yüklensin diye)
+initSentry();
 import { errorHandler, notFound } from './middleware/error';
 import { apiLimiter } from './middleware/rate-limit';
 import { apiRouter } from './routes';

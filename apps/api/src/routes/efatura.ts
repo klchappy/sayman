@@ -17,6 +17,7 @@
  * Tek seferde tek invoice'i destekler (UBL-TR standardı: 1 dosya = 1 invoice).
  */
 import { XMLParser } from 'fast-xml-parser';
+import JSZip from 'jszip';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, payableItems } from '@sayman/db';
@@ -223,6 +224,142 @@ efaturaRouter.post(
       });
 
       res.status(201).json({ data: { parsed, payable: row } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// --- BULK ZIP import (içinde N XML) -----------------------------------------
+
+const zipSchema = z.object({
+  /** ZIP içeriği base64 */
+  zip_base64: z.string().min(50),
+  dry_run: z.boolean().default(false),
+  subsidiary_id: z.string().uuid().optional().nullable(),
+});
+
+efaturaRouter.post(
+  '/efatura/import-zip',
+  requireAuth,
+  requireTenant,
+  requirePerm('finance.write'),
+  async (req, res, next) => {
+    try {
+      const body = zipSchema.parse(req.body);
+      const zipBuf = Buffer.from(body.zip_base64, 'base64');
+
+      let zip: JSZip;
+      try {
+        zip = await JSZip.loadAsync(zipBuf);
+      } catch (e) {
+        throw new HttpError(400, `ZIP açılamadı: ${(e as Error).message}`, 'ZIP_PARSE');
+      }
+
+      const xmlFiles: Array<{ name: string; content: string }> = [];
+      const tasks: Array<Promise<void>> = [];
+      zip.forEach((relPath, entry) => {
+        if (!entry.dir && /\.xml$/i.test(relPath)) {
+          tasks.push(
+            entry.async('string').then((content) => {
+              xmlFiles.push({ name: relPath, content });
+            }),
+          );
+        }
+      });
+      await Promise.all(tasks);
+
+      if (xmlFiles.length === 0) {
+        throw new HttpError(400, 'ZIP içinde XML dosyası yok', 'EMPTY_ZIP');
+      }
+      if (xmlFiles.length > 100) {
+        throw new HttpError(400, `Maks 100 XML / ZIP. Gönderilen: ${xmlFiles.length}`, 'TOO_LARGE');
+      }
+
+      const results: Array<{
+        file: string;
+        ok: boolean;
+        invoice_number?: string;
+        amount?: string;
+        supplier?: string | null;
+        payable_id?: string;
+        error?: string;
+      }> = [];
+
+      const db = getDb();
+      for (const file of xmlFiles) {
+        try {
+          const parsed = parseUblXml(file.content);
+          if (body.dry_run) {
+            results.push({
+              file: file.name,
+              ok: true,
+              invoice_number: parsed.invoice_number,
+              amount: parsed.amount,
+              supplier: parsed.supplier_name,
+            });
+          } else {
+            const [row] = await db
+              .insert(payableItems)
+              .values({
+                tenant_id: req.activeTenantId!,
+                title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
+                category: parsed.profile_id === 'EARSIVFATURA' ? 'e-arşiv' : 'e-fatura',
+                invoice_number: parsed.invoice_number,
+                supplier_name: parsed.supplier_name,
+                issue_date: parsed.issue_date,
+                due_date: parsed.due_date,
+                amount: parsed.amount,
+                currency: parsed.currency,
+                status: 'pending',
+                owner_type: 'company',
+                subsidiary_id: body.subsidiary_id ?? null,
+                notes: parsed.notes,
+                metadata: {
+                  source: 'efatura_zip_import',
+                  zip_file: file.name,
+                  supplier_tax_number: parsed.supplier_tax_number,
+                  profile_id: parsed.profile_id,
+                },
+              })
+              .returning({ id: payableItems.id });
+            results.push({
+              file: file.name,
+              ok: true,
+              invoice_number: parsed.invoice_number,
+              amount: parsed.amount,
+              supplier: parsed.supplier_name,
+              payable_id: row?.id,
+            });
+          }
+        } catch (e) {
+          results.push({ file: file.name, ok: false, error: (e as Error).message });
+        }
+      }
+
+      if (!body.dry_run) {
+        await auditFromRequest(req, {
+          organization_id: req.activeOrgId!,
+          actor_user_id: req.authUser?.id,
+          actor_email: req.authUser?.email,
+          action: 'efatura.import_zip',
+          details: {
+            total: xmlFiles.length,
+            success: results.filter((r) => r.ok).length,
+            failed: results.filter((r) => !r.ok).length,
+          },
+        });
+      }
+
+      res.json({
+        data: {
+          total: xmlFiles.length,
+          success: results.filter((r) => r.ok).length,
+          failed: results.filter((r) => !r.ok).length,
+          dry_run: body.dry_run,
+          results,
+        },
+      });
     } catch (err) {
       next(err);
     }

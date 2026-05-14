@@ -64,6 +64,12 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().min(20).optional(),
   ),
+
+  /** Sentry error tracking — sentry.io/settings → projects → DSN */
+  SENTRY_DSN: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);
@@ -76,4 +82,5 @@ export const isConfigured = {
   supabase: Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
   email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
   telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
+  sentry: Boolean(env.SENTRY_DSN),
 };
