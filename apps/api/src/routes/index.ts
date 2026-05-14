@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { tenantContext } from '../middleware/tenant-context';
+import { authLocalRouter } from './auth-local';
 import { healthRouter } from './health';
 import { meRouter } from './me';
 import { organizationsRouter } from './organizations';
@@ -15,6 +16,7 @@ apiRouter.use(tenantContext);
 
 apiRouter.use(healthRouter);
 apiRouter.use(meRouter);
+apiRouter.use(authLocalRouter);
 apiRouter.use(organizationsRouter);
 apiRouter.use(tenantsRouter);
 
