@@ -116,11 +116,11 @@ Save → Deploy.
 
 ```
 VITE_API_URL=https://api.sayman.deploi.net/v1
-VITE_SUPABASE_URL=<adım 1>
-VITE_SUPABASE_ANON_KEY=<adım 1>
+VITE_SUPABASE_URL=<adım 1 — örn. https://abcdef.supabase.co>
+VITE_SUPABASE_ANON_KEY=<adım 1 — anon public key>
 ```
 
-> Bunlar **Build Arguments**, normal Environment Variables DEĞİL. Vite production build'inde `ARG` olarak alınır.
+> Bunlar **Build Arguments**, normal Environment Variables DEĞİL. Vite production build'inde `ARG` olarak alınır. **Üçü de zorunlu** — Supabase Auth (Faz B) bunlar olmadan çalışmaz; Login sayfası "Supabase yapılandırılmamış" banner gösterir.
 
 Save → Deploy.
 
@@ -129,18 +129,36 @@ Coolify'da her servis için "GitHub Webhook" otomatik kurulur (GitHub App bağl�
 
 Kontrol: GitHub → Settings → Webhooks → Coolify URL'i görünmeli.
 
-## Adım 5 — Supabase URL whitelist (Faz B'de Auth eklenince)
+## Adım 5 — Supabase Auth: URL whitelist + ilk kullanıcı
 
-> **Not:** Şu an Sayman'da Auth yok (Faz B'de Supabase Auth eklenecek). Bu adım Faz B'de yapılacak.
-
-Faz B sonrası: https://supabase.com/dashboard/project/YOUR-PROJECT/auth/url-configuration
+### 5.1 URL whitelist
+https://supabase.com/dashboard/project/YOUR-PROJECT/auth/url-configuration
 
 - **Site URL:** `https://sayman.deploi.net`
-- **Redirect URLs:**
-  - `https://sayman.deploi.net/auth/callback`
-  - `https://sayman.deploi.net/auth/reset-password`
+- **Redirect URLs (+ Add URL):**
   - `https://sayman.deploi.net/**`
   - `http://localhost:5278/**`
+
+### 5.2 İlk Supabase user oluştur
+
+İki yöntem:
+
+**A) Dashboard üzerinden (önerilen):**
+https://supabase.com/dashboard/project/YOUR-PROJECT/auth/users → **Add user** → Create new user
+- Email: `kaanklc498@gmail.com`
+- Password: güvenli bir şifre
+- Auto-confirm user: ✅
+
+**B) SQL ile (gelişmiş):**
+SQL Editor'da:
+```sql
+-- Mevcut public.users.email = kaanklc498 ile Supabase auth.users'ı eşle
+UPDATE public.users
+SET auth_user_id = '<dashboard'da yaratılan auth.users.id>'
+WHERE email = 'kaanklc498@gmail.com';
+```
+
+> `pnpm db:seed` zaten `public.users`'a admin satırı yazdı, sadece `auth_user_id`'yi Supabase auth.users.id ile bağlamak yeterli. **A yönteminde** dashboard'da user yarattıktan sonra SQL'i çalıştır.
 
 ## Adım 6 — İlk smoke test
 

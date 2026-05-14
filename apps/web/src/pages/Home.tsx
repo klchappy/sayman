@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Coins } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Building2, Coins, LogOut } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { PLAN_LABELS, type Plan } from '@sayman/shared';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 type Org = {
   id: string;
@@ -15,6 +16,10 @@ type Org = {
 };
 
 export function HomePage() {
+  const navigate = useNavigate();
+  const me = useAuth((s) => s.me);
+  const signOut = useAuth((s) => s.signOut);
+
   const orgsQuery = useQuery({
     queryKey: ['organizations'],
     queryFn: async () => {
@@ -23,16 +28,39 @@ export function HomePage() {
     },
   });
 
+  async function onSignOut() {
+    await signOut();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <div className="min-h-full px-6 py-10 max-w-6xl mx-auto">
-      <header className="flex items-center gap-3 mb-8">
-        <div className="size-12 rounded-xl bg-brand-900 text-white grid place-items-center text-xl font-semibold tracking-tight">
-          Sy
+      <header className="flex items-center justify-between gap-3 mb-8">
+        <div className="flex items-center gap-3">
+          <div className="size-12 rounded-xl bg-brand-900 text-white grid place-items-center text-xl font-semibold tracking-tight">
+            Sy
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold text-brand-900">Sayman</h1>
+            <p className="text-sm text-brand-600">Multi-Tenant Muhasebe Operasyon Platformu</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-semibold text-brand-900">Sayman</h1>
-          <p className="text-sm text-brand-600">Multi-Tenant Muhasebe Operasyon Platformu</p>
-        </div>
+
+        {me && (
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-sm font-medium text-brand-900">{me.user.full_name}</p>
+              <p className="text-xs text-brand-500">{me.user.email}</p>
+            </div>
+            <button
+              onClick={onSignOut}
+              className="size-10 rounded-lg bg-brand-100 hover:bg-brand-200 text-brand-700 grid place-items-center"
+              title="Çıkış"
+            >
+              <LogOut className="size-4" />
+            </button>
+          </div>
+        )}
       </header>
 
       <section className="card mb-6">
@@ -79,7 +107,7 @@ export function HomePage() {
         <p>
           API: <code className="font-mono">{import.meta.env.VITE_API_URL ?? 'http://localhost:4300/v1'}</code>
         </p>
-        <p>v0.1.0 — Faz A.0 (TS port)</p>
+        <p>v0.2.0 — Faz B (Supabase Auth)</p>
       </footer>
     </div>
   );
