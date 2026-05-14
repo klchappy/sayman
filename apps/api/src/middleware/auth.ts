@@ -11,13 +11,20 @@
  *
  * Production migration sırasında BOTH dolu olabilir; biri öncelikli.
  */
+import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { eq, or } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
-import { getDb, users, type User } from '@sayman/db';
+import { apiTokens, getDb, users, type User } from '@sayman/db';
 import { env, isConfigured } from '../config/env';
 import { verifyLocalJwt } from '../lib/local-auth';
+
+const API_TOKEN_PREFIX = 'st_';
+
+function sha256Hex(s: string): string {
+  return crypto.createHash('sha256').update(s).digest('hex');
+}
 
 let _supabase: SupabaseClient | null = null;
 function getSupabaseAdmin(): SupabaseClient {
@@ -67,6 +74,30 @@ async function resolveSupabaseUser(authUserId: string): Promise<User | null> {
   return u ?? null;
 }
 
+/** API token (st_...) → public.users lookup */
+async function resolveApiToken(plainToken: string): Promise<User | null> {
+  const db = getDb();
+  const tokenHash = sha256Hex(plainToken);
+  const [t] = await db
+    .select()
+    .from(apiTokens)
+    .where(and(eq(apiTokens.token_hash, tokenHash), isNull(apiTokens.revoked_at)));
+  if (!t) return null;
+  if (t.expires_at && t.expires_at < new Date()) return null;
+
+  const [u] = await db.select().from(users).where(eq(users.auth_account_id, t.account_id));
+  if (!u) return null;
+
+  // last_used update — fire-and-forget
+  db
+    .update(apiTokens)
+    .set({ last_used_at: new Date(), updated_at: new Date() })
+    .where(eq(apiTokens.id, t.id))
+    .catch(() => undefined);
+
+  return u;
+}
+
 export const requireAuth: RequestHandler = async (req, _res, next) => {
   try {
     const header = req.headers.authorization ?? '';
@@ -75,6 +106,25 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
       const err = new Error('Authorization header eksik') as Error & { status?: number };
       err.status = 401;
       throw err;
+    }
+
+    // API token (st_xxx) önceliği
+    if (token.startsWith(API_TOKEN_PREFIX)) {
+      const u = await resolveApiToken(token);
+      if (!u) {
+        const err = new Error('Geçersiz/iptal edilmiş API token') as Error & { status?: number };
+        err.status = 401;
+        throw err;
+      }
+      if (!u.is_active) {
+        const err = new Error('Kullanıcı pasif') as Error & { status?: number };
+        err.status = 403;
+        throw err;
+      }
+      req.authUser = u;
+      req.authUserId = u.id;
+      next();
+      return;
     }
 
     const kind = detectTokenKind(token);

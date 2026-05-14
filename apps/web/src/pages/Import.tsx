@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, FileUp, Upload, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileCode, FileUp, Upload, X } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -67,13 +67,19 @@ export function ImportPage() {
   const selectedResource = resourcesQ.data?.find((r) => r.resource === resource);
   const needsTenant = selectedResource?.scope === 'tenant';
 
+  const [xlsxBase64, setXlsxBase64] = useState<string | null>(null);
+  const [xlsxFilename, setXlsxFilename] = useState<string>('');
+
+  function buildPayload(dryRun: boolean) {
+    if (xlsxBase64) {
+      return { format: 'xlsx', data: xlsxBase64, dry_run: dryRun };
+    }
+    return { format: 'csv', data: csvText, dry_run: dryRun };
+  }
+
   const dryRun = useMutation({
     mutationFn: async () => {
-      const res = await api.post<{ data: DryRunResult }>(`/import/${resource}`, {
-        format: 'csv',
-        data: csvText,
-        dry_run: true,
-      });
+      const res = await api.post<{ data: DryRunResult }>(`/import/${resource}`, buildPayload(true));
       return res.data.data;
     },
     onSuccess: (data) => {
@@ -88,11 +94,7 @@ export function ImportPage() {
 
   const confirm = useMutation({
     mutationFn: async () => {
-      const res = await api.post<{ data: ConfirmResult }>(`/import/${resource}`, {
-        format: 'csv',
-        data: csvText,
-        dry_run: false,
-      });
+      const res = await api.post<{ data: ConfirmResult }>(`/import/${resource}`, buildPayload(false));
       return res.data.data;
     },
     onSuccess: (data) => {
@@ -104,35 +106,50 @@ export function ImportPage() {
     },
   });
 
+  function readFile(file: File) {
+    setXlsxFilename(file.name);
+    setDryRunResult(null);
+    setConfirmResult(null);
+    setError(null);
+    const isXlsx = file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.type.includes('sheet');
+    if (isXlsx) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const buf = ev.target?.result as ArrayBuffer | null;
+        if (!buf) return;
+        // ArrayBuffer → base64
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]!);
+        setXlsxBase64(btoa(bin));
+        setCsvText('');
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setCsvText(String(ev.target?.result ?? ''));
+        setXlsxBase64(null);
+      };
+      reader.readAsText(file);
+    }
+  }
+
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setCsvText(String(ev.target?.result ?? ''));
-      setDryRunResult(null);
-      setConfirmResult(null);
-      setError(null);
-    };
-    reader.readAsText(file);
+    if (file) readFile(file);
   }
 
   function onDragDrop(e: React.DragEvent) {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setCsvText(String(ev.target?.result ?? ''));
-      setDryRunResult(null);
-      setConfirmResult(null);
-      setError(null);
-    };
-    reader.readAsText(file);
+    if (file) readFile(file);
   }
 
   function resetForm() {
     setCsvText('');
+    setXlsxBase64(null);
+    setXlsxFilename('');
     setDryRunResult(null);
     setConfirmResult(null);
     setError(null);
@@ -151,6 +168,8 @@ export function ImportPage() {
     );
   }
 
+  const [mode, setMode] = useState<'bulk' | 'efatura'>('bulk');
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <header className="mb-6">
@@ -160,10 +179,38 @@ export function ImportPage() {
           Import Center
         </h1>
         <p className="text-sm text-brand-500 mt-1">
-          Excel/CSV listelerini Sayman'a toplu yükle. Önce dry-run ile doğrula, sonra kalıcı kaydet.
+          Excel/CSV listelerini Sayman'a toplu yükle veya e-Fatura XML dosyasını içe aktar.
         </p>
       </header>
 
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-4 border-b border-brand-100">
+        <button
+          onClick={() => setMode('bulk')}
+          className={`px-4 py-2 text-sm border-b-2 -mb-px ${
+            mode === 'bulk'
+              ? 'border-brand-900 text-brand-900 font-medium'
+              : 'border-transparent text-brand-500 hover:text-brand-700'
+          }`}
+        >
+          📊 CSV / XLSX Toplu
+        </button>
+        <button
+          onClick={() => setMode('efatura')}
+          className={`px-4 py-2 text-sm border-b-2 -mb-px ${
+            mode === 'efatura'
+              ? 'border-brand-900 text-brand-900 font-medium'
+              : 'border-transparent text-brand-500 hover:text-brand-700'
+          }`}
+        >
+          📄 e-Fatura XML
+        </button>
+      </div>
+
+      {mode === 'efatura' && <EfaturaSection />}
+
+      {mode === 'bulk' && (
+        <>
       {/* Step 1: resource picker */}
       <div className="card mb-4">
         <label className="block mb-3">
@@ -211,10 +258,10 @@ export function ImportPage() {
           className="border-2 border-dashed border-brand-200 rounded-lg p-6 text-center hover:border-brand-400 transition"
         >
           <Upload className="size-8 mx-auto text-brand-300 mb-2" />
-          <p className="text-sm text-brand-600 mb-2">CSV sürükle bırak veya seç</p>
+          <p className="text-sm text-brand-600 mb-2">CSV / XLSX sürükle bırak veya seç</p>
           <input
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={onFileChange}
             className="hidden"
             id="csv-upload"
@@ -226,6 +273,15 @@ export function ImportPage() {
             Dosya Seç
           </label>
         </div>
+        {xlsxBase64 && (
+          <div className="mt-3 flex items-center justify-between text-xs text-emerald-700">
+            <span>📊 Excel yüklendi: <strong>{xlsxFilename}</strong> ({Math.round((xlsxBase64.length * 0.75) / 1024)} KB)</span>
+            <button onClick={resetForm} className="text-red-600 hover:underline flex items-center gap-1">
+              <X className="size-3" />
+              Temizle
+            </button>
+          </div>
+        )}
         {csvText && (
           <div className="mt-3 flex items-center justify-between text-xs text-brand-600">
             <span>{csvText.split('\n').length} satır (header dahil)</span>
@@ -251,7 +307,7 @@ export function ImportPage() {
             setError(null);
             dryRun.mutate();
           }}
-          disabled={!csvText || dryRun.isPending || (needsTenant && !active.tenantSlug)}
+          disabled={(!csvText && !xlsxBase64) || dryRun.isPending || (needsTenant && !active.tenantSlug)}
           className="flex-1 bg-brand-200 hover:bg-brand-300 text-brand-900 px-4 py-2.5 rounded-lg text-sm disabled:opacity-50"
         >
           {dryRun.isPending ? 'Doğrulanıyor…' : '3. Dry-Run (Önizleme)'}
@@ -347,6 +403,172 @@ export function ImportPage() {
           <button onClick={resetForm} className="mt-3 text-sm text-brand-700 hover:underline">
             Yeni import başlat →
           </button>
+        </div>
+      )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- e-Fatura UBL XML Section -----------------------------------------------
+
+interface ParsedInvoice {
+  invoice_number: string;
+  issue_date: string | null;
+  due_date: string | null;
+  currency: string;
+  amount: string;
+  supplier_name: string | null;
+  supplier_tax_number: string | null;
+  profile_id: string | null;
+  notes: string | null;
+}
+
+function EfaturaSection() {
+  const [xml, setXml] = useState('');
+  const [parsed, setParsed] = useState<ParsedInvoice | null>(null);
+  const [imported, setImported] = useState<{ payable: { id: string; title: string } } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const parse = async () => {
+    setError(null);
+    setImported(null);
+    try {
+      const res = await api.post<{ data: { parsed: ParsedInvoice } }>('/efatura/parse', { xml });
+      setParsed(res.data.data.parsed);
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    }
+  };
+
+  const importInv = async () => {
+    setError(null);
+    try {
+      const res = await api.post<{ data: { parsed: ParsedInvoice; payable: { id: string; title: string } } }>(
+        '/efatura/import',
+        { xml, dry_run: false },
+      );
+      setImported({ payable: res.data.data.payable });
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    }
+  };
+
+  function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setXml(String(ev.target?.result ?? ''));
+      setParsed(null);
+      setImported(null);
+      setError(null);
+    };
+    reader.readAsText(f);
+  }
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-brand-900 flex items-center gap-2">
+          <FileCode className="size-5" />
+          e-Fatura / e-Arşiv XML İçe Aktar
+        </h2>
+        <p className="text-xs text-brand-400">UBL-TR 1.2</p>
+      </div>
+
+      <p className="text-sm text-brand-600 mb-3">
+        GİB'den indirilen <code className="font-mono bg-brand-50 px-1 rounded">.xml</code> dosyasını
+        yükle. Sayman fatura no, tarih, tedarikçi, tutar bilgilerini otomatik çekip <strong>payable_items</strong>
+        tablosuna kaydeder.
+      </p>
+
+      <div className="flex gap-2 mb-3">
+        <input
+          type="file"
+          accept=".xml,text/xml,application/xml"
+          onChange={onFileSelect}
+          className="hidden"
+          id="xml-upload"
+        />
+        <label
+          htmlFor="xml-upload"
+          className="inline-block bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm cursor-pointer"
+        >
+          <Upload className="inline size-4 mr-1" />
+          XML Seç
+        </label>
+        <button
+          onClick={parse}
+          disabled={!xml}
+          className="bg-brand-200 hover:bg-brand-300 text-brand-900 px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+        >
+          Parse (Önizleme)
+        </button>
+      </div>
+
+      <textarea
+        value={xml}
+        onChange={(e) => setXml(e.target.value)}
+        rows={6}
+        placeholder="Veya XML içeriğini buraya yapıştır..."
+        className="w-full rounded-lg border border-brand-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-400"
+      />
+
+      {error && (
+        <p className="text-sm text-red-600 mt-3 flex items-center gap-2">
+          <AlertCircle className="size-4" />
+          {error}
+        </p>
+      )}
+
+      {parsed && !imported && (
+        <div className="card bg-brand-50 mt-4">
+          <h3 className="font-medium text-brand-900 mb-3">Fatura Önizleme</h3>
+          <dl className="grid grid-cols-2 gap-2 text-sm">
+            <dt className="text-brand-500">Fatura No</dt>
+            <dd className="font-mono">{parsed.invoice_number}</dd>
+            <dt className="text-brand-500">Düzenleme</dt>
+            <dd>{parsed.issue_date ?? '-'}</dd>
+            <dt className="text-brand-500">Vade</dt>
+            <dd>{parsed.due_date ?? '-'}</dd>
+            <dt className="text-brand-500">Tedarikçi</dt>
+            <dd>{parsed.supplier_name ?? '-'}</dd>
+            <dt className="text-brand-500">VKN/TCKN</dt>
+            <dd className="font-mono">{parsed.supplier_tax_number ?? '-'}</dd>
+            <dt className="text-brand-500">Tutar</dt>
+            <dd className="font-mono font-semibold">
+              {parsed.amount} {parsed.currency}
+            </dd>
+            <dt className="text-brand-500">Profil</dt>
+            <dd className="font-mono text-xs">{parsed.profile_id ?? '-'}</dd>
+          </dl>
+          <button
+            onClick={() => {
+              if (confirm(`"${parsed.invoice_number}" payable_items'a kaydedilsin mi?`)) importInv();
+            }}
+            className="mt-4 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            Onayla ve İçe Aktar
+          </button>
+        </div>
+      )}
+
+      {imported && (
+        <div className="card bg-emerald-50 border-emerald-200 mt-4">
+          <p className="text-sm text-emerald-800 flex items-center gap-2">
+            <CheckCircle2 className="size-5" />
+            ✓ Fatura içe aktarıldı: <strong>{imported.payable.title}</strong>
+          </p>
+          <a
+            href={`/payables/${imported.payable.id}`}
+            className="text-sm text-brand-700 hover:underline mt-2 inline-block"
+          >
+            Fatura detayına git →
+          </a>
         </div>
       )}
     </div>

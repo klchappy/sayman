@@ -19,3 +19,5 @@ export * from './official-payments';
 export * from './guarantees';
 export * from './invitations';
 export * from './subsidiaries';
+export * from './api-tokens';
+export * from './attachments';

@@ -25,6 +25,9 @@ import { importRouter } from './import';
 import { subsidiariesRouter } from './subsidiaries';
 import { searchRouter } from './search';
 import { pdfRouter } from './pdf';
+import { apiTokensRouter } from './api-tokens';
+import { attachmentsRouter } from './attachments';
+import { efaturaRouter } from './efatura';
 
 export const apiRouter = Router();
 
@@ -79,3 +82,12 @@ apiRouter.use(searchRouter);
 
 // PDF export (fatura/teminat)
 apiRouter.use(pdfRouter);
+
+// API tokens (programmatic erisim)
+apiRouter.use(apiTokensRouter);
+
+// Dosya ekleri (Supabase Storage)
+apiRouter.use(attachmentsRouter);
+
+// e-Fatura UBL/XML import (GIB)
+apiRouter.use(efaturaRouter);

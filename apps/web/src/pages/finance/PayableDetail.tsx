@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PAYMENT_METHODS, type PaymentMethod, type PayableStatus } from '@sayman/shared';
 import { api } from '../../lib/api';
+import { AttachmentBox } from '../../components/AttachmentBox';
 
 interface Payment {
   id: string;
@@ -105,6 +106,10 @@ export function PayableDetailPage() {
           <p className="text-xs uppercase text-brand-500">Kalan</p>
           <p className="text-xl font-semibold text-amber-700 font-mono mt-1">{fmtTRY(remaining.toFixed(2))}</p>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <AttachmentBox relatedTable="payable_items" relatedId={p.id} />
       </div>
 
       <section className="card">

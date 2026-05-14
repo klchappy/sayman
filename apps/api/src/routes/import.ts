@@ -9,6 +9,7 @@
  */
 import { parse as parseCsv } from 'csv-parse/sync';
 import { Router } from 'express';
+import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireOrg } from '../lib/helpers';
@@ -19,9 +20,12 @@ import { requirePerm } from '../middleware/permission';
 const MAX_ROWS = 500;
 
 const bodySchema = z.object({
-  format: z.enum(['csv', 'json']).default('csv'),
+  format: z.enum(['csv', 'json', 'xlsx']).default('csv'),
+  /** csv → string; json → array; xlsx → base64 string */
   data: z.union([z.string(), z.array(z.any())]),
   dry_run: z.boolean().default(true),
+  /** XLSX: hangi sheet (default ilki). 1-based veya isim. */
+  sheet: z.union([z.string(), z.number()]).optional(),
 });
 
 export const importRouter = Router();
@@ -63,6 +67,28 @@ importRouter.post(
           }) as unknown[];
         } catch (e) {
           throw new HttpError(400, `CSV parse hatası: ${(e as Error).message}`, 'CSV_PARSE');
+        }
+      } else if (body.format === 'xlsx') {
+        if (typeof body.data !== 'string') {
+          throw new HttpError(400, 'XLSX format için data base64 string olmalı', 'BAD_XLSX');
+        }
+        try {
+          const buf = Buffer.from(body.data, 'base64');
+          const wb = XLSX.read(buf, { type: 'buffer' });
+          // Sheet seçimi: body.sheet veya ilk sheet
+          let sheetName: string;
+          if (typeof body.sheet === 'string') {
+            sheetName = body.sheet;
+          } else if (typeof body.sheet === 'number') {
+            sheetName = wb.SheetNames[body.sheet - 1] ?? wb.SheetNames[0]!;
+          } else {
+            sheetName = wb.SheetNames[0]!;
+          }
+          const ws = wb.Sheets[sheetName];
+          if (!ws) throw new Error(`Sheet bulunamadı: ${sheetName}`);
+          rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
+        } catch (e) {
+          throw new HttpError(400, `XLSX parse hatası: ${(e as Error).message}`, 'XLSX_PARSE');
         }
       } else {
         if (!Array.isArray(body.data)) throw new HttpError(400, 'JSON format için data array olmalı', 'BAD_JSON');

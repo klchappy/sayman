@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Key, Monitor, Send, Shield, Trash2 } from 'lucide-react';
+import { AlertCircle, Code, Key, Monitor, Send, Shield, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
 
@@ -444,6 +444,165 @@ function TelegramSection() {
   );
 }
 
+// --- API Tokens --------------------------------------------------------------
+
+interface ApiToken {
+  id: string;
+  name: string;
+  token_prefix: string;
+  scopes: string[];
+  expires_at: string | null;
+  last_used_at: string | null;
+  last_used_ip: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+function ApiTokensSection() {
+  const qc = useQueryClient();
+  const [newName, setNewName] = useState('');
+  const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const list = useQuery({
+    queryKey: ['api-tokens'],
+    queryFn: async () => (await api.get<{ data: ApiToken[] }>('/api-tokens')).data.data,
+  });
+
+  const create = useMutation({
+    mutationFn: async () =>
+      (await api.post<{ data: ApiToken; token: string }>('/api-tokens', { name: newName })).data,
+    onSuccess: (data) => {
+      setRevealedToken(data.token);
+      setNewName('');
+      qc.invalidateQueries({ queryKey: ['api-tokens'] });
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
+    },
+  });
+
+  const revoke = useMutation({
+    mutationFn: async (id: string) => api.delete(`/api-tokens/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-tokens'] }),
+  });
+
+  return (
+    <div className="card">
+      <h2 className="font-semibold text-brand-900 mb-4 flex items-center gap-2">
+        <Code className="size-5" />
+        API Token'ları (programmatic erişim)
+      </h2>
+      <p className="text-sm text-brand-500 mb-4">
+        Diğer programların Sayman API'sine erişmesi için token oluştur. Token sadece bir kez gösterilir,
+        sonra DB'de hash olarak saklanır. <code className="font-mono bg-brand-50 px-1 rounded">Bearer st_...</code> formatı.
+      </p>
+
+      {revealedToken && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+          <p className="text-sm font-medium text-amber-800 mb-2">
+            ⚠️ Token bir kez gösterilir — hemen kopyala!
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              readOnly
+              value={revealedToken}
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+              className="flex-1 font-mono text-xs px-2 py-1 bg-white rounded border border-amber-300"
+            />
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(revealedToken);
+                alert('Kopyalandı');
+              }}
+              className="px-3 py-1 bg-brand-900 text-white rounded text-xs"
+            >
+              Kopyala
+            </button>
+            <button
+              onClick={() => setRevealedToken(null)}
+              className="px-3 py-1 text-brand-600 rounded text-xs"
+            >
+              Kapat
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="Token adı (örn: Damga entegrasyonu)"
+          className="flex-1 rounded-lg border border-brand-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+        />
+        <button
+          onClick={() => {
+            setError(null);
+            if (!newName) return setError('Ad gerekli');
+            create.mutate();
+          }}
+          disabled={create.isPending}
+          className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-60"
+        >
+          {create.isPending ? 'Üretiliyor…' : 'Yeni Token Üret'}
+        </button>
+      </div>
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+      {list.data && list.data.length > 0 && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-brand-500 text-xs uppercase border-b border-brand-100">
+              <th className="py-2">Ad</th>
+              <th className="py-2">Prefix</th>
+              <th className="py-2">Son Kullanım</th>
+              <th className="py-2">Durum</th>
+              <th className="py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.data.map((t) => (
+              <tr key={t.id} className="border-b border-brand-50">
+                <td className="py-2 font-medium text-brand-900">{t.name}</td>
+                <td className="py-2 font-mono text-xs text-brand-600">{t.token_prefix}...</td>
+                <td className="py-2 text-xs text-brand-500">
+                  {t.last_used_at ? new Date(t.last_used_at).toLocaleString('tr-TR') : '-'}
+                </td>
+                <td className="py-2">
+                  {t.revoked_at ? (
+                    <span className="badge bg-red-100 text-red-700">İptal</span>
+                  ) : t.expires_at && new Date(t.expires_at) < new Date() ? (
+                    <span className="badge bg-amber-100 text-amber-700">Süresi doldu</span>
+                  ) : (
+                    <span className="badge bg-emerald-100 text-emerald-700">Aktif</span>
+                  )}
+                </td>
+                <td className="py-2 text-right">
+                  {!t.revoked_at && (
+                    <button
+                      onClick={() => {
+                        if (confirm(`"${t.name}" token'ı iptal edilsin mi?`)) revoke.mutate(t.id);
+                      }}
+                      className="text-red-600 hover:bg-red-50 p-1.5 rounded"
+                      title="İptal et"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export function SecurityPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
@@ -454,6 +613,7 @@ export function SecurityPage() {
 
       <TwoFASection />
       <TelegramSection />
+      <ApiTokensSection />
       <SessionsSection />
       <KvkkSection />
 

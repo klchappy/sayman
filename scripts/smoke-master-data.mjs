@@ -686,6 +686,72 @@ async function main() {
     expect(r.body.data.results.length >= 1, 'arama sonucu yok (master data Update yapildi mi?)');
   });
 
+  // --- 11g2. XLSX import (Faz +) ---
+  useTenant(ORG_SLUG, null);
+  await step('POST /import/companies (XLSX format)', async () => {
+    // Sahte bir XLSX oluştur — xlsx paketi node tarafında
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.json_to_sheet([
+      { name: 'XLSX Test A.S.', short_name: 'XLSX', tax_number: '5555555555' },
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const b64 = buf.toString('base64');
+    const r = await api('POST', '/import/companies', {
+      format: 'xlsx',
+      data: b64,
+      dry_run: true,
+    });
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body).slice(0, 300)}`);
+    expect(r.body.data.valid === 1, `expected valid=1, got ${r.body.data.valid}`);
+  });
+
+  // --- 11g3. API tokens ---
+  await step('POST /api-tokens (yeni token)', async () => {
+    const r = await api('POST', '/api-tokens', { name: 'Smoke Test Token' });
+    expect(r.status === 201, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.token?.startsWith('st_'), 'token prefix st_ olmali');
+    console.log(`     prefix=${r.body.data.token_prefix}`);
+  });
+
+  await step('GET /api-tokens (liste)', async () => {
+    const r = await api('GET', '/api-tokens');
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.length >= 1, 'token listesi boş');
+  });
+
+  // --- 11g4. e-Fatura UBL parse ---
+  useTenant(ORG_SLUG, SLUG_INSAAT);
+  await step('POST /efatura/parse (UBL XML)', async () => {
+    const ublXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+  xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+  xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+  <cbc:ID>SMK2026000001</cbc:ID>
+  <cbc:IssueDate>2026-05-14</cbc:IssueDate>
+  <cbc:DueDate>2026-06-14</cbc:DueDate>
+  <cbc:DocumentCurrencyCode>TRY</cbc:DocumentCurrencyCode>
+  <cbc:ProfileID>TICARIFATURA</cbc:ProfileID>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyIdentification>
+        <cbc:ID schemeID="VKN">1234567890</cbc:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName><cbc:Name>Smoke Tedarikci A.S.</cbc:Name></cac:PartyName>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:LegalMonetaryTotal>
+    <cbc:PayableAmount currencyID="TRY">1234.50</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+</Invoice>`;
+    const r = await api('POST', '/efatura/parse', { xml: ublXml });
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.data.parsed.invoice_number === 'SMK2026000001', 'invoice_number mismatch');
+    expect(r.body.data.parsed.supplier_name === 'Smoke Tedarikci A.S.', 'supplier_name mismatch');
+    expect(r.body.data.parsed.amount === '1234.50', `amount mismatch: ${r.body.data.parsed.amount}`);
+  });
+
   // --- 11h. PDF export ---
   await step('GET /pdf/payable/:id (PDF)', async () => {
     // payableId yukarida set edildi

@@ -57,6 +57,13 @@
       "when": 1778763621972,
       "tag": "0007_great_champions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778766279028,
+      "tag": "0008_sharp_lorna_dane",
+      "breakpoints": true
     }
   ]
 }
