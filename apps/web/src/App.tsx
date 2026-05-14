@@ -17,6 +17,8 @@ import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
 import { AIAssistantPage } from './pages/AIAssistant';
 import { ImportPage } from './pages/Import';
+import { InboundWebhooksPage } from './pages/InboundWebhooks';
+import { IntegrationsPage } from './pages/Integrations';
 import { OCRPage } from './pages/OCR';
 import { SubsidiariesPage } from './pages/Subsidiaries';
 import { UsersPage } from './pages/Users';
@@ -81,6 +83,8 @@ export default function App() {
         <Route path="/subsidiaries" element={<SubsidiariesPage />} />
 
         <Route path="/security" element={<SecurityPage />} />
+        <Route path="/integrations" element={<IntegrationsPage />} />
+        <Route path="/integrations/inbound-webhooks" element={<InboundWebhooksPage />} />
 
         <Route path="/orgs" element={<HomePage />} />
         <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />

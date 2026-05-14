@@ -24,3 +24,6 @@ export * from './attachments';
 export * from './fx-rates';
 export * from './webhooks';
 export * from './search-history';
+export * from './category-feedback';
+export * from './ai-summaries';
+export * from './inbound-webhooks';

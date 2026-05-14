@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   Clock,
@@ -6,16 +6,23 @@ import {
   FileText,
   HomeIcon,
   Landmark,
+  Loader2,
   Network,
+  RefreshCw,
   Repeat,
   ShieldCheck,
+  Sparkles,
   TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -134,6 +141,9 @@ export function DashboardPage() {
 
       {summary && (
         <>
+          {/* === AI Summary Widget === */}
+          <AISummaryWidget />
+
           {/* === KPI Cards === */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {has('finance') && (
@@ -163,6 +173,9 @@ export function DashboardPage() {
               </>
             )}
           </div>
+
+          {/* === Forecast Widget === */}
+          {has('finance') && <ForecastWidget />}
 
           {/* === Cashflow chart === */}
           {has('finance') && (
@@ -408,5 +421,140 @@ function ModuleCard({
         ))}
       </div>
     </div>
+  );
+}
+
+interface AISummaryRow {
+  id: string;
+  summary_date: string;
+  summary_text: string;
+  source_data: Record<string, unknown>;
+  created_at: string;
+}
+
+function AISummaryWidget() {
+  const queryClient = useQueryClient();
+  const q = useQuery({
+    queryKey: ['ai-summary-today'],
+    queryFn: async () => {
+      const res = await api.get<{ data: AISummaryRow | null }>('/ai/summary/today');
+      return res.data.data;
+    },
+  });
+
+  const regen = useMutation({
+    mutationFn: async () => {
+      await api.post('/ai/summary/regenerate');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-summary-today'] }),
+  });
+
+  return (
+    <section className="card mb-6 bg-gradient-to-br from-purple-50 to-blue-50 border-purple-200">
+      <div className="flex items-start justify-between mb-2">
+        <h2 className="font-semibold text-brand-900 flex items-center gap-2">
+          <Sparkles className="size-5 text-purple-600" />
+          Bugünün Özeti
+        </h2>
+        <button
+          onClick={() => regen.mutate()}
+          disabled={regen.isPending}
+          className="text-xs text-brand-600 hover:text-brand-900 flex items-center gap-1"
+          title="Yeniden üret"
+        >
+          {regen.isPending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+          Yenile
+        </button>
+      </div>
+      {q.isLoading && <p className="text-sm text-brand-500">Yükleniyor…</p>}
+      {q.data ? (
+        <>
+          <p className="text-sm text-brand-800 whitespace-pre-line">{q.data.summary_text}</p>
+          <p className="text-[10px] text-brand-400 mt-2 font-mono">
+            {q.data.summary_date} · cron@07:00 TR
+          </p>
+        </>
+      ) : (
+        !q.isLoading && (
+          <p className="text-sm text-brand-500 italic">
+            AI özet henüz hazır değil. ANTHROPIC_API_KEY yapılandırıldıysa cron 07:00'de üretir.
+          </p>
+        )
+      )}
+    </section>
+  );
+}
+
+interface ForecastResponse {
+  past: Array<{ ym: string; total_expense: number }>;
+  future: Array<{ ym: string; projected_expense: number }>;
+  trend: { slope: number; intercept: number; r_squared: number; direction: string };
+}
+
+function ForecastWidget() {
+  const q = useQuery({
+    queryKey: ['forecast-cashflow'],
+    queryFn: async () => {
+      const res = await api.get<{ data: ForecastResponse }>('/forecast/cashflow?months=6');
+      return res.data.data;
+    },
+  });
+
+  if (!q.data) return null;
+
+  const combined = [
+    ...q.data.past.map((p) => ({ ym: p.ym, real: p.total_expense, projected: null as number | null })),
+    ...q.data.future.map((f) => ({ ym: f.ym, real: null as number | null, projected: f.projected_expense })),
+  ];
+
+  const Icon = q.data.trend.direction === 'rising' ? TrendingUp : TrendingDown;
+  const trendLabel =
+    q.data.trend.direction === 'rising'
+      ? 'Yükselen trend'
+      : q.data.trend.direction === 'falling'
+        ? 'Düşen trend'
+        : 'Sabit trend';
+  const r2 = (q.data.trend.r_squared * 100).toFixed(0);
+
+  return (
+    <section className="card mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold text-brand-900 flex items-center gap-2">
+          <Icon
+            className={`size-5 ${q.data.trend.direction === 'rising' ? 'text-red-500' : 'text-emerald-500'}`}
+          />
+          Nakit Akış Tahmini (Lineer Regresyon)
+        </h2>
+        <span className="text-xs text-brand-400">
+          {trendLabel} · R²={r2}%
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={combined}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+          <XAxis dataKey="ym" stroke="#6b7280" fontSize={12} />
+          <YAxis
+            stroke="#6b7280"
+            fontSize={12}
+            tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+          />
+          <Tooltip
+            formatter={(v) => (v != null ? fmtTRY(Number(v)) : '-')}
+            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+          />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="real" name="Gerçekleşen" fill="#0a2540" radius={[4, 4, 0, 0]} />
+          <Line
+            type="monotone"
+            dataKey="projected"
+            name="Projeksiyon"
+            stroke="#f97316"
+            strokeWidth={2}
+            strokeDasharray="5 5"
+            dot={{ fill: '#f97316', r: 4 }}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </section>
   );
 }

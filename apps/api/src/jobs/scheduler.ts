@@ -12,6 +12,7 @@ import { logger } from '../config/logger';
 import { runDeliverWebhooks } from './deliver-webhooks';
 import { runDetectAnomalies } from './detect-anomalies';
 import { runFetchFxRates } from './fetch-fx-rates';
+import { runGenerateAiSummary } from './generate-ai-summary';
 import { runGeneratePeriods } from './generate-periods';
 import { runSendReminders } from './send-reminders';
 import { runUpdateStatuses } from './update-statuses';
@@ -24,7 +25,8 @@ export type JobName =
   | 'update-statuses'
   | 'fetch-fx-rates'
   | 'deliver-webhooks'
-  | 'detect-anomalies';
+  | 'detect-anomalies'
+  | 'generate-ai-summary';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -41,6 +43,8 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runDeliverWebhooks();
     case 'detect-anomalies':
       return runDetectAnomalies();
+    case 'generate-ai-summary':
+      return runGenerateAiSummary();
   }
 }
 
@@ -110,9 +114,18 @@ export function startCronJobs() {
     { timezone: TZ },
   );
 
+  // Daily 07:00 TR — günlük AI özet üret (dashboard widget için)
+  cron.schedule(
+    '0 7 * * *',
+    () => {
+      runGenerateAiSummary().catch((err) => logger.error({ err }, 'generate-ai-summary crashed'));
+    },
+    { timezone: TZ },
+  );
+
   started = true;
   logger.info(
     { tz: TZ },
-    'cron jobs scheduled (generate@03:00, reminders@09:00, anomaly@10:00, status@:05, fx@16:00, webhooks@*)',
+    'cron jobs scheduled (ai-summary@07:00, generate@03:00, reminders@09:00, anomaly@10:00, status@:05, fx@16:00, webhooks@*)',
   );
 }

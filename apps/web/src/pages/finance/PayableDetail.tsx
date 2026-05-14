@@ -1,8 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileDown, Plus, Receipt } from 'lucide-react';
+import { ArrowLeft, Check, FileDown, Pencil, Plus, Receipt, Tag } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { PAYMENT_METHODS, type PaymentMethod, type PayableStatus } from '@sayman/shared';
+import {
+  CATEGORY_LABELS,
+  PAYABLE_CATEGORIES,
+  PAYMENT_METHODS,
+  type PayableCategory,
+  type PaymentMethod,
+  type PayableStatus,
+} from '@sayman/shared';
 import { api } from '../../lib/api';
 import { AttachmentBox } from '../../components/AttachmentBox';
 
@@ -26,6 +33,8 @@ interface PayableDetail {
   status: PayableStatus;
   due_date: string | null;
   notes: string | null;
+  category: string | null;
+  supplier_name: string | null;
   transactions: Payment[];
 }
 
@@ -107,6 +116,14 @@ export function PayableDetailPage() {
           <p className="text-xl font-semibold text-amber-700 font-mono mt-1">{fmtTRY(remaining.toFixed(2))}</p>
         </div>
       </div>
+
+      <CategoryEditor
+        payableId={p.id}
+        currentCategory={p.category}
+        title={p.title}
+        supplier={p.supplier_name}
+        notes={p.notes}
+      />
 
       <div className="grid md:grid-cols-2 gap-4 mb-6">
         <AttachmentBox relatedTable="payable_items" relatedId={p.id} />
@@ -289,6 +306,115 @@ function PaymentForm({
           {isPending ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// --- Kategori düzelt ---
+interface CategorySuggestion {
+  category: PayableCategory;
+  confidence: number;
+  matched_keyword?: string;
+}
+
+function CategoryEditor({
+  payableId,
+  currentCategory,
+  title,
+  supplier,
+  notes,
+}: {
+  payableId: string;
+  currentCategory: string | null;
+  title: string;
+  supplier: string | null;
+  notes: string | null;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [chosen, setChosen] = useState<PayableCategory | ''>(
+    (currentCategory as PayableCategory | null) ?? '',
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const sourceText = [title, supplier, notes].filter(Boolean).join(' | ');
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      if (!chosen) throw new Error('Kategori seç');
+      await api.post('/category-feedback', {
+        payable_id: payableId,
+        suggested_category: currentCategory,
+        actual_category: chosen,
+        source_text: sourceText,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payable', payableId] });
+      setEditing(false);
+    },
+    onError: (e) => setError((e as Error).message),
+  });
+
+  const currentLabel = currentCategory
+    ? (CATEGORY_LABELS[currentCategory as PayableCategory] ?? currentCategory)
+    : 'Kategorisiz';
+
+  return (
+    <div className="card mb-6 bg-brand-50/50">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Tag className="size-4 text-brand-500" />
+          <span className="text-sm text-brand-500">Kategori:</span>
+          <span className="text-sm font-medium text-brand-900">{currentLabel}</span>
+        </div>
+        {!editing && (
+          <button
+            onClick={() => {
+              setError(null);
+              setEditing(true);
+            }}
+            className="text-xs text-brand-700 hover:text-brand-900 flex items-center gap-1"
+          >
+            <Pencil className="size-3" />
+            Düzelt
+          </button>
+        )}
+      </div>
+      {editing && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            value={chosen}
+            onChange={(e) => setChosen(e.target.value as PayableCategory)}
+            className="rounded-lg border border-brand-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+          >
+            <option value="">— seç —</option>
+            {PAYABLE_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => submit.mutate()}
+            disabled={submit.isPending || !chosen}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm disabled:opacity-60 flex items-center gap-1"
+          >
+            <Check className="size-3" />
+            {submit.isPending ? 'Kaydediliyor…' : 'Onayla'}
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            className="text-xs text-brand-600 hover:bg-brand-100 px-3 py-1.5 rounded"
+          >
+            İptal
+          </button>
+          {error && <p className="text-xs text-red-600 w-full">{error}</p>}
+          <p className="text-[10px] text-brand-400 w-full">
+            Bu düzeltme AI önerilerini iyileştirir — ileride aynı tedarikçi/başlık için doğru kategori önerilir.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

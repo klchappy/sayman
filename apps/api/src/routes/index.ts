@@ -36,6 +36,12 @@ import { realtimeRouter } from './realtime';
 import { smartImportRouter } from './smart-import';
 import { similarRouter } from './similar';
 import { aiAssistantRouter } from './ai-assistant';
+import { categoryFeedbackRouter } from './category-feedback';
+import { inboundWebhooksRouter } from './inbound-webhooks';
+import { aiSummaryRouter } from './ai-summary';
+import { forecastRouter } from './forecast';
+import { semanticSearchRouter } from './semantic-search';
+import { integrationsStatusRouter } from './integrations-status';
 
 export const apiRouter = Router();
 
@@ -123,3 +129,21 @@ apiRouter.use(similarRouter);
 
 // AI asistan (Claude API doğal dil sorgu)
 apiRouter.use(aiAssistantRouter);
+
+// AI kategori düzeltme feedback
+apiRouter.use(categoryFeedbackRouter);
+
+// Inbound webhooks (Damga/n8n/Zapier'den gelen POST)
+apiRouter.use(inboundWebhooksRouter);
+
+// Günlük AI özet (cron + endpoint)
+apiRouter.use(aiSummaryRouter);
+
+// Forecasting (lineer regresyon nakit projeksiyon)
+apiRouter.use(forecastRouter);
+
+// Semantic search (Voyage embeddings + pgvector)
+apiRouter.use(semanticSearchRouter);
+
+// Entegrasyon hub durum endpoint'i
+apiRouter.use(integrationsStatusRouter);

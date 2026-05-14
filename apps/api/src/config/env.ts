@@ -76,6 +76,23 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().min(20).optional(),
   ),
+
+  /** WhatsApp Business Cloud API access token — Meta developers'dan alınır */
+  WHATSAPP_ACCESS_TOKEN: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(20).optional(),
+  ),
+  /** Meta phone_number_id — Meta business account altındaki numara */
+  WHATSAPP_PHONE_NUMBER_ID: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(5).optional(),
+  ),
+
+  /** Voyage AI embeddings (semantic search için) — voyage-3-lite 1024d */
+  VOYAGE_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(20).optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);
@@ -90,4 +107,6 @@ export const isConfigured = {
   telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
   sentry: Boolean(env.SENTRY_DSN),
   ai: Boolean(env.ANTHROPIC_API_KEY),
+  whatsapp: Boolean(env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID),
+  embeddings: Boolean(env.VOYAGE_API_KEY),
 };

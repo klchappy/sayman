@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   Network,
+  Plug,
   X,
   Receipt,
   Repeat,
@@ -98,6 +99,7 @@ const navItems: NavItem[] = [
   { to: '/ocr', label: 'OCR (Belge Oku)', icon: FileText, group: 'Sistem' },
   { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },
+  { to: '/integrations', label: 'Entegrasyonlar', icon: Plug, group: 'Sistem' },
 ];
 
 interface TenantInfo {
