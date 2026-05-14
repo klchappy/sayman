@@ -11,6 +11,7 @@ import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { runDeliverWebhooks } from './deliver-webhooks';
 import { runDetectAnomalies } from './detect-anomalies';
+import { runEmbedPayables } from './embed-payables';
 import { runFetchFxRates } from './fetch-fx-rates';
 import { runGenerateAiSummary } from './generate-ai-summary';
 import { runGeneratePeriods } from './generate-periods';
@@ -26,7 +27,8 @@ export type JobName =
   | 'fetch-fx-rates'
   | 'deliver-webhooks'
   | 'detect-anomalies'
-  | 'generate-ai-summary';
+  | 'generate-ai-summary'
+  | 'embed-payables';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -45,6 +47,8 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runDetectAnomalies();
     case 'generate-ai-summary':
       return runGenerateAiSummary();
+    case 'embed-payables':
+      return runEmbedPayables();
   }
 }
 
@@ -114,11 +118,22 @@ export function startCronJobs() {
     { timezone: TZ },
   );
 
-  // Daily 07:00 TR — günlük AI özet üret (dashboard widget için)
+  // Daily 07:00 TR — günlük AI özet üret (dashboard widget + Telegram'a yolla)
   cron.schedule(
     '0 7 * * *',
     () => {
-      runGenerateAiSummary().catch((err) => logger.error({ err }, 'generate-ai-summary crashed'));
+      runGenerateAiSummary({ sendTelegram: true }).catch((err) =>
+        logger.error({ err }, 'generate-ai-summary crashed'),
+      );
+    },
+    { timezone: TZ },
+  );
+
+  // Hourly :30 — semantic search için bekleyen payable'lara embedding üret
+  cron.schedule(
+    '30 * * * *',
+    () => {
+      runEmbedPayables().catch((err) => logger.error({ err }, 'embed-payables crashed'));
     },
     { timezone: TZ },
   );
@@ -126,6 +141,6 @@ export function startCronJobs() {
   started = true;
   logger.info(
     { tz: TZ },
-    'cron jobs scheduled (ai-summary@07:00, generate@03:00, reminders@09:00, anomaly@10:00, status@:05, fx@16:00, webhooks@*)',
+    'cron jobs scheduled (ai-summary@07:00, embed@:30, generate@03:00, reminders@09:00, anomaly@10:00, status@:05, fx@16:00, webhooks@*)',
   );
 }

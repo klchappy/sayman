@@ -42,6 +42,8 @@ import { aiSummaryRouter } from './ai-summary';
 import { forecastRouter } from './forecast';
 import { semanticSearchRouter } from './semantic-search';
 import { integrationsStatusRouter } from './integrations-status';
+import { whatsappRouter } from './whatsapp';
+import { pushRouter } from './push';
 
 export const apiRouter = Router();
 
@@ -147,3 +149,9 @@ apiRouter.use(semanticSearchRouter);
 
 // Entegrasyon hub durum endpoint'i
 apiRouter.use(integrationsStatusRouter);
+
+// WhatsApp Business Cloud API (inbound + test)
+apiRouter.use(whatsappRouter);
+
+// Mobil/web push token kayıt
+apiRouter.use(pushRouter);

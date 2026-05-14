@@ -113,6 +113,13 @@
       "when": 1778775000000,
       "tag": "0015_enable_pgvector",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1778776000000,
+      "tag": "0016_push_tokens",
+      "breakpoints": true
     }
   ]
 }

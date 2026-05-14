@@ -16,6 +16,7 @@ import {
   Menu,
   Network,
   Plug,
+  TrendingUp,
   X,
   Receipt,
   Repeat,
@@ -47,6 +48,13 @@ const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, requires: 'dashboard' },
   { to: '/ai', label: 'AI Asistan', icon: Sparkles },
   { to: '/payables', label: 'Faturalar', icon: Receipt, requires: 'finance', group: 'Finans' },
+  {
+    to: '/forecast',
+    label: 'Nakit Tahmin',
+    icon: TrendingUp,
+    requires: 'finance',
+    group: 'Finans',
+  },
   {
     to: '/subscriptions',
     label: 'Abonelikler',

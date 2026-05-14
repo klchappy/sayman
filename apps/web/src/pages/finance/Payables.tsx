@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileCode, Plus, Receipt, Sparkles } from 'lucide-react';
+import { Brain, FileCode, Plus, Receipt, Search, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -21,6 +21,17 @@ interface Payable {
   paid_amount: string;
   currency: string;
   status: PayableStatus;
+}
+
+interface SemanticHit {
+  id: string;
+  title: string;
+  amount: string;
+  due_date: string | null;
+  status: PayableStatus;
+  supplier_name: string | null;
+  category: string | null;
+  similarity: number;
 }
 
 function fmtTRY(v: string | number) {
@@ -56,13 +67,36 @@ const STATUS_BADGE: Record<PayableStatus, string> = {
 export function PayablesPage() {
   const active = useAuth((s) => s.active);
   const [showForm, setShowForm] = useState(false);
+  const [semanticQuery, setSemanticQuery] = useState('');
+  const [semanticInput, setSemanticInput] = useState('');
 
   const q = useQuery({
     queryKey: ['payables', active.orgSlug, active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    enabled: !!active.tenantSlug && !semanticQuery,
     queryFn: async () => {
       const res = await api.get<{ data: Payable[] }>('/payables');
       return res.data.data;
+    },
+  });
+
+  const semanticQ = useQuery<SemanticHit[] | { error: string }>({
+    queryKey: ['payables-semantic', active.tenantSlug, semanticQuery],
+    enabled: !!active.tenantSlug && !!semanticQuery,
+    queryFn: async () => {
+      try {
+        const res = await api.get<{ data: SemanticHit[] }>(
+          `/search/semantic?q=${encodeURIComponent(semanticQuery)}&limit=30`,
+        );
+        return res.data.data;
+      } catch (e) {
+        const err = e as { response?: { data?: { error?: string; message?: string } } };
+        return {
+          error:
+            err.response?.data?.message ??
+            err.response?.data?.error ??
+            (e as Error).message,
+        };
+      }
     },
   });
 
@@ -99,52 +133,174 @@ export function PayablesPage() {
 
       {showForm && <PayableForm onClose={() => setShowForm(false)} />}
 
-      <div className="card overflow-x-auto">
-        {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
-        {q.data?.length === 0 && (
-          <p className="text-brand-500 text-sm py-6 text-center">Bu tenant'ta henüz fatura yok.</p>
+      {/* Semantic search bar */}
+      <div className="card mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Brain className="size-4 text-purple-600" />
+          <span className="text-xs font-medium text-purple-700 uppercase tracking-wide">
+            Anlamsal Arama
+          </span>
+          <input
+            type="text"
+            value={semanticInput}
+            onChange={(e) => setSemanticInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') setSemanticQuery(semanticInput.trim());
+            }}
+            placeholder='Örn: "internet faturası", "geçen ay yüksek olan", "kira ödemesi"'
+            className="flex-1 min-w-[200px] rounded-lg border border-brand-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+          />
+          <button
+            onClick={() => setSemanticQuery(semanticInput.trim())}
+            disabled={semanticInput.trim().length < 2}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-sm disabled:opacity-50 flex items-center gap-1"
+          >
+            <Search className="size-3" />
+            Ara
+          </button>
+          {semanticQuery && (
+            <button
+              onClick={() => {
+                setSemanticQuery('');
+                setSemanticInput('');
+              }}
+              className="text-xs text-brand-500 hover:text-brand-900 px-2 py-1.5 rounded flex items-center gap-1"
+            >
+              <X className="size-3" />
+              Temizle
+            </button>
+          )}
+        </div>
+        {semanticQuery && Array.isArray(semanticQ.data) && (
+          <p className="text-[10px] text-brand-400 mt-2">
+            "{semanticQuery}" için {semanticQ.data.length} eşleşme · Voyage AI embeddings
+          </p>
         )}
-        {q.data && q.data.length > 0 && (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-brand-500 text-xs uppercase border-b border-brand-100">
-                <th className="py-2 px-2">Başlık</th>
-                <th className="py-2 px-2">Fatura No</th>
-                <th className="py-2 px-2">Dönem</th>
-                <th className="py-2 px-2">Vade</th>
-                <th className="py-2 px-2 text-right">Tutar</th>
-                <th className="py-2 px-2 text-right">Ödenen</th>
-                <th className="py-2 px-2">Durum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {q.data.map((p) => (
-                <tr key={p.id} className="border-b border-brand-50 hover:bg-brand-50">
-                  <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2">
-                    <Receipt className="size-4 text-brand-400" />
-                    <Link to={`/payables/${p.id}`} className="hover:text-brand-700">
-                      {p.title}
-                    </Link>
-                  </td>
-                  <td className="py-2 px-2 font-mono text-xs text-brand-600">
-                    {p.invoice_number ?? '-'}
-                  </td>
-                  <td className="py-2 px-2 text-brand-700">{p.period_label ?? '-'}</td>
-                  <td className="py-2 px-2 text-brand-700">{p.due_date ?? '-'}</td>
-                  <td className="py-2 px-2 font-mono text-right">{fmtTRY(p.amount)}</td>
-                  <td className="py-2 px-2 font-mono text-right text-emerald-700">
-                    {fmtTRY(p.paid_amount)}
-                  </td>
-                  <td className="py-2 px-2">
-                    <span className={`badge ${STATUS_BADGE[p.status]}`}>{STATUS_LABEL[p.status]}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {semanticQuery && semanticQ.data && !Array.isArray(semanticQ.data) && (
+          <p className="text-xs text-amber-700 mt-2 bg-amber-50 p-2 rounded">
+            ⚠️ {semanticQ.data.error} — VOYAGE_API_KEY .env'e eklenip API restart edilince aktif olur.
+          </p>
+        )}
+      </div>
+
+      <div className="card overflow-x-auto">
+        {semanticQuery ? (
+          <SemanticResults result={semanticQ.data} loading={semanticQ.isLoading} />
+        ) : (
+          <>
+            {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
+            {q.data?.length === 0 && (
+              <p className="text-brand-500 text-sm py-6 text-center">
+                Bu tenant'ta henüz fatura yok.
+              </p>
+            )}
+            {q.data && q.data.length > 0 && (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-brand-500 text-xs uppercase border-b border-brand-100">
+                    <th className="py-2 px-2">Başlık</th>
+                    <th className="py-2 px-2">Fatura No</th>
+                    <th className="py-2 px-2">Dönem</th>
+                    <th className="py-2 px-2">Vade</th>
+                    <th className="py-2 px-2 text-right">Tutar</th>
+                    <th className="py-2 px-2 text-right">Ödenen</th>
+                    <th className="py-2 px-2">Durum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.data.map((p) => (
+                    <tr key={p.id} className="border-b border-brand-50 hover:bg-brand-50">
+                      <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2">
+                        <Receipt className="size-4 text-brand-400" />
+                        <Link to={`/payables/${p.id}`} className="hover:text-brand-700">
+                          {p.title}
+                        </Link>
+                      </td>
+                      <td className="py-2 px-2 font-mono text-xs text-brand-600">
+                        {p.invoice_number ?? '-'}
+                      </td>
+                      <td className="py-2 px-2 text-brand-700">{p.period_label ?? '-'}</td>
+                      <td className="py-2 px-2 text-brand-700">{p.due_date ?? '-'}</td>
+                      <td className="py-2 px-2 font-mono text-right">{fmtTRY(p.amount)}</td>
+                      <td className="py-2 px-2 font-mono text-right text-emerald-700">
+                        {fmtTRY(p.paid_amount)}
+                      </td>
+                      <td className="py-2 px-2">
+                        <span className={`badge ${STATUS_BADGE[p.status]}`}>
+                          {STATUS_LABEL[p.status]}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+function SemanticResults({
+  result,
+  loading,
+}: {
+  result: SemanticHit[] | { error: string } | undefined;
+  loading: boolean;
+}) {
+  if (loading) return <p className="text-brand-500 text-sm py-6 text-center">Aranıyor…</p>;
+  if (!result) return null;
+  if (!Array.isArray(result)) {
+    return (
+      <p className="text-brand-500 text-sm py-6 text-center">
+        Anlamsal arama şu an kullanılamıyor.
+      </p>
+    );
+  }
+  if (result.length === 0) {
+    return (
+      <p className="text-brand-500 text-sm py-6 text-center">
+        Eşleşme bulunamadı. Daha kısa bir ifade dene.
+      </p>
+    );
+  }
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-left text-brand-500 text-xs uppercase border-b border-brand-100">
+          <th className="py-2 px-2">Başlık</th>
+          <th className="py-2 px-2">Tedarikçi</th>
+          <th className="py-2 px-2">Vade</th>
+          <th className="py-2 px-2 text-right">Tutar</th>
+          <th className="py-2 px-2 text-right">Benzerlik</th>
+        </tr>
+      </thead>
+      <tbody>
+        {result.map((h) => (
+          <tr key={h.id} className="border-b border-brand-50 hover:bg-purple-50/30">
+            <td className="py-2 px-2 font-medium text-brand-900">
+              <Link to={`/payables/${h.id}`} className="hover:text-brand-700">
+                {h.title}
+              </Link>
+              {h.category && (
+                <span className="ml-2 text-[10px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">
+                  {h.category}
+                </span>
+              )}
+            </td>
+            <td className="py-2 px-2 text-brand-700">{h.supplier_name ?? '-'}</td>
+            <td className="py-2 px-2 text-brand-700">{h.due_date ?? '-'}</td>
+            <td className="py-2 px-2 font-mono text-right">{fmtTRY(h.amount)}</td>
+            <td className="py-2 px-2 text-right">
+              <span className="inline-block bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-mono">
+                {(h.similarity * 100).toFixed(0)}%
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

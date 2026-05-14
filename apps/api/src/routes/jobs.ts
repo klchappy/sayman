@@ -11,7 +11,16 @@ import { HttpError } from '../lib/helpers';
 import { runJob, type JobName } from '../jobs/scheduler';
 import { requireAuth } from '../middleware/auth';
 
-const ALLOWED_JOBS: JobName[] = ['generate-periods', 'send-reminders', 'update-statuses'];
+const ALLOWED_JOBS: JobName[] = [
+  'generate-periods',
+  'send-reminders',
+  'update-statuses',
+  'fetch-fx-rates',
+  'deliver-webhooks',
+  'detect-anomalies',
+  'generate-ai-summary',
+  'embed-payables',
+];
 
 export const jobsRouter = Router();
 

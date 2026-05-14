@@ -93,6 +93,12 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().min(20).optional(),
   ),
+
+  /** WhatsApp webhook doğrulama token (Meta sets, biz match ederiz) */
+  WHATSAPP_VERIFY_TOKEN: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(8).optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);

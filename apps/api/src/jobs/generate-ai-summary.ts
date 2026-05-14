@@ -6,6 +6,8 @@
  * okur (her view'da Claude çağrılmasın).
  *
  * Idempotent: ai_summaries (tenant_id, summary_date, kind) unique.
+ *
+ * Telegram chat_id'si bağlı admin/super_admin'lere de özet düşer.
  */
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import {
@@ -17,7 +19,8 @@ import {
 } from '@sayman/db';
 import { env, isConfigured } from '../config/env';
 import { logger } from '../config/logger';
-import { todayISO } from './helpers';
+import { sendTelegramMessage } from '../lib/telegram';
+import { getOrgAdmins, todayISO } from './helpers';
 
 export interface AiSummaryResult {
   attempted: number;
@@ -185,13 +188,18 @@ function buildFallbackText(s: TenantSnapshot): string {
   return parts.join(' ');
 }
 
-export async function runGenerateAiSummary(): Promise<AiSummaryResult> {
+export interface RunOpts {
+  /** True ise Telegram bildirimi at (default false — sadece cron 07:00'de true) */
+  sendTelegram?: boolean;
+}
+
+export async function runGenerateAiSummary(opts: RunOpts = {}): Promise<AiSummaryResult> {
   const result: AiSummaryResult = { attempted: 0, generated: 0, skipped: 0, failed: 0 };
   const db = getDb();
   const today = todayISO();
 
   const allTenants = await db
-    .select({ id: tenants.id, slug: tenants.slug })
+    .select({ id: tenants.id, slug: tenants.slug, organization_id: tenants.organization_id })
     .from(tenants)
     .where(eq(tenants.is_active, true));
 
@@ -227,12 +235,32 @@ export async function runGenerateAiSummary(): Promise<AiSummaryResult> {
         duration_ms: String(dur),
       });
       result.generated++;
+
+      // Telegram'a yolla — sadece cron 07:00'de
+      if (opts.sendTelegram) {
+        try {
+          const admins = await getOrgAdmins(t.organization_id);
+          const message = `📊 *Sayman Günlük Özet* — ${t.slug}\n\n${text}\n\n_${today}_`;
+          for (const a of admins) {
+            if (a.telegram_chat_id) {
+              await sendTelegramMessage({
+                chatId: a.telegram_chat_id,
+                text: message,
+                parseMode: 'Markdown',
+                disableNotification: true,
+              });
+            }
+          }
+        } catch (err) {
+          logger.warn({ err, tenantId: t.id }, 'AI summary: telegram send failed');
+        }
+      }
     } catch (err) {
       logger.error({ err, tenantId: t.id }, 'AI summary: tenant generation failed');
       result.failed++;
     }
   }
 
-  logger.info(result, 'generate-ai-summary completed');
+  logger.info({ ...result, telegram: opts.sendTelegram }, 'generate-ai-summary completed');
   return result;
 }
