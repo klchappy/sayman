@@ -25,21 +25,30 @@ export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    /** Supabase auth.users.id ile eşleşir (varsa) */
+    /** Eski: Supabase auth.users.id (deprecated, geçiş bittikten sonra null) */
     auth_user_id: uuid('auth_user_id').unique(),
+    /** Yeni: auth_accounts(id) FK — blueprint refactor sonrası asıl auth kaynağı */
+    auth_account_id: uuid('auth_account_id').unique(),
     email: text('email').notNull().unique(),
     username: text('username').unique(),
     full_name: text('full_name').notNull(),
     avatar_url: text('avatar_url'),
+    /** Telegram bildirim için */
+    telegram_chat_id: text('telegram_chat_id'),
     /** Sayman dışı (örn. Damga) entegrasyonlar için */
     phone: text('phone'),
+    /** Org admin onayını bekliyor (apply-org flow) */
+    is_pending: boolean('is_pending').notNull().default(false),
     is_active: boolean('is_active').notNull().default(true),
+    onboarding_completed_at: timestamp('onboarding_completed_at', { withTimezone: true }),
     last_login_at: timestamp('last_login_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
-    authIdx: index('idx_users_auth').on(table.auth_user_id),
+    authLegacyIdx: index('idx_users_auth_legacy').on(table.auth_user_id),
+    authAccountIdx: index('idx_users_auth_account').on(table.auth_account_id),
+    pendingIdx: index('idx_users_pending').on(table.is_pending),
   }),
 );
 

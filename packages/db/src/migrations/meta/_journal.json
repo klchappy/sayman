@@ -8,6 +8,13 @@
       "when": 1778700275369,
       "tag": "0000_naive_the_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778748771554,
+      "tag": "0001_greedy_betty_brant",
+      "breakpoints": true
     }
   ]
 }
