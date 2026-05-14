@@ -116,7 +116,7 @@ importRouter.post(
 
       const insertedIds = await handler.insert(valid, {
         orgId: req.activeOrgId!,
-        tenantId: req.activeTenantId,
+        tenantId: req.saymanContext?.tenantId ?? undefined,
       });
 
       await auditFromRequest(req, {
