@@ -386,6 +386,95 @@ async function main() {
     expect(r.body.data.length === 0, `hukuk should see 0 subs, got ${r.body.data.length}`);
   });
 
+  // --- 11b. User management — org-level (tenant header gerekmez) ---
+  useTenant(ORG_SLUG, null);
+
+  await step('GET /users/me/permissions (super_admin)', async () => {
+    const r = await api('GET', '/users/me/permissions');
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.role === 'super_admin', `expected super_admin, got ${r.body.data.role}`);
+    expect(
+      r.body.data.permissions.includes('users.invite'),
+      'super_admin should have users.invite',
+    );
+  });
+
+  let inviteId, inviteToken;
+  const INVITED_EMAIL = `invited-${STAMP}@sayman.test`;
+  await step('POST /users/invite (muhasebeci role)', async () => {
+    const r = await api('POST', '/users/invite', {
+      email: INVITED_EMAIL,
+      role: 'muhasebeci',
+    });
+    expect(r.status === 201, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.action_link?.includes('accept-invite'), 'action_link missing');
+    inviteId = r.body.data.id;
+    inviteToken = r.body.token;
+  });
+
+  await step('GET /users/invitations (pending list)', async () => {
+    const r = await api('GET', '/users/invitations');
+    expect(r.status === 200, `status ${r.status}`);
+    expect(r.body.data.length >= 1, 'expected pending invite');
+  });
+
+  await step('GET /users/invitations/:token/verify (PUBLIC)', async () => {
+    // Token PUBLIC endpoint — auth header'ı temizle
+    const oldToken = TOKEN;
+    TOKEN = null;
+    const r = await api('GET', `/users/invitations/${inviteToken}/verify`);
+    TOKEN = oldToken;
+    expect(r.status === 200, `verify status ${r.status}`);
+    expect(r.body.data.email === INVITED_EMAIL, 'verify email mismatch');
+    expect(r.body.data.role === 'muhasebeci', 'verify role mismatch');
+  });
+
+  await step('POST /users/accept-invite', async () => {
+    const oldToken = TOKEN;
+    TOKEN = null;
+    const r = await api('POST', '/users/accept-invite', {
+      token: inviteToken,
+      full_name: 'Invited User',
+      password: 'InvitedPass123',
+    });
+    TOKEN = oldToken;
+    expect(r.status === 201, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.access_token, 'access_token missing');
+  });
+
+  let invitedUserId;
+  await step('GET /users (org-scope) — invited kullanici listede mi', async () => {
+    const r = await api('GET', '/users');
+    expect(r.status === 200, `status ${r.status}`);
+    const invited = r.body.data.find((u) => u.email === INVITED_EMAIL);
+    expect(invited, `${INVITED_EMAIL} listede yok`);
+    expect(invited.role === 'muhasebeci', `role beklenmedik: ${invited.role}`);
+    invitedUserId = invited.user_id;
+  });
+
+  await step('PATCH /users/:id/role (muhasebeci → denetci)', async () => {
+    const r = await api('PATCH', `/users/${invitedUserId}/role`, { role: 'denetci' });
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.data.role === 'denetci', `role mismatch: ${r.body.data.role}`);
+  });
+
+  await step('POST /users/:id/tenant-override (deny hukuk)', async () => {
+    const r = await api('POST', `/users/${invitedUserId}/tenant-override`, {
+      tenant_id: TENANT_HUKUK_ID,
+      value: 'deny',
+    });
+    expect(r.status === 200, `status ${r.status}: ${JSON.stringify(r.body)}`);
+    expect(r.body.data.value === 'deny', `value mismatch: ${r.body.data.value}`);
+  });
+
+  await step('DELETE /users/:id (org\'dan cikar)', async () => {
+    const r = await api('DELETE', `/users/${invitedUserId}`);
+    expect(r.status === 200, `status ${r.status}`);
+  });
+
+  // Switch back to tenant context for cleanup below
+  useTenant(ORG_SLUG, 'smoke-insaat');
+
   // --- 12. Org-scope master data: hukuk tenant'tan da görünmeli (share_scope) ---
   await step('Cross-tenant master data: hukuk-tenant /persons should still see person', async () => {
     const r = await api('GET', '/persons');
@@ -418,6 +507,13 @@ async function main() {
   await sql('DELETE FROM auth_accounts WHERE email = $1', [TEST_EMAIL]);
   await sql('DELETE FROM users WHERE email = $1', [TEST_EMAIL]);
   console.log(`   DELETE auth_account+users for ${TEST_EMAIL}`);
+
+  // Invited user de cleanup (cascade org-bagimsiz)
+  if (typeof INVITED_EMAIL === 'string') {
+    await sql('DELETE FROM auth_accounts WHERE email = $1', [INVITED_EMAIL]);
+    await sql('DELETE FROM users WHERE email = $1', [INVITED_EMAIL]);
+    console.log(`   DELETE auth_account+users for ${INVITED_EMAIL}`);
+  }
 
   await pool.end();
 

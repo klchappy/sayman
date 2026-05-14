@@ -18,6 +18,7 @@ import { subscriptionsRouter } from './subscriptions';
 import { regularPaymentsRouter } from './regular-payments';
 import { officialPaymentsRouter } from './official-payments';
 import { guaranteesRouter } from './guarantees';
+import { usersRouter } from './users';
 
 export const apiRouter = Router();
 
@@ -51,3 +52,6 @@ apiRouter.use(subscriptionsRouter);
 apiRouter.use(regularPaymentsRouter);
 apiRouter.use(officialPaymentsRouter);
 apiRouter.use(guaranteesRouter);
+
+// Kullanıcı yönetimi (org-scope + invite akışı)
+apiRouter.use(usersRouter);

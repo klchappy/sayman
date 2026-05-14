@@ -15,6 +15,7 @@ import {
   Repeat,
   Shield,
   ShieldCheck,
+  UserCog,
   Users,
 } from 'lucide-react';
 import { useEffect } from 'react';
@@ -82,6 +83,7 @@ const navItems: NavItem[] = [
   { to: '/master-data/institutions', label: 'Kurumlar', icon: Building, group: 'Master Data' },
 
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
+  { to: '/users', label: 'Kullanıcılar', icon: UserCog, group: 'Sistem' },
   { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },
 ];

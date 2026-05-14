@@ -29,6 +29,13 @@
       "when": 1778753433733,
       "tag": "0003_clammy_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778756762960,
+      "tag": "0004_bright_thor",
+      "breakpoints": true
     }
   ]
 }

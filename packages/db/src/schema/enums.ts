@@ -17,21 +17,23 @@ export const sectorEnum = pgEnum('sector', [
 
 export const roleEnum = pgEnum('role', [
   'super_admin',
+  'organization_admin',
   'yonetici',
-  'muhasebe_muduru',
   'muhasebeci',
+  'denetci',
   'personel',
-  'goruntuleyici',
+  'musavir',
 ]);
 
 /** UserTenantOverride.value — Role + 'deny' (tenant erişimini iptal et) */
 export const tenantOverrideValueEnum = pgEnum('tenant_override_value', [
   'super_admin',
+  'organization_admin',
   'yonetici',
-  'muhasebe_muduru',
   'muhasebeci',
+  'denetci',
   'personel',
-  'goruntuleyici',
+  'musavir',
   'deny',
 ]);
 

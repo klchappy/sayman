@@ -11,9 +11,11 @@ import { NotificationsPage } from './pages/Notifications';
 import { OrganizationDetailPage } from './pages/OrganizationDetail';
 import { SecurityPage } from './pages/Security';
 import { TasksPage } from './pages/Tasks';
+import { AcceptInvitePage } from './pages/auth/AcceptInvite';
 import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
+import { UsersPage } from './pages/Users';
 import { BanksPage } from './pages/master-data/Banks';
 import { CompaniesPage } from './pages/master-data/Companies';
 import { InstitutionsPage } from './pages/master-data/Institutions';
@@ -40,6 +42,7 @@ export default function App() {
       <Route path="/auth/sign-up-org" element={<SignUpOrgPage />} />
       <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
 
       {/* Protected */}
       <Route
@@ -67,6 +70,7 @@ export default function App() {
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/audit" element={<AuditLogPage />} />
+        <Route path="/users" element={<UsersPage />} />
 
         <Route path="/security" element={<SecurityPage />} />
 
