@@ -48,6 +48,41 @@ export interface NormalizedCariMovement {
   raw_data?: Record<string, unknown>;
 }
 
+export interface PushPayloadPayable {
+  /** Sayman payable id (debugging için) */
+  payable_id: string;
+  /** Tedarikçi cari adı — eşleştirme için */
+  supplier_name?: string | null;
+  /** Eğer cari hesap zaten eşleşmişse */
+  cari_external_id?: string | null;
+  title: string;
+  invoice_number?: string | null;
+  amount: number;
+  currency: string;
+  issue_date?: string | null;
+  due_date?: string | null;
+  category?: string | null;
+  notes?: string | null;
+}
+
+export interface PushPayloadPayment {
+  payment_id: string;
+  /** Hangi ERP faturasına bağlanacak (Sayman'da push edilmişse external_id var) */
+  related_invoice_external_id?: string | null;
+  paid_at: string;
+  amount: number;
+  currency: string;
+  method?: string | null;
+  reference_no?: string | null;
+  notes?: string | null;
+}
+
+export interface PushResult {
+  external_id: string;
+  external_url?: string | null;
+  raw_response?: unknown;
+}
+
 export interface ErpAdapter {
   /** Provider identifier */
   readonly provider: string;
@@ -80,4 +115,18 @@ export interface ErpAdapter {
     since: string | null,
     ctx: AdapterContext,
   ): Promise<NormalizedCariMovement[]>;
+
+  /** Push: Sayman payable'ı ERP'ye fatura/alış faturası olarak yarat */
+  pushInvoice?(
+    config: AdapterConfig,
+    payload: PushPayloadPayable,
+    ctx: AdapterContext,
+  ): Promise<PushResult>;
+
+  /** Push: Sayman ödeme transaction'ı ERP'ye tahsilat/ödeme olarak yarat */
+  pushPayment?(
+    config: AdapterConfig,
+    payload: PushPayloadPayment,
+    ctx: AdapterContext,
+  ): Promise<PushResult>;
 }

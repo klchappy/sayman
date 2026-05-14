@@ -51,6 +51,7 @@ import { excelExportRouter } from './excel-export';
 import { recurringDetectRouter } from './recurring-detect';
 import { paymentApprovalsRouter } from './payment-approvals';
 import { erpRouter } from './erp';
+import { erpPushRouter } from './erp-push';
 import { cariRouter } from './cari';
 
 export const apiRouter = Router();
@@ -184,6 +185,9 @@ apiRouter.use(paymentApprovalsRouter);
 
 // ERP bağlantı yönetimi (Paraşüt, Logo, Manuel CSV)
 apiRouter.use(erpRouter);
+
+// ERP push — Sayman → muhasebe yazılımı (çift yönlü)
+apiRouter.use(erpPushRouter);
 
 // Cari hesap + ekstre okuma
 apiRouter.use(cariRouter);

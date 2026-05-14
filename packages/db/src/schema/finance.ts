@@ -80,6 +80,15 @@ export const payableItems = pgTable(
     notes: text('notes'),
     metadata: jsonb('metadata').default({}).notNull(),
 
+    /** ERP push: bu fatura hangi ERP bağlantısına gönderildi */
+    erp_connection_id: uuid('erp_connection_id'),
+    /** ERP'deki kayıt ID (örn Paraşüt invoice id) */
+    erp_external_id: text('erp_external_id'),
+    /** 'pending' | 'pushed' | 'failed' — push durumu */
+    erp_push_status: text('erp_push_status'),
+    erp_pushed_at: timestamp('erp_pushed_at', { withTimezone: true }),
+    erp_push_error: text('erp_push_error'),
+
     created_by: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     is_active: boolean('is_active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -90,6 +99,7 @@ export const payableItems = pgTable(
     statusIdx: index('idx_payable_status').on(table.status),
     dueIdx: index('idx_payable_due').on(table.due_date),
     periodIdx: index('idx_payable_period').on(table.tenant_id, table.period_label),
+    erpIdx: index('idx_payable_erp').on(table.erp_connection_id, table.erp_push_status),
   }),
 );
 export type PayableItem = typeof payableItems.$inferSelect;
@@ -122,6 +132,13 @@ export const paymentTransactions = pgTable(
 
     status: transactionStatusEnum('status').notNull().default('approved'),
     notes: text('notes'),
+
+    /** ERP push mapping (Sayman ödemesi muhasebe yazılımında oluşturuldu mu) */
+    erp_connection_id: uuid('erp_connection_id'),
+    erp_external_id: text('erp_external_id'),
+    erp_push_status: text('erp_push_status'),
+    erp_pushed_at: timestamp('erp_pushed_at', { withTimezone: true }),
+    erp_push_error: text('erp_push_error'),
 
     created_by: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     approved_by: uuid('approved_by').references(() => users.id, { onDelete: 'set null' }),

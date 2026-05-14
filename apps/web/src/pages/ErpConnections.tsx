@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowUpFromLine,
   Boxes,
   CheckCircle2,
   Clock,
@@ -20,7 +21,9 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Send,
   Trash2,
+  Upload,
   Zap,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -103,7 +106,8 @@ export function ErpConnectionsPage() {
             ERP Bağlantıları
           </h1>
           <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
-            Paraşüt, Logo, Mikro gibi muhasebe yazılımlarınla bağlan; cari ekstresi otomatik gelsin.
+            Paraşüt, Logo, Mikro gibi muhasebe yazılımlarınla iki yönlü bağlan:
+            cari + ekstre otomatik gelir, Sayman'da oluşan fatura/ödeme oraya da yansır.
           </p>
         </div>
         <button
@@ -208,6 +212,28 @@ function ConnectionCard({
     },
   });
 
+  const pushStats = useQuery({
+    queryKey: ['erp-push-status', connection.id],
+    queryFn: async () => {
+      const res = await api.get<{
+        data: { total: number; pushed: number; failed: number; pending: number };
+      }>(`/erp/connections/${connection.id}/push-status`);
+      return res.data.data;
+    },
+  });
+
+  const bulkPush = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{
+        data: { attempted: number; success: number; failed: number; errors: string[] };
+      }>(`/erp/connections/${connection.id}/push-pending`, { limit: 50 });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['erp-push-status', connection.id] });
+    },
+  });
+
   const statusColor =
     connection.status === 'active'
       ? 'text-emerald-700 bg-emerald-100'
@@ -307,6 +333,58 @@ function ConnectionCard({
           {sync.data.errors.length > 0 && (
             <p className="text-amber-700 mt-1">
               {sync.data.errors.length} uyarı: {sync.data.errors[0]}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Push (Sayman → ERP) bölümü */}
+      {pushStats.data && pushStats.data.total > 0 && (
+        <div className="border-t border-brand-100 dark:border-slate-800 pt-3 mt-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 text-xs">
+              <span className="flex items-center gap-1 text-brand-500 dark:text-slate-400">
+                <ArrowUpFromLine className="size-3" />
+                Sayman → ERP:
+              </span>
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                {pushStats.data.pushed} gönderildi
+              </span>
+              {pushStats.data.pending > 0 && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {pushStats.data.pending} bekliyor
+                </span>
+              )}
+              {pushStats.data.failed > 0 && (
+                <span className="text-red-700 dark:text-red-400">
+                  {pushStats.data.failed} hata
+                </span>
+              )}
+            </div>
+            {pushStats.data.pending + pushStats.data.failed > 0 && (
+              <button
+                onClick={() => bulkPush.mutate()}
+                disabled={bulkPush.isPending}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-60"
+              >
+                {bulkPush.isPending ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Send className="size-3" />
+                )}
+                Bekleyenleri Gönder
+              </button>
+            )}
+          </div>
+          {bulkPush.data && (
+            <p className="text-xs bg-blue-50 dark:bg-blue-900/20 rounded p-2 mt-2">
+              ✓ {bulkPush.data.attempted} fatura işlendi — {bulkPush.data.success} başarılı,{' '}
+              {bulkPush.data.failed} hata
+              {bulkPush.data.errors.length > 0 && (
+                <span className="block text-amber-700 mt-1">
+                  Örnek hata: {bulkPush.data.errors[0]}
+                </span>
+              )}
             </p>
           )}
         </div>

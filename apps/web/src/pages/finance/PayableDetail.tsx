@@ -2,14 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Check,
+  Database,
   FileDown,
   Loader2,
   Pencil,
   Plus,
   Receipt,
   Repeat,
+  Send,
   Sparkles,
   Tag,
+  Upload,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -46,6 +49,11 @@ interface PayableDetail {
   notes: string | null;
   category: string | null;
   supplier_name: string | null;
+  erp_connection_id: string | null;
+  erp_external_id: string | null;
+  erp_push_status: string | null;
+  erp_pushed_at: string | null;
+  erp_push_error: string | null;
   transactions: Payment[];
 }
 
@@ -137,6 +145,15 @@ export function PayableDetailPage() {
       />
 
       <AiExplainBox payableId={p.id} />
+
+      <ErpPushBox
+        payableId={p.id}
+        erpExternalId={p.erp_external_id}
+        erpConnectionId={p.erp_connection_id}
+        erpStatus={p.erp_push_status}
+        erpPushedAt={p.erp_pushed_at}
+        erpError={p.erp_push_error}
+      />
 
       <RecurringHint payableId={p.id} />
 
@@ -321,6 +338,151 @@ function PaymentForm({
           {isPending ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// --- ERP push widget ---
+interface ErpConnectionMini {
+  id: string;
+  name: string;
+  provider: string;
+  status: string;
+}
+
+function ErpPushBox({
+  payableId,
+  erpExternalId,
+  erpConnectionId,
+  erpStatus,
+  erpPushedAt,
+  erpError,
+}: {
+  payableId: string;
+  erpExternalId: string | null;
+  erpConnectionId: string | null;
+  erpStatus: string | null;
+  erpPushedAt: string | null;
+  erpError: string | null;
+}) {
+  const qc = useQueryClient();
+  const [selectedConn, setSelectedConn] = useState<string>('');
+
+  const conns = useQuery({
+    queryKey: ['erp-connections-list'],
+    queryFn: async () => {
+      const res = await api.get<{ data: ErpConnectionMini[] }>('/erp/connections');
+      return res.data.data.filter((c) => c.status === 'active');
+    },
+  });
+
+  const push = useMutation({
+    mutationFn: async () => {
+      const connId = erpConnectionId ?? selectedConn;
+      if (!connId) throw new Error('ERP bağlantısı seç');
+      const res = await api.post<{
+        data: { external_id: string; external_url: string | null; push_status: string };
+      }>(`/erp/connections/${connId}/push/payable/${payableId}`);
+      return res.data.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['payable', payableId] }),
+  });
+
+  const repush = useMutation({
+    mutationFn: async () => {
+      const connId = erpConnectionId ?? selectedConn;
+      if (!connId) throw new Error('ERP bağlantısı yok');
+      const res = await api.post(`/erp/connections/${connId}/push/payable/${payableId}?force=true`);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['payable', payableId] }),
+  });
+
+  if (!conns.data || conns.data.length === 0) {
+    return null; // Hiç ERP bağlantısı yoksa gizle
+  }
+
+  if (erpStatus === 'pushed' && erpExternalId) {
+    const conn = conns.data.find((c) => c.id === erpConnectionId);
+    return (
+      <div className="card mb-6 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Database className="size-5 text-emerald-600" />
+            <div>
+              <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
+                Bu fatura {conn?.name ?? 'ERP'}'ye gönderildi
+              </p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-300 font-mono mt-0.5">
+                ID: {erpExternalId} ·{' '}
+                {erpPushedAt ? new Date(erpPushedAt).toLocaleString('tr-TR') : '-'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => repush.mutate()}
+            disabled={repush.isPending}
+            className="text-xs border border-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-3 py-1.5 rounded flex items-center gap-1"
+            title="Yeniden gönder (mevcut kaydı korur)"
+          >
+            {repush.isPending ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Upload className="size-3" />
+            )}
+            Yeniden Gönder
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card mb-6 bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Database className="size-5 text-blue-600" />
+          <div>
+            <p className="text-sm font-medium text-brand-900 dark:text-slate-100">
+              Muhasebe yazılımına gönder
+            </p>
+            <p className="text-xs text-brand-500 dark:text-slate-400">
+              Bu faturayı ERP'de alış faturası olarak yarat.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedConn}
+            onChange={(e) => setSelectedConn(e.target.value)}
+            className="text-xs rounded border border-brand-200 dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5"
+          >
+            <option value="">Bağlantı seç…</option>
+            {conns.data.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.provider})
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => push.mutate()}
+            disabled={!selectedConn || push.isPending}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 disabled:opacity-60"
+          >
+            {push.isPending ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Send className="size-3" />
+            )}
+            Gönder
+          </button>
+        </div>
+      </div>
+      {(push.error || erpError) && (
+        <p className="text-xs text-red-700 bg-red-50 dark:bg-red-900/20 rounded p-2 mt-2">
+          {(push.error as Error)?.message ?? erpError}
+        </p>
+      )}
     </div>
   );
 }

@@ -21,6 +21,9 @@ import type {
   ErpAdapter,
   NormalizedCariAccount,
   NormalizedCariMovement,
+  PushPayloadPayable,
+  PushPayloadPayment,
+  PushResult,
   TestResult,
 } from './types';
 
@@ -248,5 +251,149 @@ export const parasutAdapter: ErpAdapter = {
       if (page > 100) break;
     }
     return all;
+  },
+
+  /**
+   * Paraşüt'e ALIŞ FATURASI (purchase_bill) oluştur.
+   *
+   * Endpoint: POST /v4/{company_id}/purchase_bills
+   * Doc: https://apidocs.parasut.com/#tag/PurchaseBill
+   *
+   * Cari ID gerekli — yoksa önce supplier_name ile contact arar, yoksa yeni contact yaratır.
+   */
+  async pushInvoice(
+    config: AdapterConfig,
+    payload: PushPayloadPayable,
+  ): Promise<PushResult> {
+    const cfg = config as ParasutConfig;
+    const token = await getToken(cfg);
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    // 1. Cari ID belirle: önce verilen external_id, yoksa supplier_name ile bul/yarat
+    let contactId = payload.cari_external_id ?? null;
+    if (!contactId && payload.supplier_name) {
+      // Önce ara
+      const searchRes = await fetch(
+        `${PARASUT_BASE}/v4/${cfg.company_id}/contacts?filter[name]=${encodeURIComponent(payload.supplier_name)}&page[size]=5`,
+        { headers },
+      );
+      if (searchRes.ok) {
+        const data = (await searchRes.json()) as ParasutListResponse<ParasutContact>;
+        if (data.data.length > 0) contactId = data.data[0]!.id;
+      }
+      // Yoksa supplier yarat
+      if (!contactId) {
+        const createRes = await fetch(`${PARASUT_BASE}/v4/${cfg.company_id}/contacts`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            data: {
+              type: 'contacts',
+              attributes: {
+                name: payload.supplier_name,
+                account_type: 'supplier',
+                contact_type: 'company',
+              },
+            },
+          }),
+        });
+        if (!createRes.ok) {
+          const errTxt = await createRes.text();
+          throw new Error(
+            `Paraşüt cari yaratılamadı: ${createRes.status} ${errTxt.slice(0, 150)}`,
+          );
+        }
+        const created = (await createRes.json()) as { data: ParasutContact };
+        contactId = created.data.id;
+      }
+    }
+    if (!contactId) {
+      throw new Error('Cari hesap belirlenemedi (supplier_name veya cari_external_id zorunlu)');
+    }
+
+    // 2. PurchaseBill oluştur (basic — single line, vat dahil net)
+    const body = {
+      data: {
+        type: 'purchase_bills',
+        attributes: {
+          item_type: 'purchase_bill',
+          description: payload.title,
+          issue_date: payload.issue_date ?? new Date().toISOString().slice(0, 10),
+          due_date: payload.due_date ?? payload.issue_date,
+          invoice_no: payload.invoice_number ?? '',
+          currency: payload.currency,
+          gross_total: payload.amount,
+          net_total: payload.amount,
+          payment_account_type: 'cash',
+        },
+        relationships: {
+          supplier: { data: { id: contactId, type: 'contacts' } },
+        },
+      },
+    };
+
+    const res = await fetch(`${PARASUT_BASE}/v4/${cfg.company_id}/purchase_bills`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errTxt = await res.text();
+      throw new Error(`Paraşüt purchase_bill: ${res.status} ${errTxt.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { data: { id: string; type: string } };
+    return {
+      external_id: data.data.id,
+      external_url: `https://app.parasut.com/${cfg.company_id}/purchase_bills/${data.data.id}`,
+      raw_response: data,
+    };
+  },
+
+  /**
+   * Paraşüt'e ödeme (payment) kaydet.
+   *
+   * Endpoint: POST /v4/{company_id}/purchase_bills/{id}/payments
+   * Bir purchase_bill için yapılır — related_invoice_external_id zorunlu.
+   */
+  async pushPayment(
+    config: AdapterConfig,
+    payload: PushPayloadPayment,
+  ): Promise<PushResult> {
+    if (!payload.related_invoice_external_id) {
+      throw new Error('Paraşüt ödeme için fatura external_id zorunlu (önce fatura push edilmeli)');
+    }
+    const cfg = config as ParasutConfig;
+    const token = await getToken(cfg);
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    const body = {
+      data: {
+        type: 'payments',
+        attributes: {
+          description: payload.notes ?? 'Sayman ödemesi',
+          date: payload.paid_at,
+          amount: payload.amount,
+          currency: payload.currency,
+          exchange_rate: 1,
+        },
+      },
+    };
+
+    const res = await fetch(
+      `${PARASUT_BASE}/v4/${cfg.company_id}/purchase_bills/${payload.related_invoice_external_id}/payments`,
+      { method: 'POST', headers, body: JSON.stringify(body) },
+    );
+    if (!res.ok) {
+      const errTxt = await res.text();
+      throw new Error(`Paraşüt payment: ${res.status} ${errTxt.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { data: { id: string } };
+    return { external_id: data.data.id, raw_response: data };
   },
 };
