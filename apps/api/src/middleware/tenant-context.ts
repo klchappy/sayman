@@ -19,17 +19,6 @@ import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import { getDb, organizations, tenants } from '@sayman/db';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    saymanContext?: {
-      orgSlug: string | null;
-      tenantSlug: string | null;
-      organizationId: string | null;
-      tenantId: string | null;
-    };
-  }
-}
-
 function parseSubdomains(host: string): { tenant: string | null; org: string | null } {
   // Host örnek: "tekstil.kilic.localhost:4100" → ["tekstil","kilic","localhost:4100"]
   // Port kısmı temizle

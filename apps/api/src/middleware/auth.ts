@@ -13,13 +13,6 @@ import type { RequestHandler } from 'express';
 import { getDb, users, type User } from '@sayman/db';
 import { env, isConfigured } from '../config/env';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    authUser?: User;
-    authUserId?: string;
-  }
-}
-
 let _supabase: SupabaseClient | null = null;
 function getSupabaseAdmin(): SupabaseClient {
   if (!isConfigured.supabase) {
