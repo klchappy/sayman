@@ -112,6 +112,8 @@ inboundWebhooksRouter.post('/inbound/:slug', async (req, res, next) => {
             category: sug && sug.confidence >= 0.3 ? sug.category : null,
             status: 'pending',
             metadata: { source: 'inbound_webhook', endpoint: ep.slug },
+            needs_review: true,
+            auto_created_source: 'inbound_webhook',
           })
           .returning({ id: payableItems.id });
         createdRecordId = row?.id ?? null;
@@ -136,6 +138,8 @@ inboundWebhooksRouter.post('/inbound/:slug', async (req, res, next) => {
             status: 'pending',
             notes: parsed.notes,
             metadata: { source: 'inbound_webhook_xml', endpoint: ep.slug },
+            needs_review: true,
+            auto_created_source: 'inbound_webhook_xml',
           })
           .returning({ id: payableItems.id });
         createdRecordId = row?.id ?? null;

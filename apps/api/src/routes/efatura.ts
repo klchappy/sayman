@@ -95,6 +95,8 @@ efaturaRouter.post(
             supplier_tax_number: parsed.supplier_tax_number,
             profile_id: parsed.profile_id,
           },
+          needs_review: true,
+          auto_created_source: 'efatura_ubl',
         })
         .returning();
 
@@ -210,6 +212,8 @@ efaturaRouter.post(
                   supplier_tax_number: parsed.supplier_tax_number,
                   profile_id: parsed.profile_id,
                 },
+                needs_review: true,
+                auto_created_source: 'efatura_ubl',
               })
               .returning({ id: payableItems.id });
             results.push({

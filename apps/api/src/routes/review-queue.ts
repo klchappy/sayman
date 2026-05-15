@@ -1,20 +1,24 @@
 /**
- * /v1/review-queue — Otomatik yaratılmış master data kayıtları için doğrulama queue'su.
+ * /v1/review-queue — Otomatik yaratılmış kayıtlar için doğrulama queue'su.
  *
- *   GET    /v1/review-queue                       → tüm bekleyen kayıtlar (companies + persons)
- *   GET    /v1/review-queue/summary               → kategori bazlı sayılar
- *   POST   /v1/review-queue/:type/:id/approve     → onayla (needs_review=false)
- *   PATCH  /v1/review-queue/:type/:id             → düzenle (tax_number, name ekle)
- *   POST   /v1/review-queue/:type/:id/merge       → başka bir kayıtla birleştir
+ *   GET    /v1/review-queue                          → tüm bekleyen (companies + persons + payables + sales_invoices)
+ *   GET    /v1/review-queue/summary                  → kategori bazlı sayılar
+ *   POST   /v1/review-queue/:type/:id/approve        → onayla (needs_review=false)
+ *   DELETE /v1/review-queue/:type/:id                → reddet (hard delete)
+ *   PATCH  /v1/review-queue/company/:id              → düzenle (tax_number, name ekle)
+ *   POST   /v1/review-queue/company/:id/merge        → başka bir şirketle birleştir
  *
- * Smart import ya da ERP sync sırasında otomatik oluşturulan kayıtlar burada gösterilir.
+ * type değerleri: 'company' | 'person' | 'payable' | 'sales_invoice'
+ *
+ * Smart import / efatura / inbound webhook gibi otomatik akışlar bu queue'yu doldurur.
+ * Onaylanan kayıt normal listede görünür; reddedilen DB'den tamamen silinir.
  */
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { companies, getDb, payableItems, persons } from '@sayman/db';
+import { companies, getDb, payableItems, persons, salesInvoices } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireOrg } from '../lib/helpers';
+import { HttpError, requireOrg, requireTenant } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const reviewQueueRouter = Router();
@@ -26,18 +30,35 @@ reviewQueueRouter.get(
   async (req, res, next) => {
     try {
       const db = getDb();
+      const orgId = req.activeOrgId!;
+      const tenantId = req.activeTenantId ?? null;
+
       const [cnt] = await db
         .select({
-          companies: sql<string>`(SELECT COUNT(*) FROM companies WHERE organization_id = ${req.activeOrgId!}::uuid AND needs_review = true AND is_active = true)`,
-          persons: sql<string>`(SELECT COUNT(*) FROM persons WHERE organization_id = ${req.activeOrgId!}::uuid AND needs_review = true AND is_active = true)`,
+          companies: sql<string>`(SELECT COUNT(*) FROM companies WHERE organization_id = ${orgId}::uuid AND needs_review = true AND is_active = true)`,
+          persons: sql<string>`(SELECT COUNT(*) FROM persons WHERE organization_id = ${orgId}::uuid AND needs_review = true AND is_active = true)`,
+          payables: tenantId
+            ? sql<string>`(SELECT COUNT(*) FROM payable_items WHERE tenant_id = ${tenantId}::uuid AND needs_review = true AND is_active = true)`
+            : sql<string>`'0'`,
+          sales_invoices: tenantId
+            ? sql<string>`(SELECT COUNT(*) FROM sales_invoices WHERE tenant_id = ${tenantId}::uuid AND needs_review = true AND is_active = true)`
+            : sql<string>`'0'`,
         })
         .from(companies)
         .limit(1);
+
+      const companyCount = Number(cnt?.companies ?? 0);
+      const personCount = Number(cnt?.persons ?? 0);
+      const payableCount = Number(cnt?.payables ?? 0);
+      const salesCount = Number(cnt?.sales_invoices ?? 0);
+
       res.json({
         data: {
-          companies: Number(cnt?.companies ?? 0),
-          persons: Number(cnt?.persons ?? 0),
-          total: Number(cnt?.companies ?? 0) + Number(cnt?.persons ?? 0),
+          companies: companyCount,
+          persons: personCount,
+          payables: payableCount,
+          sales_invoices: salesCount,
+          total: companyCount + personCount + payableCount + salesCount,
         },
       });
     } catch (err) {
@@ -50,9 +71,13 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
   try {
     const db = getDb();
     const typeFilter = String(req.query.type ?? '');
+    const orgId = req.activeOrgId!;
+    const tenantId = req.activeTenantId ?? null;
 
     let companyRows: any[] = [];
     let personRows: any[] = [];
+    let payableRows: any[] = [];
+    let salesRows: any[] = [];
 
     if (!typeFilter || typeFilter === 'companies') {
       companyRows = await db.execute(sql`
@@ -64,7 +89,7 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
           (SELECT MAX(issue_date) FROM payable_items WHERE company_id = c.id) AS last_usage,
           (SELECT COALESCE(SUM(amount::numeric), 0) FROM payable_items WHERE company_id = c.id) AS total_volume
         FROM companies c
-        WHERE c.organization_id = ${req.activeOrgId!}::uuid
+        WHERE c.organization_id = ${orgId}::uuid
           AND c.needs_review = true
           AND c.is_active = true
         ORDER BY c.auto_created_at DESC NULLS LAST
@@ -78,10 +103,47 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
           p.id, p.full_name, p.national_id, p.phone,
           p.auto_created_source, p.auto_created_at, p.needs_review
         FROM persons p
-        WHERE p.organization_id = ${req.activeOrgId!}::uuid
+        WHERE p.organization_id = ${orgId}::uuid
           AND p.needs_review = true
           AND p.is_active = true
         ORDER BY p.auto_created_at DESC NULLS LAST
+        LIMIT 200
+      `).then((r) => (r.rows ?? r) as any[]);
+    }
+
+    if ((!typeFilter || typeFilter === 'payables') && tenantId) {
+      payableRows = await db.execute(sql`
+        SELECT
+          pi.id, pi.title, pi.invoice_number, pi.supplier_name, pi.company_id,
+          pi.issue_date, pi.due_date, pi.amount, pi.currency, pi.category,
+          pi.auto_created_source, pi.created_at,
+          c.name AS supplier_company_name
+        FROM payable_items pi
+        LEFT JOIN companies c ON c.id = pi.company_id
+        WHERE pi.tenant_id = ${tenantId}::uuid
+          AND pi.needs_review = true
+          AND pi.is_active = true
+        ORDER BY pi.created_at DESC
+        LIMIT 200
+      `).then((r) => (r.rows ?? r) as any[]);
+    }
+
+    if ((!typeFilter || typeFilter === 'sales_invoices') && tenantId) {
+      salesRows = await db.execute(sql`
+        SELECT
+          si.id, si.title, si.invoice_number, si.customer_name,
+          si.customer_company_id, si.customer_person_id,
+          si.issue_date, si.due_date, si.amount, si.currency,
+          si.auto_created_source, si.created_at,
+          c.name AS customer_company_name,
+          p.full_name AS customer_person_name
+        FROM sales_invoices si
+        LEFT JOIN companies c ON c.id = si.customer_company_id
+        LEFT JOIN persons p ON p.id = si.customer_person_id
+        WHERE si.tenant_id = ${tenantId}::uuid
+          AND si.needs_review = true
+          AND si.is_active = true
+        ORDER BY si.created_at DESC
         LIMIT 200
       `).then((r) => (r.rows ?? r) as any[]);
     }
@@ -111,6 +173,37 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
           source: p.auto_created_source,
           created_at: p.auto_created_at,
         })),
+        payables: payableRows.map((pi) => ({
+          type: 'payable',
+          id: String(pi.id),
+          title: String(pi.title),
+          invoice_number: pi.invoice_number,
+          supplier_name: pi.supplier_company_name ?? pi.supplier_name ?? null,
+          company_id: pi.company_id,
+          issue_date: pi.issue_date,
+          due_date: pi.due_date,
+          amount: pi.amount,
+          currency: pi.currency,
+          category: pi.category,
+          source: pi.auto_created_source,
+          created_at: pi.created_at,
+        })),
+        sales_invoices: salesRows.map((si) => ({
+          type: 'sales_invoice',
+          id: String(si.id),
+          title: String(si.title),
+          invoice_number: si.invoice_number,
+          customer_name:
+            si.customer_company_name ?? si.customer_person_name ?? si.customer_name ?? null,
+          customer_company_id: si.customer_company_id,
+          customer_person_id: si.customer_person_id,
+          issue_date: si.issue_date,
+          due_date: si.due_date,
+          amount: si.amount,
+          currency: si.currency,
+          source: si.auto_created_source,
+          created_at: si.created_at,
+        })),
       },
     });
   } catch (err) {
@@ -118,6 +211,7 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
   }
 });
 
+/** Onayla — needs_review=false ile kalıcı kayda dönüştür */
 reviewQueueRouter.post(
   '/review-queue/:type/:id/approve',
   requireAuth,
@@ -127,6 +221,8 @@ reviewQueueRouter.post(
       const type = String(req.params.type ?? '');
       const id = String(req.params.id ?? '');
       const db = getDb();
+      const orgId = req.activeOrgId!;
+      const tenantId = req.activeTenantId ?? null;
 
       if (type === 'company') {
         const [row] = await db
@@ -137,9 +233,7 @@ reviewQueueRouter.post(
             reviewed_by: req.authUser?.id ?? null,
             updated_at: new Date(),
           })
-          .where(
-            and(eq(companies.id, id), eq(companies.organization_id, req.activeOrgId!)),
-          )
+          .where(and(eq(companies.id, id), eq(companies.organization_id, orgId)))
           .returning({ id: companies.id });
         if (!row) throw new HttpError(404, 'Şirket bulunamadı');
       } else if (type === 'person') {
@@ -151,20 +245,148 @@ reviewQueueRouter.post(
             reviewed_by: req.authUser?.id ?? null,
             updated_at: new Date(),
           })
-          .where(and(eq(persons.id, id), eq(persons.organization_id, req.activeOrgId!)))
+          .where(and(eq(persons.id, id), eq(persons.organization_id, orgId)))
           .returning({ id: persons.id });
         if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
+      } else if (type === 'payable') {
+        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        const [row] = await db
+          .update(payableItems)
+          .set({
+            needs_review: false,
+            reviewed_at: new Date(),
+            reviewed_by: req.authUser?.id ?? null,
+            updated_at: new Date(),
+          })
+          .where(and(eq(payableItems.id, id), eq(payableItems.tenant_id, tenantId)))
+          .returning({ id: payableItems.id });
+        if (!row) throw new HttpError(404, 'Fatura bulunamadı');
+      } else if (type === 'sales_invoice') {
+        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        const [row] = await db
+          .update(salesInvoices)
+          .set({
+            needs_review: false,
+            reviewed_at: new Date(),
+            reviewed_by: req.authUser?.id ?? null,
+            updated_at: new Date(),
+          })
+          .where(and(eq(salesInvoices.id, id), eq(salesInvoices.tenant_id, tenantId)))
+          .returning({ id: salesInvoices.id });
+        if (!row) throw new HttpError(404, 'Satış faturası bulunamadı');
       } else {
-        throw new HttpError(400, 'Tip company veya person olmalı');
+        throw new HttpError(400, 'Tip company | person | payable | sales_invoice olmalı');
       }
 
       await auditFromRequest(req, {
-        organization_id: req.activeOrgId!,
+        organization_id: orgId,
         actor_user_id: req.authUser?.id,
         actor_email: req.authUser?.email,
         action: 'review_queue.approve',
-        target_type: type === 'company' ? 'companies' : 'persons',
+        target_type:
+          type === 'company'
+            ? 'companies'
+            : type === 'person'
+            ? 'persons'
+            : type === 'payable'
+            ? 'payable_items'
+            : 'sales_invoices',
         target_id: id,
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** Reddet — DB'den kalıcı sil (audit'e bırak) */
+reviewQueueRouter.delete(
+  '/review-queue/:type/:id',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const type = String(req.params.type ?? '');
+      const id = String(req.params.id ?? '');
+      const db = getDb();
+      const orgId = req.activeOrgId!;
+      const tenantId = req.activeTenantId ?? null;
+
+      let deleted: { id: string } | undefined;
+
+      if (type === 'company') {
+        const [row] = await db
+          .delete(companies)
+          .where(
+            and(
+              eq(companies.id, id),
+              eq(companies.organization_id, orgId),
+              eq(companies.needs_review, true),
+            ),
+          )
+          .returning({ id: companies.id });
+        deleted = row;
+      } else if (type === 'person') {
+        const [row] = await db
+          .delete(persons)
+          .where(
+            and(
+              eq(persons.id, id),
+              eq(persons.organization_id, orgId),
+              eq(persons.needs_review, true),
+            ),
+          )
+          .returning({ id: persons.id });
+        deleted = row;
+      } else if (type === 'payable') {
+        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        const [row] = await db
+          .delete(payableItems)
+          .where(
+            and(
+              eq(payableItems.id, id),
+              eq(payableItems.tenant_id, tenantId),
+              eq(payableItems.needs_review, true),
+            ),
+          )
+          .returning({ id: payableItems.id });
+        deleted = row;
+      } else if (type === 'sales_invoice') {
+        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        const [row] = await db
+          .delete(salesInvoices)
+          .where(
+            and(
+              eq(salesInvoices.id, id),
+              eq(salesInvoices.tenant_id, tenantId),
+              eq(salesInvoices.needs_review, true),
+            ),
+          )
+          .returning({ id: salesInvoices.id });
+        deleted = row;
+      } else {
+        throw new HttpError(400, 'Tip company | person | payable | sales_invoice olmalı');
+      }
+
+      if (!deleted) throw new HttpError(404, 'Kayıt bulunamadı veya zaten onaylanmış');
+
+      await auditFromRequest(req, {
+        organization_id: orgId,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'review_queue.reject',
+        target_type:
+          type === 'company'
+            ? 'companies'
+            : type === 'person'
+            ? 'persons'
+            : type === 'payable'
+            ? 'payable_items'
+            : 'sales_invoices',
+        target_id: id,
+        details: { hard_deleted: true },
       });
 
       res.json({ ok: true });
@@ -216,7 +438,7 @@ reviewQueueRouter.patch(
 
 /**
  * Merge — bu kaydı target_id ile birleştir.
- * payable_items.company_id'leri target'a taşı, sonra bu kaydı sil.
+ * Sadece aktif tenant kapsamındaki payable_items.company_id'leri target'a taşı; sonra source şirketi sil.
  */
 const mergeSchema = z.object({
   target_id: z.string().uuid(),
@@ -226,6 +448,7 @@ reviewQueueRouter.post(
   '/review-queue/company/:id/merge',
   requireAuth,
   requireOrg,
+  requireTenant,
   async (req, res, next) => {
     try {
       const sourceId = String(req.params.id ?? '');
@@ -233,43 +456,62 @@ reviewQueueRouter.post(
       if (sourceId === target_id) throw new HttpError(400, 'Aynı kayıt birleştirilemez');
 
       const db = getDb();
+      const orgId = req.activeOrgId!;
+      const tenantId = req.activeTenantId!;
 
-      // Source ve target aynı orga ait mi?
       const [source] = await db
         .select({ id: companies.id, name: companies.name })
         .from(companies)
-        .where(
-          and(eq(companies.id, sourceId), eq(companies.organization_id, req.activeOrgId!)),
-        );
+        .where(and(eq(companies.id, sourceId), eq(companies.organization_id, orgId)));
       const [target] = await db
         .select({ id: companies.id, name: companies.name })
         .from(companies)
-        .where(
-          and(eq(companies.id, target_id), eq(companies.organization_id, req.activeOrgId!)),
-        );
+        .where(and(eq(companies.id, target_id), eq(companies.organization_id, orgId)));
       if (!source || !target) throw new HttpError(404, 'Şirket bulunamadı');
 
-      // payable_items.company_id'i taşı
+      // payable_items.company_id'i taşı — SADECE AKTİF TENANT kapsamında
       const moved = await db
         .update(payableItems)
         .set({ company_id: target.id, supplier_name: target.name, updated_at: new Date() })
-        .where(eq(payableItems.company_id, sourceId))
+        .where(
+          and(
+            eq(payableItems.company_id, sourceId),
+            eq(payableItems.tenant_id, tenantId),
+          ),
+        )
         .returning({ id: payableItems.id });
 
-      // Source'u sil
-      await db.delete(companies).where(eq(companies.id, sourceId));
+      // Source şirketi sadece bu tenant referansı kaldıysa ve başka tenant'a bağlı payable kalmadıysa sil
+      const [remaining] = await db
+        .select({ cnt: sql<string>`COUNT(*)` })
+        .from(payableItems)
+        .where(eq(payableItems.company_id, sourceId));
+      const remainingCount = Number(remaining?.cnt ?? 0);
+
+      if (remainingCount === 0) {
+        await db.delete(companies).where(eq(companies.id, sourceId));
+      }
 
       await auditFromRequest(req, {
-        organization_id: req.activeOrgId!,
+        organization_id: orgId,
         actor_user_id: req.authUser?.id,
         actor_email: req.authUser?.email,
         action: 'review_queue.merge',
         target_type: 'companies',
         target_id: target.id,
-        details: { source_id: sourceId, source_name: source.name, moved_payables: moved.length },
+        details: {
+          source_id: sourceId,
+          source_name: source.name,
+          moved_payables: moved.length,
+          source_deleted: remainingCount === 0,
+        },
       });
 
-      res.json({ ok: true, moved_payables: moved.length });
+      res.json({
+        ok: true,
+        moved_payables: moved.length,
+        source_deleted: remainingCount === 0,
+      });
     } catch (err) {
       next(err);
     }

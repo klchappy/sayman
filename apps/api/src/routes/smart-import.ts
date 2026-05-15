@@ -161,6 +161,8 @@ smartImportRouter.post(
               filename: f.originalname,
               supplier_tax_number: parsed.supplier_tax_number,
             },
+            needs_review: true,
+            auto_created_source: 'efatura',
             created_by: req.authUser?.id ?? null,
           })
           .returning({ id: payableItems.id, title: payableItems.title });

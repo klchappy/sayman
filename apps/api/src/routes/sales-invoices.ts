@@ -46,15 +46,18 @@ const createSchema = z.object({
 salesInvoicesRouter.get('/sales-invoices', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
+    const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+    const conditions = [
+      eq(salesInvoices.tenant_id, req.activeTenantId!),
+      eq(salesInvoices.is_active, true),
+    ];
+    if (!includeReview) {
+      conditions.push(eq(salesInvoices.needs_review, false));
+    }
     const rows = await db
       .select()
       .from(salesInvoices)
-      .where(
-        and(
-          eq(salesInvoices.tenant_id, req.activeTenantId!),
-          eq(salesInvoices.is_active, true),
-        ),
-      )
+      .where(and(...conditions))
       .orderBy(desc(salesInvoices.due_date), desc(salesInvoices.created_at))
       .limit(500);
     res.json({ data: rows });

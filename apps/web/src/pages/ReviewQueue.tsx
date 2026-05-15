@@ -1,8 +1,10 @@
 /**
- * /review-queue — Smart import veya ERP sync sırasında otomatik oluşturulan
- * master data kayıtlarının doğrulama listesi.
+ * /review-queue — Smart import / e-Fatura / inbound webhook ile otomatik yaratılan
+ * kayıtların doğrulama sayfası.
  *
- * Kullanıcı görsel kontrol yapar, eksik bilgi ekler veya başka kayıtla birleştirir.
+ * 4 tip: companies, persons, payables (alacak faturalar), sales_invoices (kestiğimiz)
+ * Her kayıt için: onayla (kalsın) veya reddet (DB'den sil).
+ * Şirket kayıtları için: düzenle, birleştir, birleştir + sil seçenekleri de var.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,10 +12,14 @@ import {
   Building2,
   CheckCircle2,
   Edit3,
+  FileText,
   Loader2,
   Merge,
+  Receipt,
   Search,
+  Trash2,
   User,
+  X,
 } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
@@ -43,32 +49,75 @@ interface ReviewPerson {
   created_at: string | null;
 }
 
-function fmtTRY(v: number) {
+interface ReviewPayable {
+  type: 'payable';
+  id: string;
+  title: string;
+  invoice_number: string | null;
+  supplier_name: string | null;
+  company_id: string | null;
+  issue_date: string | null;
+  due_date: string | null;
+  amount: string;
+  currency: string;
+  category: string | null;
+  source: string | null;
+  created_at: string | null;
+}
+
+interface ReviewSalesInvoice {
+  type: 'sales_invoice';
+  id: string;
+  title: string;
+  invoice_number: string | null;
+  customer_name: string | null;
+  customer_company_id: string | null;
+  customer_person_id: string | null;
+  issue_date: string | null;
+  due_date: string | null;
+  amount: string;
+  currency: string;
+  source: string | null;
+  created_at: string | null;
+}
+
+interface ReviewQueueData {
+  companies: ReviewCompany[];
+  persons: ReviewPerson[];
+  payables: ReviewPayable[];
+  sales_invoices: ReviewSalesInvoice[];
+}
+
+function fmtTRY(v: number | string) {
+  const n = typeof v === 'string' ? Number(v) : v;
   return new Intl.NumberFormat('tr-TR', {
     style: 'currency',
     currency: 'TRY',
     maximumFractionDigits: 0,
-  }).format(v);
+  }).format(n);
 }
 
 const SOURCE_LABEL: Record<string, string> = {
   efatura: 'e-Fatura',
+  efatura_ubl: 'e-Fatura UBL',
   csv_import: 'CSV Import',
   smart_import: 'Akıllı Yükleme',
+  inbound_webhook: 'Webhook',
+  inbound_webhook_xml: 'Webhook XML',
   erp_sync: 'ERP Senkron',
   manual: 'Manuel',
 };
 
+type Tab = 'payables' | 'sales_invoices' | 'companies' | 'persons';
+
 export function ReviewQueuePage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'companies' | 'persons'>('companies');
+  const [tab, setTab] = useState<Tab>('payables');
 
   const q = useQuery({
     queryKey: ['review-queue'],
     queryFn: async () => {
-      const res = await api.get<{
-        data: { companies: ReviewCompany[]; persons: ReviewPerson[] };
-      }>('/review-queue');
+      const res = await api.get<{ data: ReviewQueueData }>('/review-queue');
       return res.data.data;
     },
   });
@@ -79,10 +128,19 @@ export function ReviewQueuePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }),
   });
 
+  const reject = useMutation({
+    mutationFn: async ({ type, id }: { type: string; id: string }) =>
+      api.delete(`/review-queue/${type}/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }),
+  });
+
   const counts = {
+    payables: q.data?.payables.length ?? 0,
+    sales_invoices: q.data?.sales_invoices.length ?? 0,
     companies: q.data?.companies.length ?? 0,
     persons: q.data?.persons.length ?? 0,
   };
+  const total = counts.payables + counts.sales_invoices + counts.companies + counts.persons;
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -90,95 +148,339 @@ export function ReviewQueuePage() {
         <p className="text-xs uppercase tracking-wider text-brand-500 mb-1">Doğrulama</p>
         <h1 className="text-2xl font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
           <AlertTriangle className="size-6 text-amber-600" />
-          Review Queue
+          Onay Bekleyenler
+          {total > 0 && (
+            <span className="text-base bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded">
+              {total}
+            </span>
+          )}
         </h1>
         <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
-          Akıllı yükleme, e-Fatura import veya ERP senkron sırasında otomatik oluşturulan kayıtlar.
-          İncele, gerekirse tax_number/ad ekle, mevcut bir kayıtla birleştir veya direkt onayla.
+          Akıllı yükleme, e-Fatura import veya inbound webhook ile otomatik yaratılan kayıtlar.
+          <strong className="text-brand-700 dark:text-slate-300"> Onayla</strong> → kayıt aktif olur ve
+          ilgili şirketin verisine işlenir. <strong className="text-red-600">Reddet</strong> → kayıt DB'den
+          tamamen silinir, hiçbir yerde görünmez.
         </p>
       </header>
 
-      <div className="flex border-b border-brand-100 dark:border-slate-800 mb-4">
-        <button
+      <div className="flex border-b border-brand-100 dark:border-slate-800 mb-4 flex-wrap">
+        <TabBtn
+          icon={<Receipt className="size-4" />}
+          label="Gelen Faturalar"
+          active={tab === 'payables'}
+          count={counts.payables}
+          onClick={() => setTab('payables')}
+        />
+        <TabBtn
+          icon={<FileText className="size-4" />}
+          label="Satış Faturaları"
+          active={tab === 'sales_invoices'}
+          count={counts.sales_invoices}
+          onClick={() => setTab('sales_invoices')}
+        />
+        <TabBtn
+          icon={<Building2 className="size-4" />}
+          label="Şirketler"
+          active={tab === 'companies'}
+          count={counts.companies}
           onClick={() => setTab('companies')}
-          className={`px-4 py-2 text-sm border-b-2 flex items-center gap-2 ${
-            tab === 'companies'
-              ? 'border-brand-900 dark:border-brand-300 text-brand-900 dark:text-slate-100 font-medium'
-              : 'border-transparent text-brand-500 hover:text-brand-700'
-          }`}
-        >
-          <Building2 className="size-4" />
-          Şirketler
-          {counts.companies > 0 && (
-            <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-[10px] px-1.5 rounded">
-              {counts.companies}
-            </span>
-          )}
-        </button>
-        <button
+        />
+        <TabBtn
+          icon={<User className="size-4" />}
+          label="Şahıslar"
+          active={tab === 'persons'}
+          count={counts.persons}
           onClick={() => setTab('persons')}
-          className={`px-4 py-2 text-sm border-b-2 flex items-center gap-2 ${
-            tab === 'persons'
-              ? 'border-brand-900 dark:border-brand-300 text-brand-900 dark:text-slate-100 font-medium'
-              : 'border-transparent text-brand-500 hover:text-brand-700'
-          }`}
-        >
-          <User className="size-4" />
-          Şahıslar
-          {counts.persons > 0 && (
-            <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-[10px] px-1.5 rounded">
-              {counts.persons}
-            </span>
-          )}
-        </button>
+        />
       </div>
 
       {q.isLoading && <p className="text-sm text-brand-500">Yükleniyor…</p>}
 
-      {tab === 'companies' && q.data && q.data.companies.length === 0 && (
-        <div className="card text-center py-12">
-          <CheckCircle2 className="size-12 mx-auto text-emerald-500 mb-2" />
-          <p className="text-brand-700 dark:text-slate-300 font-medium">
-            Bekleyen şirket doğrulaması yok.
-          </p>
-          <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
-            Akıllı yükleme veya ERP sync ile otomatik yaratılan tedarikçiler burada görünür.
-          </p>
-        </div>
+      {tab === 'payables' && (
+        <Section
+          empty={!q.data || q.data.payables.length === 0}
+          emptyMsg="Bekleyen gelen faturası yok."
+          emptyHint="Akıllı yükleme veya e-Fatura ile gelen faturalar burada listelenir."
+        >
+          {q.data?.payables.map((p) => (
+            <PayableReviewCard
+              key={p.id}
+              item={p}
+              onApprove={() => approve.mutate({ type: 'payable', id: p.id })}
+              onReject={() => reject.mutate({ type: 'payable', id: p.id })}
+              busy={approve.isPending || reject.isPending}
+            />
+          ))}
+        </Section>
       )}
 
-      {tab === 'companies' && q.data && q.data.companies.length > 0 && (
-        <div className="space-y-2">
-          {q.data.companies.map((c) => (
+      {tab === 'sales_invoices' && (
+        <Section
+          empty={!q.data || q.data.sales_invoices.length === 0}
+          emptyMsg="Bekleyen satış faturası yok."
+          emptyHint="Otomatik akışla yaratılan kestiğimiz faturalar burada listelenir."
+        >
+          {q.data?.sales_invoices.map((s) => (
+            <SalesInvoiceReviewCard
+              key={s.id}
+              item={s}
+              onApprove={() => approve.mutate({ type: 'sales_invoice', id: s.id })}
+              onReject={() => reject.mutate({ type: 'sales_invoice', id: s.id })}
+              busy={approve.isPending || reject.isPending}
+            />
+          ))}
+        </Section>
+      )}
+
+      {tab === 'companies' && (
+        <Section
+          empty={!q.data || q.data.companies.length === 0}
+          emptyMsg="Bekleyen şirket doğrulaması yok."
+          emptyHint="Akıllı yükleme veya ERP sync ile otomatik yaratılan tedarikçiler burada görünür."
+        >
+          {q.data?.companies.map((c) => (
             <CompanyReviewCard
               key={c.id}
               company={c}
               onApprove={() => approve.mutate({ type: 'company', id: c.id })}
+              onReject={() => reject.mutate({ type: 'company', id: c.id })}
+              busy={approve.isPending || reject.isPending}
             />
           ))}
-        </div>
+        </Section>
       )}
 
-      {tab === 'persons' && q.data && q.data.persons.length === 0 && (
-        <div className="card text-center py-12">
-          <CheckCircle2 className="size-12 mx-auto text-emerald-500 mb-2" />
-          <p className="text-brand-700 dark:text-slate-300 font-medium">
-            Bekleyen şahıs doğrulaması yok.
-          </p>
-        </div>
-      )}
-
-      {tab === 'persons' && q.data && q.data.persons.length > 0 && (
-        <div className="space-y-2">
-          {q.data.persons.map((p) => (
+      {tab === 'persons' && (
+        <Section
+          empty={!q.data || q.data.persons.length === 0}
+          emptyMsg="Bekleyen şahıs doğrulaması yok."
+        >
+          {q.data?.persons.map((p) => (
             <PersonReviewCard
               key={p.id}
               person={p}
               onApprove={() => approve.mutate({ type: 'person', id: p.id })}
+              onReject={() => reject.mutate({ type: 'person', id: p.id })}
+              busy={approve.isPending || reject.isPending}
             />
           ))}
-        </div>
+        </Section>
       )}
+    </div>
+  );
+}
+
+function TabBtn({
+  icon,
+  label,
+  active,
+  count,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 text-sm border-b-2 flex items-center gap-2 ${
+        active
+          ? 'border-brand-900 dark:border-brand-300 text-brand-900 dark:text-slate-100 font-medium'
+          : 'border-transparent text-brand-500 hover:text-brand-700'
+      }`}
+    >
+      {icon}
+      {label}
+      {count > 0 && (
+        <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-[10px] px-1.5 rounded">
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function Section({
+  empty,
+  emptyMsg,
+  emptyHint,
+  children,
+}: {
+  empty: boolean;
+  emptyMsg: string;
+  emptyHint?: string;
+  children: React.ReactNode;
+}) {
+  if (empty) {
+    return (
+      <div className="card text-center py-12">
+        <CheckCircle2 className="size-12 mx-auto text-emerald-500 mb-2" />
+        <p className="text-brand-700 dark:text-slate-300 font-medium">{emptyMsg}</p>
+        {emptyHint && (
+          <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">{emptyHint}</p>
+        )}
+      </div>
+    );
+  }
+  return <div className="space-y-2">{children}</div>;
+}
+
+function ApproveRejectButtons({
+  onApprove,
+  onReject,
+  busy,
+  rejectConfirm,
+}: {
+  onApprove: () => void;
+  onReject: () => void;
+  busy: boolean;
+  rejectConfirm: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => {
+          if (confirm(rejectConfirm)) onReject();
+        }}
+        disabled={busy}
+        className="text-xs bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-700 dark:text-red-300 px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-50"
+      >
+        <Trash2 className="size-3" />
+        Reddet
+      </button>
+      <button
+        onClick={onApprove}
+        disabled={busy}
+        className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-50"
+      >
+        <CheckCircle2 className="size-3" />
+        Onayla
+      </button>
+    </div>
+  );
+}
+
+function PayableReviewCard({
+  item,
+  onApprove,
+  onReject,
+  busy,
+}: {
+  item: ReviewPayable;
+  onApprove: () => void;
+  onReject: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="card">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <Receipt className="size-4 text-brand-500" />
+            <h3 className="font-semibold text-brand-900 dark:text-slate-100">{item.title}</h3>
+            {item.invoice_number && (
+              <span className="text-[10px] font-mono bg-brand-100 dark:bg-slate-800 text-brand-700 dark:text-slate-300 px-2 py-0.5 rounded">
+                #{item.invoice_number}
+              </span>
+            )}
+            <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded">
+              {SOURCE_LABEL[item.source ?? ''] ?? item.source ?? 'auto'}
+            </span>
+          </div>
+          {item.supplier_name && (
+            <p className="text-sm text-brand-700 dark:text-slate-300">
+              Tedarikçi: <strong>{item.supplier_name}</strong>
+            </p>
+          )}
+          <div className="grid sm:grid-cols-4 gap-3 mt-2 text-xs">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-brand-400">Tutar</p>
+              <p className="font-mono text-brand-900 dark:text-slate-100">
+                {fmtTRY(item.amount)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-brand-400">Kategori</p>
+              <p>{item.category ?? '-'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-brand-400">Düzenleme</p>
+              <p>{item.issue_date ?? '-'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-brand-400">Vade</p>
+              <p>{item.due_date ?? '-'}</p>
+            </div>
+          </div>
+        </div>
+        <ApproveRejectButtons
+          onApprove={onApprove}
+          onReject={onReject}
+          busy={busy}
+          rejectConfirm={`"${item.title}" faturası kalıcı olarak silinecek. Devam edilsin mi?`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SalesInvoiceReviewCard({
+  item,
+  onApprove,
+  onReject,
+  busy,
+}: {
+  item: ReviewSalesInvoice;
+  onApprove: () => void;
+  onReject: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="card">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <FileText className="size-4 text-brand-500" />
+            <h3 className="font-semibold text-brand-900 dark:text-slate-100">{item.title}</h3>
+            {item.invoice_number && (
+              <span className="text-[10px] font-mono bg-brand-100 dark:bg-slate-800 text-brand-700 dark:text-slate-300 px-2 py-0.5 rounded">
+                #{item.invoice_number}
+              </span>
+            )}
+            <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded">
+              {SOURCE_LABEL[item.source ?? ''] ?? item.source ?? 'auto'}
+            </span>
+          </div>
+          {item.customer_name && (
+            <p className="text-sm text-brand-700 dark:text-slate-300">
+              Müşteri: <strong>{item.customer_name}</strong>
+            </p>
+          )}
+          <div className="grid sm:grid-cols-3 gap-3 mt-2 text-xs">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-brand-400">Tutar</p>
+              <p className="font-mono">{fmtTRY(item.amount)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-brand-400">Düzenleme</p>
+              <p>{item.issue_date ?? '-'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-brand-400">Vade</p>
+              <p>{item.due_date ?? '-'}</p>
+            </div>
+          </div>
+        </div>
+        <ApproveRejectButtons
+          onApprove={onApprove}
+          onReject={onReject}
+          busy={busy}
+          rejectConfirm={`"${item.title}" satış faturası kalıcı olarak silinecek. Devam edilsin mi?`}
+        />
+      </div>
     </div>
   );
 }
@@ -186,9 +488,13 @@ export function ReviewQueuePage() {
 function CompanyReviewCard({
   company,
   onApprove,
+  onReject,
+  busy,
 }: {
   company: ReviewCompany;
   onApprove: () => void;
+  onReject: () => void;
+  busy: boolean;
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -239,7 +545,7 @@ function CompanyReviewCard({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {!editing && !merging && (
             <>
               <button
@@ -257,19 +563,17 @@ function CompanyReviewCard({
                 <Merge className="size-3" />
                 Birleştir
               </button>
-              <button
-                onClick={onApprove}
-                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded flex items-center gap-1"
-              >
-                <CheckCircle2 className="size-3" />
-                Onayla
-              </button>
+              <ApproveRejectButtons
+                onApprove={onApprove}
+                onReject={onReject}
+                busy={busy}
+                rejectConfirm={`"${company.name}" şirketi ve ${company.usage_count} fatura referansı kalıcı olarak silinecek. Devam edilsin mi?`}
+              />
             </>
           )}
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid sm:grid-cols-4 gap-3 mb-3 text-xs">
         <div>
           <p className="text-[10px] uppercase tracking-wide text-brand-400">VKN</p>
@@ -330,7 +634,7 @@ function CompanyReviewCard({
             onClick={() => setEditing(false)}
             className="text-xs text-brand-500 hover:text-brand-900 px-3 py-1.5 rounded"
           >
-            İptal
+            <X className="size-3 inline" /> İptal
           </button>
           <button
             onClick={() => save.mutate()}
@@ -351,21 +655,15 @@ function CompanyReviewCard({
 function MergeForm({ companyId, onClose }: { companyId: string; onClose: () => void }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useState(() => {
-    const t = setTimeout(() => setDebounced(search), 300);
-    return () => clearTimeout(t);
-  });
-
   const candidates = useQuery({
-    queryKey: ['merge-candidates', debounced],
-    enabled: debounced.length >= 2,
+    queryKey: ['merge-candidates', search],
+    enabled: search.length >= 2,
     queryFn: async () => {
-      const res = await api.get<{ data: Array<{ id: string; name: string; tax_number: string | null }> }>(
-        `/master-data/companies?search=${encodeURIComponent(debounced)}`,
-      );
+      const res = await api.get<{
+        data: Array<{ id: string; name: string; tax_number: string | null }>;
+      }>(`/master-data/companies?search=${encodeURIComponent(search)}`);
       return res.data.data.filter((c) => c.id !== companyId).slice(0, 5);
     },
   });
@@ -384,16 +682,14 @@ function MergeForm({ companyId, onClose }: { companyId: string; onClose: () => v
   return (
     <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-3 mt-2 border border-blue-200 dark:border-blue-800">
       <p className="text-xs font-medium text-blue-900 dark:text-blue-200 mb-2">
-        Birleştirilecek hedef şirketi seç. Bu kayıt silinecek, faturalar hedefe taşınacak.
+        Birleştirilecek hedef şirketi seç. Bu kayıt silinecek (sadece bu tenant'taki referanslar
+        taşınır), faturalar hedefe taşınacak.
       </p>
       <div className="flex items-center gap-2 mb-2">
         <Search className="size-3 text-blue-600" />
         <input
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setDebounced(e.target.value);
-          }}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Hedef şirket ara..."
           className="flex-1 rounded border border-blue-200 dark:border-blue-800 dark:bg-slate-800 px-2 py-1 text-xs"
         />
@@ -438,9 +734,13 @@ function MergeForm({ companyId, onClose }: { companyId: string; onClose: () => v
 function PersonReviewCard({
   person,
   onApprove,
+  onReject,
+  busy,
 }: {
   person: ReviewPerson;
   onApprove: () => void;
+  onReject: () => void;
+  busy: boolean;
 }) {
   return (
     <div className="card">
@@ -452,13 +752,12 @@ function PersonReviewCard({
             {SOURCE_LABEL[person.source ?? ''] ?? 'auto'}
           </span>
         </div>
-        <button
-          onClick={onApprove}
-          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded flex items-center gap-1"
-        >
-          <CheckCircle2 className="size-3" />
-          Onayla
-        </button>
+        <ApproveRejectButtons
+          onApprove={onApprove}
+          onReject={onReject}
+          busy={busy}
+          rejectConfirm={`"${person.full_name}" şahsı kalıcı olarak silinecek. Devam edilsin mi?`}
+        />
       </div>
       <div className="grid sm:grid-cols-2 gap-2 mt-2 text-xs">
         <div>

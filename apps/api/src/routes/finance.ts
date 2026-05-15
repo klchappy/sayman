@@ -56,10 +56,17 @@ export const payablesRouter = Router();
 payablesRouter.get('/payables', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
+    const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+    const whereClause = includeReview
+      ? eq(payableItems.tenant_id, req.activeTenantId!)
+      : and(
+          eq(payableItems.tenant_id, req.activeTenantId!),
+          eq(payableItems.needs_review, false),
+        );
     const rows = await db
       .select()
       .from(payableItems)
-      .where(eq(payableItems.tenant_id, req.activeTenantId!))
+      .where(whereClause)
       .orderBy(desc(payableItems.due_date), desc(payableItems.created_at))
       .limit(200);
     res.json({ data: rows, count: rows.length });

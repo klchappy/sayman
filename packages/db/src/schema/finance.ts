@@ -89,6 +89,12 @@ export const payableItems = pgTable(
     erp_pushed_at: timestamp('erp_pushed_at', { withTimezone: true }),
     erp_push_error: text('erp_push_error'),
 
+    /** Auto-import review flow */
+    needs_review: boolean('needs_review').notNull().default(false),
+    auto_created_source: text('auto_created_source'),
+    reviewed_at: timestamp('reviewed_at', { withTimezone: true }),
+    reviewed_by: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+
     created_by: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     is_active: boolean('is_active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -100,6 +106,7 @@ export const payableItems = pgTable(
     dueIdx: index('idx_payable_due').on(table.due_date),
     periodIdx: index('idx_payable_period').on(table.tenant_id, table.period_label),
     erpIdx: index('idx_payable_erp').on(table.erp_connection_id, table.erp_push_status),
+    reviewIdx: index('idx_payable_review').on(table.tenant_id, table.needs_review),
   }),
 );
 export type PayableItem = typeof payableItems.$inferSelect;
