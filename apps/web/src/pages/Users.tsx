@@ -1,5 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Mail, Plus, Shield, Trash2, UserCog, Users as UsersIcon } from 'lucide-react';
+import {
+  History,
+  KeyRound,
+  Loader2,
+  Mail,
+  Plus,
+  PowerOff,
+  Power,
+  Shield,
+  Trash2,
+  UserCog,
+  Users as UsersIcon,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 import {
   ROLES,
@@ -7,6 +20,7 @@ import {
   ROLE_LABELS,
   type Role,
 } from '@sayman/shared';
+import { AuditHistoryButton } from '../components/AuditHistoryButton';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -19,6 +33,7 @@ interface OrgUser {
   role: Role;
   role_label: string;
   created_at: string;
+  is_active?: boolean;
   overrides: Array<{
     tenant_id: string;
     tenant_slug: string;
@@ -192,13 +207,22 @@ function UserRow({
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [showResetPw, setShowResetPw] = useState(false);
 
   // Hierarchy: super_admin'i yalnız başka bir super_admin değiştirebilir
   const canEditThisUser = canEdit && !(u.role === 'super_admin' && myRole !== 'super_admin');
+  const isActive = u.is_active !== false;
 
   const remove = useMutation({
     mutationFn: async () => {
       await api.delete(`/users/${u.user_id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: async () => {
+      await api.patch(`/users/${u.user_id}/active`, { is_active: !isActive });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
@@ -252,29 +276,225 @@ function UserRow({
         {u.last_login_at ? new Date(u.last_login_at).toLocaleString('tr-TR') : '-'}
       </td>
       <td className="py-3 px-2 text-right">
-        {canEditThisUser && !isMe && (
-          <button
-            onClick={() => {
-              if (confirm(`${u.full_name} kullanıcısını org'dan çıkar?`)) remove.mutate();
-            }}
-            disabled={remove.isPending}
-            className="text-red-600 hover:bg-red-50 p-1.5 rounded"
-            title="Org'dan çıkar"
-          >
-            <Trash2 className="size-4" />
-          </button>
+        <div className="inline-flex items-center gap-1">
+          {/* Audit history — everyone with users.update_role can see */}
+          {canEditThisUser && (
+            <AuditHistoryButton
+              targetTable="users"
+              targetId={u.user_id}
+              label="Geçmiş"
+              compact={false}
+            />
+          )}
+
+          {/* Reset password (admin) */}
+          {canEditThisUser && !isMe && (
+            <button
+              onClick={() => setShowResetPw(true)}
+              className="text-xs border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 px-2 py-1.5 rounded inline-flex items-center gap-1"
+              title="Şifreyi sıfırla"
+            >
+              <KeyRound className="size-3" />
+              Şifre
+            </button>
+          )}
+
+          {/* Activate/Deactivate */}
+          {canEditThisUser && !isMe && (
+            <button
+              onClick={() => {
+                const msg = isActive
+                  ? `${u.full_name} kullanıcısı PASİFLEŞTİRİLECEK. Tüm açık oturumları kapanacak. Devam edilsin mi?`
+                  : `${u.full_name} kullanıcısı AKTİF edilecek. Devam edilsin mi?`;
+                if (confirm(msg)) toggleActive.mutate();
+              }}
+              disabled={toggleActive.isPending}
+              className={`text-xs border px-2 py-1.5 rounded inline-flex items-center gap-1 ${
+                isActive
+                  ? 'border-brand-200 dark:border-slate-700 text-brand-700 dark:text-slate-300 hover:bg-brand-50 dark:hover:bg-slate-800'
+                  : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+              }`}
+              title={isActive ? 'Pasifleştir' : 'Aktif et'}
+            >
+              {isActive ? <PowerOff className="size-3" /> : <Power className="size-3" />}
+              {isActive ? 'Pasif' : 'Aktif'}
+            </button>
+          )}
+
+          {/* Delete from org */}
+          {canEditThisUser && !isMe && (
+            <button
+              onClick={() => {
+                if (confirm(`${u.full_name} kullanıcısını org'dan çıkar? (audit log kalır)`)) remove.mutate();
+              }}
+              disabled={remove.isPending}
+              className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 p-1.5 rounded"
+              title="Org'dan çıkar"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
+          {isMe && <span className="text-xs text-brand-400 italic">sen</span>}
+          {u.role === 'super_admin' && myRole !== 'super_admin' && !isMe && (
+            <span className="text-xs text-brand-300 italic" title="super_admin korunmaktadır">
+              🔒
+            </span>
+          )}
+        </div>
+        {!isActive && (
+          <p className="text-[10px] text-red-600 dark:text-red-400 mt-1 text-right">
+            Pasif hesap
+          </p>
         )}
-        {isMe && <span className="text-xs text-brand-400 italic">sen</span>}
-        {u.role === 'super_admin' && myRole !== 'super_admin' && !isMe && (
-          <span
-            className="text-xs text-brand-300 italic"
-            title="super_admin korunmaktadır"
-          >
-            🔒
-          </span>
+
+        {showResetPw && (
+          <AdminResetPasswordModal user={u} onClose={() => setShowResetPw(false)} />
         )}
       </td>
     </tr>
+  );
+}
+
+function AdminResetPasswordModal({
+  user,
+  onClose,
+}: {
+  user: OrgUser;
+  onClose: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState('');
+  const [revokeSessions, setRevokeSessions] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const lenOk = newPassword.length >= 8;
+  const upperOk = /[A-Z]/.test(newPassword);
+  const lowerOk = /[a-z]/.test(newPassword);
+  const digitOk = /[0-9]/.test(newPassword);
+  const formValid = lenOk && upperOk && lowerOk && digitOk;
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ ok: boolean; message: string }>(
+        `/users/${user.user_id}/reset-password`,
+        { new_password: newPassword, revoke_sessions: revokeSessions },
+      );
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setSuccess(data.message);
+      setError(null);
+      setTimeout(onClose, 2500);
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string } } };
+      setError(err.response?.data?.error ?? (e as Error).message);
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+              <KeyRound className="size-5 text-amber-600" />
+              Şifre Sıfırla
+            </h3>
+            <p className="text-xs text-brand-500 dark:text-slate-400 mt-1">
+              {user.full_name} · {user.email}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-brand-500 hover:text-brand-900">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs uppercase tracking-wide text-brand-500 dark:text-slate-400">
+              Yeni Geçici Şifre
+            </label>
+            <input
+              type="text"
+              autoComplete="off"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="input w-full mt-1 font-mono"
+              placeholder="Test12345"
+            />
+            {newPassword.length > 0 && (
+              <ul className="mt-1 text-[10px] space-y-0.5">
+                <li className={lenOk ? 'text-emerald-600' : 'text-brand-400'}>
+                  {lenOk ? '✓' : '○'} 8+ karakter
+                </li>
+                <li className={upperOk ? 'text-emerald-600' : 'text-brand-400'}>
+                  {upperOk ? '✓' : '○'} Büyük harf
+                </li>
+                <li className={lowerOk ? 'text-emerald-600' : 'text-brand-400'}>
+                  {lowerOk ? '✓' : '○'} Küçük harf
+                </li>
+                <li className={digitOk ? 'text-emerald-600' : 'text-brand-400'}>
+                  {digitOk ? '✓' : '○'} Rakam
+                </li>
+              </ul>
+            )}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-brand-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={revokeSessions}
+              onChange={(e) => setRevokeSessions(e.target.checked)}
+            />
+            Tüm açık oturumları kapat (kullanıcı tekrar giriş yapmak zorunda kalır)
+          </label>
+
+          <div className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 p-2 rounded">
+            ⚠️ Bu işlem kullanıcıya bildirilmez. Yeni şifreyi kullanıcıya güvenli bir kanaldan
+            ilet ve ilk girişte değiştirmesini öner.
+          </div>
+
+          {error && (
+            <div className="text-sm p-2 rounded bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="text-sm p-2 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300">
+              {success}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={onClose}
+              className="text-xs text-brand-500 hover:text-brand-900 px-3 py-1.5"
+            >
+              İptal
+            </button>
+            <button
+              onClick={() => submit.mutate()}
+              disabled={!formValid || submit.isPending}
+              className="text-xs bg-brand-900 hover:bg-brand-700 disabled:opacity-50 text-white px-3 py-1.5 rounded flex items-center gap-1"
+            >
+              {submit.isPending ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <KeyRound className="size-3" />
+              )}
+              Şifreyi Sıfırla
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

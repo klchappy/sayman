@@ -15,7 +15,7 @@
  */
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -28,6 +28,7 @@ import {
   type Role,
 } from '@sayman/shared';
 import {
+  auditLog,
   authAccounts,
   getDb,
   organizations,
@@ -42,7 +43,7 @@ import { env, isConfigured } from '../config/env';
 import { sendInviteEmail } from '../lib/email';
 import { HttpError, requireOrg } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
-import { signLocalJwt } from '../lib/local-auth';
+import { revokeAllSessionsForAccount, signLocalJwt } from '../lib/local-auth';
 import { getTelegramBotInfo, sendTelegramMessage } from '../lib/telegram';
 import { requireAuth } from '../middleware/auth';
 import { requirePerm } from '../middleware/permission';
@@ -86,6 +87,7 @@ usersRouter.get(
           full_name: users.full_name,
           avatar_url: users.avatar_url,
           last_login_at: users.last_login_at,
+          is_active: users.is_active,
           role: userOrganizationRoles.role,
           created_at: userOrganizationRoles.created_at,
         })
@@ -754,6 +756,216 @@ usersRouter.post(
       });
 
       res.json({ data: row });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /v1/users/:id/reset-password — admin kullanıcıya geçici şifre belirler
+// ---------------------------------------------------------------------------
+
+const adminResetPasswordSchema = z.object({
+  new_password: z
+    .string()
+    .min(8, 'En az 8 karakter')
+    .regex(/[A-Z]/, 'En az 1 büyük harf')
+    .regex(/[a-z]/, 'En az 1 küçük harf')
+    .regex(/[0-9]/, 'En az 1 rakam'),
+  /** true ise kullanıcının tüm açık session'ları kapatılır */
+  revoke_sessions: z.boolean().default(true),
+});
+
+usersRouter.post(
+  '/users/:id/reset-password',
+  requireAuth,
+  requireOrg,
+  requirePerm('users.update_role'),
+  async (req, res, next) => {
+    try {
+      const body = adminResetPasswordSchema.parse(req.body);
+      const targetUserId = String(req.params.id ?? '');
+      const db = getDb();
+
+      // Kendi şifreni bu endpoint ile değiştirme — /auth/change-password kullan
+      if (req.authUser?.id === targetUserId) {
+        throw new HttpError(
+          400,
+          'Kendi şifreni Güvenlik → Şifre Değiştir bölümünden değiştir',
+          'USE_SELF_CHANGE',
+        );
+      }
+
+      // Kullanıcı bu org'da var mı?
+      const [orgRole] = await db
+        .select()
+        .from(userOrganizationRoles)
+        .where(
+          and(
+            eq(userOrganizationRoles.user_id, targetUserId),
+            eq(userOrganizationRoles.organization_id, req.activeOrgId!),
+          ),
+        );
+      if (!orgRole) throw new HttpError(404, 'Kullanıcı bu org\'da bulunamadı', 'NOT_FOUND');
+
+      // Hierarchy: super_admin'in şifresini sadece super_admin değiştirebilir
+      if (orgRole.role === 'super_admin' && req.effectiveRole !== 'super_admin') {
+        throw new HttpError(
+          403,
+          'super_admin şifresini sadece başka bir super_admin sıfırlayabilir',
+          'HIERARCHY_BLOCKED',
+        );
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.id, targetUserId));
+      if (!user) throw new HttpError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
+      if (!user.auth_account_id) {
+        throw new HttpError(
+          400,
+          'Bu kullanıcı Supabase Auth ile yönetiliyor — local şifre belirlenemez',
+          'NOT_LOCAL_ACCOUNT',
+        );
+      }
+
+      const hash = await bcrypt.hash(body.new_password, 10);
+      await db
+        .update(authAccounts)
+        .set({ password_hash: hash, updated_at: new Date() })
+        .where(eq(authAccounts.id, user.auth_account_id));
+
+      if (body.revoke_sessions) {
+        await revokeAllSessionsForAccount(user.auth_account_id, undefined);
+      }
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'users.admin_password_reset',
+        target_type: 'users',
+        target_id: targetUserId,
+        details: {
+          target_email: user.email,
+          revoked_sessions: body.revoke_sessions,
+        },
+      });
+
+      res.json({
+        ok: true,
+        message: `${user.email} için yeni şifre belirlendi.${body.revoke_sessions ? ' Kullanıcının açık oturumları kapatıldı.' : ''}`,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// PATCH /v1/users/:id/active — aktif/pasif toggle
+// ---------------------------------------------------------------------------
+
+const activeToggleSchema = z.object({
+  is_active: z.boolean(),
+});
+
+usersRouter.patch(
+  '/users/:id/active',
+  requireAuth,
+  requireOrg,
+  requirePerm('users.update_role'),
+  async (req, res, next) => {
+    try {
+      const body = activeToggleSchema.parse(req.body);
+      const targetUserId = String(req.params.id ?? '');
+      const db = getDb();
+
+      if (req.authUser?.id === targetUserId) {
+        throw new HttpError(400, 'Kendi hesabını pasifleştiremezsin', 'SELF_DEACTIVATE');
+      }
+
+      const [orgRole] = await db
+        .select()
+        .from(userOrganizationRoles)
+        .where(
+          and(
+            eq(userOrganizationRoles.user_id, targetUserId),
+            eq(userOrganizationRoles.organization_id, req.activeOrgId!),
+          ),
+        );
+      if (!orgRole) throw new HttpError(404, 'Kullanıcı bu org\'da bulunamadı', 'NOT_FOUND');
+
+      if (orgRole.role === 'super_admin' && req.effectiveRole !== 'super_admin') {
+        throw new HttpError(
+          403,
+          'super_admin\'ı sadece başka bir super_admin pasifleştirebilir',
+          'HIERARCHY_BLOCKED',
+        );
+      }
+
+      const [user] = await db
+        .update(users)
+        .set({ is_active: body.is_active, updated_at: new Date() })
+        .where(eq(users.id, targetUserId))
+        .returning({ id: users.id, email: users.email, is_active: users.is_active });
+      if (!user) throw new HttpError(404, 'Kullanıcı bulunamadı', 'NOT_FOUND');
+
+      // Pasifleştirme sırasında session'ları da kapat
+      if (!body.is_active) {
+        const [u2] = await db.select().from(users).where(eq(users.id, targetUserId));
+        if (u2?.auth_account_id) {
+          await revokeAllSessionsForAccount(u2.auth_account_id, undefined);
+        }
+      }
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: body.is_active ? 'users.activate' : 'users.deactivate',
+        target_type: 'users',
+        target_id: targetUserId,
+        details: { target_email: user.email },
+      });
+
+      res.json({ data: user });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /v1/users/:id/audit — kullanıcı bazlı aktivite log
+// ---------------------------------------------------------------------------
+
+usersRouter.get(
+  '/users/:id/audit',
+  requireAuth,
+  requireOrg,
+  requirePerm('users.update_role'),
+  async (req, res, next) => {
+    try {
+      const targetUserId = String(req.params.id ?? '');
+      const db = getDb();
+      const limit = Math.min(Number(req.query.limit ?? 100), 500);
+
+      const rows = await db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.organization_id, req.activeOrgId!),
+            or(
+              eq(auditLog.actor_id, targetUserId),
+              and(eq(auditLog.target_table, 'users'), eq(auditLog.target_id, targetUserId)),
+            ),
+          ),
+        )
+        .orderBy(desc(auditLog.created_at))
+        .limit(limit);
+
+      res.json({ data: rows });
     } catch (err) {
       next(err);
     }
