@@ -169,6 +169,13 @@
       "when": 1778783000000,
       "tag": "0023_fixed_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1778784000000,
+      "tag": "0024_payroll",
+      "breakpoints": true
     }
   ]
 }

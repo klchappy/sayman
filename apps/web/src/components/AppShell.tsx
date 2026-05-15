@@ -37,6 +37,7 @@ import {
   Sparkles,
   UserCog,
   Users,
+  Wallet,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -104,6 +105,8 @@ const navItems: NavItem[] = [
     requires: 'finance',
     group: 'Muhasebe',
   },
+  { to: '/employees', label: 'Personel', icon: Users, group: 'İnsan Kaynakları' },
+  { to: '/payroll', label: 'Bordro', icon: Wallet, group: 'İnsan Kaynakları' },
   {
     to: '/reports/profit-loss',
     label: 'Gelir / Gider',

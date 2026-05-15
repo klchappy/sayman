@@ -25,6 +25,7 @@ import {
   type PayableStatus,
 } from '@sayman/shared';
 import { api } from '../../lib/api';
+import { ActivityTimeline } from '../../components/ActivityTimeline';
 import { AttachmentBox } from '../../components/AttachmentBox';
 
 interface Payment {
@@ -160,6 +161,10 @@ export function PayableDetailPage() {
       <div className="grid md:grid-cols-2 gap-4 mb-6">
         <AttachmentBox relatedTable="payable_items" relatedId={p.id} />
         <SimilarPayables payableId={p.id} />
+      </div>
+
+      <div className="mb-6">
+        <ActivityTimeline targetType="payable_items" targetId={p.id} />
       </div>
 
       <section className="card">

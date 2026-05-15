@@ -63,6 +63,9 @@ import { checksRouter } from './checks';
 import { collectionRemindersRouter } from './collection-reminders';
 import { fixedAssetsRouter } from './fixed-assets';
 import { reportsPnlRouter } from './reports-pnl';
+import { employeesRouter } from './employees';
+import { payrollRouter } from './payroll';
+import { activityTimelineRouter } from './activity-timeline';
 
 export const apiRouter = Router();
 
@@ -231,3 +234,12 @@ apiRouter.use(fixedAssetsRouter);
 
 // Gelir-Gider tablosu (P&L)
 apiRouter.use(reportsPnlRouter);
+
+// Personel
+apiRouter.use(employeesRouter);
+
+// Maaş bordrosu
+apiRouter.use(payrollRouter);
+
+// Aktivite zaman çizelgesi (audit log + payments)
+apiRouter.use(activityTimelineRouter);

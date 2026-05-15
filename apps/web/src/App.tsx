@@ -25,7 +25,9 @@ import { BudgetsPage } from './pages/Budgets';
 import { ChecksPage } from './pages/Checks';
 import { CollectionRemindersPage } from './pages/CollectionReminders';
 import { CariPortalTokensPage, PublicPortalPage } from './pages/CustomerPortal';
+import { EmployeesPage } from './pages/Employees';
 import { FixedAssetsPage } from './pages/FixedAssets';
+import { PayrollPage, PayrollRunDetailPage } from './pages/Payroll';
 import { ProfitLossPage } from './pages/ProfitLoss';
 import { ReconciliationPage } from './pages/Reconciliation';
 import { SalesInvoicesPage } from './pages/SalesInvoices';
@@ -128,6 +130,9 @@ export default function App() {
         <Route path="/collection-reminders" element={<CollectionRemindersPage />} />
         <Route path="/fixed-assets" element={<FixedAssetsPage />} />
         <Route path="/reports/profit-loss" element={<ProfitLossPage />} />
+        <Route path="/employees" element={<EmployeesPage />} />
+        <Route path="/payroll" element={<PayrollPage />} />
+        <Route path="/payroll/:id" element={<PayrollRunDetailPage />} />
         <Route path="/cari/:id/reconciliation" element={<ReconciliationPage />} />
         <Route path="/cari/:id/portal-tokens" element={<CariPortalTokensPage />} />
 
