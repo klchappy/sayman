@@ -16,7 +16,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { companies, getDb, payableItems, persons, salesInvoices } from '@sayman/db';
+import { companies, getDb, payableItems, persons, salesInvoices, tenants } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireOrg, requireTenant } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
@@ -390,6 +390,256 @@ reviewQueueRouter.delete(
       });
 
       res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** Fatura düzenle — review sırasında tutar, vade, tedarikçi, kategori veya tenant değiştirilebilir */
+const patchPayableSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
+  invoice_number: z.string().max(128).optional().nullable(),
+  supplier_name: z.string().max(255).optional().nullable(),
+  company_id: z.string().uuid().optional().nullable(),
+  issue_date: z.string().date().optional().nullable(),
+  due_date: z.string().date().optional().nullable(),
+  amount: z.string().regex(/^-?\d+(\.\d{1,2})?$/).optional(),
+  currency: z.string().length(3).optional(),
+  category: z.string().max(64).optional().nullable(),
+  notes: z.string().optional().nullable(),
+  /** Doğru tenant'a taşı (aynı org içinde) */
+  target_tenant_id: z.string().uuid().optional(),
+});
+
+reviewQueueRouter.patch(
+  '/review-queue/payable/:id',
+  requireAuth,
+  requireOrg,
+  requireTenant,
+  async (req, res, next) => {
+    try {
+      const body = patchPayableSchema.parse(req.body);
+      const db = getDb();
+      const orgId = req.activeOrgId!;
+      const tenantId = req.activeTenantId!;
+      const id = String(req.params.id ?? '');
+
+      const [current] = await db
+        .select()
+        .from(payableItems)
+        .where(and(eq(payableItems.id, id), eq(payableItems.tenant_id, tenantId)))
+        .limit(1);
+      if (!current) throw new HttpError(404, 'Fatura bulunamadı');
+
+      // target_tenant_id verilmişse, o tenant kullanıcının org'una ait mi kontrol et
+      let movingToTenantId: string | null = null;
+      if (body.target_tenant_id && body.target_tenant_id !== tenantId) {
+        const [target] = await db
+          .select({ id: tenants.id })
+          .from(tenants)
+          .where(
+            and(
+              eq(tenants.id, body.target_tenant_id),
+              eq(tenants.organization_id, orgId),
+              eq(tenants.is_active, true),
+            ),
+          )
+          .limit(1);
+        if (!target) throw new HttpError(404, 'Hedef şirket bulunamadı veya erişim yok');
+        movingToTenantId = target.id;
+      }
+
+      const patch: Record<string, unknown> = { updated_at: new Date() };
+      if (body.title !== undefined) patch.title = body.title;
+      if (body.invoice_number !== undefined) patch.invoice_number = body.invoice_number;
+      if (body.supplier_name !== undefined) patch.supplier_name = body.supplier_name;
+      if (body.company_id !== undefined) patch.company_id = body.company_id;
+      if (body.issue_date !== undefined) patch.issue_date = body.issue_date;
+      if (body.due_date !== undefined) patch.due_date = body.due_date;
+      if (body.amount !== undefined) patch.amount = body.amount;
+      if (body.currency !== undefined) patch.currency = body.currency;
+      if (body.category !== undefined) patch.category = body.category;
+      if (body.notes !== undefined) patch.notes = body.notes;
+      if (movingToTenantId) {
+        patch.tenant_id = movingToTenantId;
+        // metadata'ya taşıma izini ekle
+        const newMeta = {
+          ...(current.metadata as Record<string, unknown> ?? {}),
+          tenant_corrected: {
+            from: tenantId,
+            to: movingToTenantId,
+            by: req.authUser?.id ?? null,
+            at: new Date().toISOString(),
+          },
+        };
+        patch.metadata = newMeta;
+      }
+
+      const [row] = await db
+        .update(payableItems)
+        .set(patch)
+        .where(and(eq(payableItems.id, id), eq(payableItems.tenant_id, tenantId)))
+        .returning();
+      if (!row) throw new HttpError(404, 'Fatura güncellenemedi');
+
+      await auditFromRequest(req, {
+        organization_id: orgId,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: movingToTenantId
+          ? 'review_queue.payable.move_tenant'
+          : 'review_queue.payable.edit',
+        target_type: 'payable_items',
+        target_id: id,
+        details: {
+          patch,
+          from_tenant: movingToTenantId ? tenantId : undefined,
+          to_tenant: movingToTenantId ?? undefined,
+        },
+      });
+
+      res.json({ data: row });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** Satış faturası düzenle — aynı pattern */
+const patchSalesInvoiceSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
+  invoice_number: z.string().max(128).optional().nullable(),
+  customer_name: z.string().max(255).optional().nullable(),
+  customer_company_id: z.string().uuid().optional().nullable(),
+  customer_person_id: z.string().uuid().optional().nullable(),
+  issue_date: z.string().date().optional().nullable(),
+  due_date: z.string().date().optional().nullable(),
+  amount: z.string().regex(/^-?\d+(\.\d{1,2})?$/).optional(),
+  currency: z.string().length(3).optional(),
+  notes: z.string().optional().nullable(),
+  target_tenant_id: z.string().uuid().optional(),
+});
+
+reviewQueueRouter.patch(
+  '/review-queue/sales_invoice/:id',
+  requireAuth,
+  requireOrg,
+  requireTenant,
+  async (req, res, next) => {
+    try {
+      const body = patchSalesInvoiceSchema.parse(req.body);
+      const db = getDb();
+      const orgId = req.activeOrgId!;
+      const tenantId = req.activeTenantId!;
+      const id = String(req.params.id ?? '');
+
+      const [current] = await db
+        .select()
+        .from(salesInvoices)
+        .where(and(eq(salesInvoices.id, id), eq(salesInvoices.tenant_id, tenantId)))
+        .limit(1);
+      if (!current) throw new HttpError(404, 'Satış faturası bulunamadı');
+
+      let movingToTenantId: string | null = null;
+      if (body.target_tenant_id && body.target_tenant_id !== tenantId) {
+        const [target] = await db
+          .select({ id: tenants.id })
+          .from(tenants)
+          .where(
+            and(
+              eq(tenants.id, body.target_tenant_id),
+              eq(tenants.organization_id, orgId),
+              eq(tenants.is_active, true),
+            ),
+          )
+          .limit(1);
+        if (!target) throw new HttpError(404, 'Hedef şirket bulunamadı');
+        movingToTenantId = target.id;
+      }
+
+      const patch: Record<string, unknown> = { updated_at: new Date() };
+      if (body.title !== undefined) patch.title = body.title;
+      if (body.invoice_number !== undefined) patch.invoice_number = body.invoice_number;
+      if (body.customer_name !== undefined) patch.customer_name = body.customer_name;
+      if (body.customer_company_id !== undefined)
+        patch.customer_company_id = body.customer_company_id;
+      if (body.customer_person_id !== undefined)
+        patch.customer_person_id = body.customer_person_id;
+      if (body.issue_date !== undefined) patch.issue_date = body.issue_date;
+      if (body.due_date !== undefined) patch.due_date = body.due_date;
+      if (body.amount !== undefined) patch.amount = body.amount;
+      if (body.currency !== undefined) patch.currency = body.currency;
+      if (body.notes !== undefined) patch.notes = body.notes;
+      if (movingToTenantId) {
+        patch.tenant_id = movingToTenantId;
+        const newMeta = {
+          ...(current.metadata as Record<string, unknown> ?? {}),
+          tenant_corrected: {
+            from: tenantId,
+            to: movingToTenantId,
+            by: req.authUser?.id ?? null,
+            at: new Date().toISOString(),
+          },
+        };
+        patch.metadata = newMeta;
+      }
+
+      const [row] = await db
+        .update(salesInvoices)
+        .set(patch)
+        .where(and(eq(salesInvoices.id, id), eq(salesInvoices.tenant_id, tenantId)))
+        .returning();
+      if (!row) throw new HttpError(404, 'Satış faturası güncellenemedi');
+
+      await auditFromRequest(req, {
+        organization_id: orgId,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: movingToTenantId
+          ? 'review_queue.sales_invoice.move_tenant'
+          : 'review_queue.sales_invoice.edit',
+        target_type: 'sales_invoices',
+        target_id: id,
+        details: {
+          patch,
+          from_tenant: movingToTenantId ? tenantId : undefined,
+          to_tenant: movingToTenantId ?? undefined,
+        },
+      });
+
+      res.json({ data: row });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** Org içindeki tenant listesi (review queue tenant-move için) */
+reviewQueueRouter.get(
+  '/review-queue/org-tenants',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      const rows = await db
+        .select({
+          id: tenants.id,
+          slug: tenants.slug,
+          name: tenants.name,
+          sector: tenants.sector,
+          tax_number: tenants.tax_number,
+        })
+        .from(tenants)
+        .where(
+          and(
+            eq(tenants.organization_id, req.activeOrgId!),
+            eq(tenants.is_active, true),
+          ),
+        )
+        .orderBy(tenants.name);
+      res.json({ data: rows });
     } catch (err) {
       next(err);
     }

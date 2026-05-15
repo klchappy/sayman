@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowRight,
   Building2,
   CheckCircle2,
   Edit3,
@@ -23,6 +24,14 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
+
+interface OrgTenant {
+  id: string;
+  slug: string;
+  name: string;
+  sector: string;
+  tax_number: string | null;
+}
 
 interface ReviewCompany {
   type: 'company';
@@ -99,9 +108,14 @@ function fmtTRY(v: number | string) {
 
 const SOURCE_LABEL: Record<string, string> = {
   efatura: 'e-Fatura',
+  efatura_auto_routed: 'e-Fatura (otomatik route)',
   efatura_ubl: 'e-Fatura UBL',
   csv_import: 'CSV Import',
   smart_import: 'Akıllı Yükleme',
+  smart_import_zip: 'ZIP Akıllı Yükleme',
+  smart_import_zip_auto_routed: 'ZIP (otomatik route)',
+  smart_import_rar: 'RAR Akıllı Yükleme',
+  smart_import_rar_auto_routed: 'RAR (otomatik route)',
   inbound_webhook: 'Webhook',
   inbound_webhook_xml: 'Webhook XML',
   erp_sync: 'ERP Senkron',
@@ -374,6 +388,8 @@ function PayableReviewCard({
   onReject: () => void;
   busy: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+
   return (
     <div className="card">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -416,13 +432,179 @@ function PayableReviewCard({
             </div>
           </div>
         </div>
-        <ApproveRejectButtons
-          onApprove={onApprove}
-          onReject={onReject}
-          busy={busy}
-          rejectConfirm={`"${item.title}" faturası kalıcı olarak silinecek. Devam edilsin mi?`}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setEditing(!editing)}
+            className="text-xs border border-brand-200 dark:border-slate-700 hover:bg-brand-50 dark:hover:bg-slate-800 text-brand-700 dark:text-slate-300 px-3 py-1.5 rounded flex items-center gap-1"
+          >
+            <Edit3 className="size-3" />
+            {editing ? 'Kapat' : 'Düzenle'}
+          </button>
+          <ApproveRejectButtons
+            onApprove={onApprove}
+            onReject={onReject}
+            busy={busy}
+            rejectConfirm={`"${item.title}" faturası kalıcı olarak silinecek. Devam edilsin mi?`}
+          />
+        </div>
       </div>
+      {editing && <PayableEditForm item={item} onClose={() => setEditing(false)} />}
+    </div>
+  );
+}
+
+function PayableEditForm({
+  item,
+  onClose,
+}: {
+  item: ReviewPayable;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(item.title);
+  const [supplierName, setSupplierName] = useState(item.supplier_name ?? '');
+  const [amount, setAmount] = useState(String(item.amount));
+  const [issueDate, setIssueDate] = useState(item.issue_date ?? '');
+  const [dueDate, setDueDate] = useState(item.due_date ?? '');
+  const [category, setCategory] = useState(item.category ?? '');
+  const [invoiceNumber, setInvoiceNumber] = useState(item.invoice_number ?? '');
+  const [targetTenantId, setTargetTenantId] = useState<string | null>(null);
+
+  const orgTenants = useQuery({
+    queryKey: ['review-queue-org-tenants'],
+    queryFn: async () => {
+      const res = await api.get<{ data: OrgTenant[] }>('/review-queue/org-tenants');
+      return res.data.data;
+    },
+  });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        title,
+        invoice_number: invoiceNumber || null,
+        supplier_name: supplierName || null,
+        amount,
+        issue_date: issueDate || null,
+        due_date: dueDate || null,
+        category: category || null,
+      };
+      if (targetTenantId) body.target_tenant_id = targetTenantId;
+      await api.patch(`/review-queue/payable/${item.id}`, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['review-queue'] });
+      onClose();
+    },
+  });
+
+  return (
+    <div className="mt-3 pt-3 border-t border-brand-100 dark:border-slate-800">
+      <div className="grid sm:grid-cols-2 gap-3 text-xs">
+        <Field label="Başlık">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="input w-full"
+          />
+        </Field>
+        <Field label="Fatura No">
+          <input
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+            className="input w-full font-mono"
+          />
+        </Field>
+        <Field label="Tedarikçi Adı">
+          <input
+            value={supplierName}
+            onChange={(e) => setSupplierName(e.target.value)}
+            className="input w-full"
+          />
+        </Field>
+        <Field label="Tutar">
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="input w-full font-mono"
+            placeholder="0.00"
+          />
+        </Field>
+        <Field label="Düzenleme Tarihi">
+          <input
+            type="date"
+            value={issueDate}
+            onChange={(e) => setIssueDate(e.target.value)}
+            className="input w-full"
+          />
+        </Field>
+        <Field label="Vade Tarihi">
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="input w-full"
+          />
+        </Field>
+        <Field label="Kategori">
+          <input
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="input w-full"
+          />
+        </Field>
+        <Field label="Doğru Şirkete Taşı (yanlış atanmışsa)">
+          <select
+            value={targetTenantId ?? ''}
+            onChange={(e) => setTargetTenantId(e.target.value || null)}
+            className="input w-full"
+          >
+            <option value="">— Bu şirkette kalsın —</option>
+            {orgTenants.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.tax_number ? ` · VKN ${t.tax_number}` : ''}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {targetTenantId && (
+        <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 rounded flex items-center gap-2">
+          <ArrowRight className="size-3" />
+          Bu fatura kaydedildiğinde seçilen şirkete taşınacak ve aktif tenant'tan kaybolacak.
+          Audit log'a "tenant_corrected" olarak kaydedilir.
+        </div>
+      )}
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          onClick={onClose}
+          className="text-xs text-brand-500 hover:text-brand-900 px-3 py-1.5 rounded"
+        >
+          <X className="size-3 inline" /> İptal
+        </button>
+        <button
+          onClick={() => save.mutate()}
+          disabled={save.isPending}
+          className="text-xs bg-brand-900 hover:bg-brand-700 text-white px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-60"
+        >
+          {save.isPending ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <CheckCircle2 className="size-3" />
+          )}
+          Kaydet
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-brand-400 mb-1">{label}</p>
+      {children}
     </div>
   );
 }
@@ -438,6 +620,8 @@ function SalesInvoiceReviewCard({
   onReject: () => void;
   busy: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+
   return (
     <div className="card">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -474,12 +658,134 @@ function SalesInvoiceReviewCard({
             </div>
           </div>
         </div>
-        <ApproveRejectButtons
-          onApprove={onApprove}
-          onReject={onReject}
-          busy={busy}
-          rejectConfirm={`"${item.title}" satış faturası kalıcı olarak silinecek. Devam edilsin mi?`}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setEditing(!editing)}
+            className="text-xs border border-brand-200 dark:border-slate-700 hover:bg-brand-50 dark:hover:bg-slate-800 text-brand-700 dark:text-slate-300 px-3 py-1.5 rounded flex items-center gap-1"
+          >
+            <Edit3 className="size-3" />
+            {editing ? 'Kapat' : 'Düzenle'}
+          </button>
+          <ApproveRejectButtons
+            onApprove={onApprove}
+            onReject={onReject}
+            busy={busy}
+            rejectConfirm={`"${item.title}" satış faturası kalıcı olarak silinecek. Devam edilsin mi?`}
+          />
+        </div>
+      </div>
+      {editing && <SalesInvoiceEditForm item={item} onClose={() => setEditing(false)} />}
+    </div>
+  );
+}
+
+function SalesInvoiceEditForm({
+  item,
+  onClose,
+}: {
+  item: ReviewSalesInvoice;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(item.title);
+  const [customerName, setCustomerName] = useState(item.customer_name ?? '');
+  const [amount, setAmount] = useState(String(item.amount));
+  const [issueDate, setIssueDate] = useState(item.issue_date ?? '');
+  const [dueDate, setDueDate] = useState(item.due_date ?? '');
+  const [invoiceNumber, setInvoiceNumber] = useState(item.invoice_number ?? '');
+  const [targetTenantId, setTargetTenantId] = useState<string | null>(null);
+
+  const orgTenants = useQuery({
+    queryKey: ['review-queue-org-tenants'],
+    queryFn: async () => {
+      const res = await api.get<{ data: OrgTenant[] }>('/review-queue/org-tenants');
+      return res.data.data;
+    },
+  });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        title,
+        invoice_number: invoiceNumber || null,
+        customer_name: customerName || null,
+        amount,
+        issue_date: issueDate || null,
+        due_date: dueDate || null,
+      };
+      if (targetTenantId) body.target_tenant_id = targetTenantId;
+      await api.patch(`/review-queue/sales_invoice/${item.id}`, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['review-queue'] });
+      onClose();
+    },
+  });
+
+  return (
+    <div className="mt-3 pt-3 border-t border-brand-100 dark:border-slate-800">
+      <div className="grid sm:grid-cols-2 gap-3 text-xs">
+        <Field label="Başlık">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className="input w-full" />
+        </Field>
+        <Field label="Fatura No">
+          <input
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+            className="input w-full font-mono"
+          />
+        </Field>
+        <Field label="Müşteri Adı">
+          <input
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            className="input w-full"
+          />
+        </Field>
+        <Field label="Tutar">
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} className="input w-full font-mono" />
+        </Field>
+        <Field label="Düzenleme Tarihi">
+          <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className="input w-full" />
+        </Field>
+        <Field label="Vade Tarihi">
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="input w-full" />
+        </Field>
+        <Field label="Doğru Şirkete Taşı">
+          <select
+            value={targetTenantId ?? ''}
+            onChange={(e) => setTargetTenantId(e.target.value || null)}
+            className="input w-full"
+          >
+            <option value="">— Bu şirkette kalsın —</option>
+            {orgTenants.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.tax_number ? ` · VKN ${t.tax_number}` : ''}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {targetTenantId && (
+        <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 rounded flex items-center gap-2">
+          <ArrowRight className="size-3" />
+          Bu fatura kaydedildiğinde seçilen şirkete taşınacak. Audit log'a "tenant_corrected"
+          olarak kaydedilir.
+        </div>
+      )}
+      <div className="mt-3 flex justify-end gap-2">
+        <button onClick={onClose} className="text-xs text-brand-500 hover:text-brand-900 px-3 py-1.5 rounded">
+          <X className="size-3 inline" /> İptal
+        </button>
+        <button
+          onClick={() => save.mutate()}
+          disabled={save.isPending}
+          className="text-xs bg-brand-900 hover:bg-brand-700 text-white px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-60"
+        >
+          {save.isPending ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
+          Kaydet
+        </button>
       </div>
     </div>
   );

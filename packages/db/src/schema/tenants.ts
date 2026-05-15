@@ -32,6 +32,8 @@ export const tenants = pgTable(
     slug: text('slug').notNull(),
     name: text('name').notNull(),
     sector: sectorEnum('sector').notNull().default('diger'),
+    /** Tenant'ın VKN/TCKN'si — e-Fatura recipient match için */
+    tax_number: text('tax_number'),
     /** Açık modüller (boş → SECTOR_DEFAULT_MODULES) */
     active_modules: text('active_modules').array().notNull().default(sql`'{}'::text[]`),
     settings: jsonb('settings').$type<TenantSettings>().default({}).notNull(),

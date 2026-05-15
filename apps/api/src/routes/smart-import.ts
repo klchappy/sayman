@@ -16,10 +16,12 @@ import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import JSZip from 'jszip';
 import multer from 'multer';
+import { createExtractorFromData } from 'node-unrar-js';
 import * as XLSX from 'xlsx';
 import {
   getDb,
   payableItems,
+  tenants,
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
 import { resolveOrCreateCompany } from '../lib/auto-create-party';
@@ -27,7 +29,46 @@ import { logger } from '../config/logger';
 import { HttpError, requireTenant } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 import { IMPORT_HANDLERS, type ImportConfig } from '../lib/import-handlers';
-import { parseUblXml } from './efatura-helpers';
+import { parseUblXml, type ParsedInvoice } from './efatura-helpers';
+
+/**
+ * Recipient tax_number → org içindeki tenant'a route et.
+ * Eşleşme varsa o tenant'ı dön, yoksa null. Tenant_id otomatik atanırsa
+ * tenant_assigned_by='auto_recipient_match', uyumsuzsa active tenant + needs_review=true.
+ */
+async function resolveTenantByRecipient(
+  orgId: string,
+  recipientTaxNumber: string | null | undefined,
+  activeTenantId: string,
+): Promise<{ tenantId: string; isAutoMatched: boolean; mismatch: boolean }> {
+  if (!recipientTaxNumber) {
+    return { tenantId: activeTenantId, isAutoMatched: false, mismatch: false };
+  }
+  const cleaned = recipientTaxNumber.replace(/[^0-9]/g, '');
+  if (cleaned.length < 10) {
+    return { tenantId: activeTenantId, isAutoMatched: false, mismatch: false };
+  }
+  const db = getDb();
+  const [match] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(
+      and(
+        eq(tenants.organization_id, orgId),
+        eq(tenants.tax_number, cleaned),
+        eq(tenants.is_active, true),
+      ),
+    )
+    .limit(1);
+  if (match) {
+    return {
+      tenantId: match.id,
+      isAutoMatched: true,
+      mismatch: match.id !== activeTenantId,
+    };
+  }
+  return { tenantId: activeTenantId, isAutoMatched: false, mismatch: false };
+}
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE } });
@@ -99,14 +140,22 @@ smartImportRouter.post(
           throw new HttpError(400, 'Fatura numarası bulunamadı', 'INVALID_INVOICE');
         }
 
-        // Aynı invoice_number var mı (idempotent)
+        // Recipient tax_number'dan otomatik tenant route (yanlış tenant'a yazılmasın)
+        const route = await resolveTenantByRecipient(
+          orgId,
+          parsed.recipient_tax_number,
+          tenantId,
+        );
+        const targetTenantId = route.tenantId;
+
+        // Aynı invoice_number var mı (idempotent) — target tenant kapsamında
         const db = getDb();
         const [existing] = await db
           .select({ id: payableItems.id, title: payableItems.title })
           .from(payableItems)
           .where(
             and(
-              eq(payableItems.tenant_id, tenantId),
+              eq(payableItems.tenant_id, targetTenantId),
               eq(payableItems.invoice_number, parsed.invoice_number),
             ),
           )
@@ -143,7 +192,7 @@ smartImportRouter.post(
         const [created] = await db
           .insert(payableItems)
           .values({
-            tenant_id: tenantId,
+            tenant_id: targetTenantId,
             owner_type: 'company',
             company_id: supplierResolution?.id ?? null,
             title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
@@ -160,9 +209,18 @@ smartImportRouter.post(
               source: 'smart_import',
               filename: f.originalname,
               supplier_tax_number: parsed.supplier_tax_number,
+              recipient_tax_number: parsed.recipient_tax_number,
+              recipient_name: parsed.recipient_name,
+              tenant_routing: {
+                auto_matched: route.isAutoMatched,
+                mismatch_with_active: route.mismatch,
+                active_tenant_at_upload: tenantId,
+              },
             },
             needs_review: true,
-            auto_created_source: 'efatura',
+            auto_created_source: route.isAutoMatched
+              ? 'efatura_auto_routed'
+              : 'efatura',
             created_by: req.authUser?.id ?? null,
           })
           .returning({ id: payableItems.id, title: payableItems.title });
@@ -174,8 +232,22 @@ smartImportRouter.post(
           action: 'smart_import.efatura',
           target_type: 'payable_items',
           target_id: created?.id,
-          details: { filename: f.originalname, invoice_number: parsed.invoice_number },
+          details: {
+            filename: f.originalname,
+            invoice_number: parsed.invoice_number,
+            target_tenant_id: targetTenantId,
+            tenant_auto_matched: route.isAutoMatched,
+            tenant_mismatch: route.mismatch,
+          },
         });
+
+        const routingMessage = route.isAutoMatched
+          ? route.mismatch
+            ? `Fatura, e-Fatura'daki alıcı VKN'sine eşleşen doğru tenant'a otomatik yönlendirildi (aktif tenant'tan farklı, onay bekliyor).`
+            : `Fatura, alıcı VKN eşleştirmesi ile bu tenant'a route edildi.`
+          : parsed.recipient_tax_number
+            ? `Aktif tenant'a yazıldı (alıcı VKN ${parsed.recipient_tax_number} herhangi bir tenant'la eşleşmedi).`
+            : `Aktif tenant'a yazıldı (e-Fatura'da alıcı VKN bulunamadı).`;
 
         res.json({
           data: {
@@ -185,40 +257,79 @@ smartImportRouter.post(
             parsed,
             payable: created,
             supplier_resolution: supplierResolution,
-            message: supplierResolution?.is_new
-              ? `Fatura içeriye aktarıldı. Yeni tedarikçi "${parsed.supplier_name}" otomatik oluşturuldu (doğrulama bekliyor).`
-              : `Fatura içeriye aktarıldı${supplierResolution?.matched_by ? ` (mevcut tedarikçiye bağlandı)` : ''}.`,
+            tenant_routing: route,
+            message: `${routingMessage} ${
+              supplierResolution?.is_new
+                ? `Yeni tedarikçi "${parsed.supplier_name}" otomatik oluşturuldu (doğrulama bekliyor).`
+                : supplierResolution?.matched_by
+                  ? '(Mevcut tedarikçiye bağlandı.)'
+                  : ''
+            }`.trim(),
           },
         });
         return;
       }
 
-      // ===== ZIP =====
-      if (name.endsWith('.zip')) {
-        const zip = await JSZip.loadAsync(f.buffer);
+      // ===== ZIP / RAR =====
+      const isZip = name.endsWith('.zip');
+      const isRar = name.endsWith('.rar');
+      if (isZip || isRar) {
+        const archiveType = isZip ? 'zip' : 'rar';
         const xmlFiles: Array<{ name: string; content: string }> = [];
         const otherFiles: Array<{ name: string; ext: string }> = [];
 
-        const promises: Promise<void>[] = [];
-        zip.forEach((relPath, entry) => {
-          if (entry.dir) return;
-          const ext = relPath.split('.').pop()?.toLowerCase() ?? '';
-          if (ext === 'xml') {
-            promises.push(
-              entry.async('text').then((content) => {
-                xmlFiles.push({ name: relPath, content });
-              }),
+        if (isZip) {
+          const zip = await JSZip.loadAsync(f.buffer);
+          const promises: Promise<void>[] = [];
+          zip.forEach((relPath, entry) => {
+            if (entry.dir) return;
+            const ext = relPath.split('.').pop()?.toLowerCase() ?? '';
+            if (ext === 'xml') {
+              promises.push(
+                entry.async('text').then((content) => {
+                  xmlFiles.push({ name: relPath, content });
+                }),
+              );
+            } else {
+              otherFiles.push({ name: relPath, ext });
+            }
+          });
+          await Promise.all(promises);
+        } else {
+          // RAR — node-unrar-js, pure JS
+          try {
+            // Copy Buffer into a fresh ArrayBuffer (Buffer.buffer may be SharedArrayBuffer)
+            const rarData = new ArrayBuffer(f.buffer.byteLength);
+            new Uint8Array(rarData).set(f.buffer);
+            const extractor = await createExtractorFromData({ data: rarData });
+            const list = extractor.extract({});
+            const files = [...list.files];
+            for (const file of files) {
+              if (file.fileHeader.flags.directory) continue;
+              const relPath = file.fileHeader.name;
+              const ext = relPath.split('.').pop()?.toLowerCase() ?? '';
+              if (ext === 'xml' && file.extraction) {
+                xmlFiles.push({
+                  name: relPath,
+                  content: Buffer.from(file.extraction).toString('utf-8'),
+                });
+              } else {
+                otherFiles.push({ name: relPath, ext });
+              }
+            }
+          } catch (err) {
+            throw new HttpError(
+              400,
+              `RAR ayıklama hatası: ${(err as Error).message}`,
+              'RAR_PARSE',
             );
-          } else {
-            otherFiles.push({ name: relPath, ext });
           }
-        });
-        await Promise.all(promises);
+        }
 
         if (!commit) {
           res.json({
             data: {
-              type: 'zip',
+              type: archiveType,
               action: 'preview',
               filename: f.originalname,
               xml_count: xmlFiles.length,
@@ -244,18 +355,25 @@ smartImportRouter.post(
 
         for (const xf of xmlFiles.slice(0, 100)) {
           try {
-            const parsed = parseUblXml(xf.content);
+            const parsed: ParsedInvoice = parseUblXml(xf.content);
             if (!parsed.invoice_number) {
               results.push({ file: xf.name, ok: false, error: 'invoice_number bulunamadı' });
               continue;
             }
+
+            const route = await resolveTenantByRecipient(
+              orgId,
+              parsed.recipient_tax_number,
+              tenantId,
+            );
+            const targetTenantId = route.tenantId;
 
             const [existing] = await db
               .select({ id: payableItems.id })
               .from(payableItems)
               .where(
                 and(
-                  eq(payableItems.tenant_id, tenantId),
+                  eq(payableItems.tenant_id, targetTenantId),
                   eq(payableItems.invoice_number, parsed.invoice_number),
                 ),
               )
@@ -284,7 +402,7 @@ smartImportRouter.post(
             const [created] = await db
               .insert(payableItems)
               .values({
-                tenant_id: tenantId,
+                tenant_id: targetTenantId,
                 owner_type: 'company',
                 company_id: supplier?.id ?? null,
                 title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
@@ -298,10 +416,21 @@ smartImportRouter.post(
                 status: 'pending',
                 notes: parsed.notes,
                 metadata: {
-                  source: 'smart_import_zip',
-                  zip_filename: f.originalname,
+                  source: `smart_import_${archiveType}`,
+                  archive_filename: f.originalname,
                   xml_filename: xf.name,
+                  recipient_tax_number: parsed.recipient_tax_number,
+                  recipient_name: parsed.recipient_name,
+                  tenant_routing: {
+                    auto_matched: route.isAutoMatched,
+                    mismatch_with_active: route.mismatch,
+                    active_tenant_at_upload: tenantId,
+                  },
                 },
+                needs_review: true,
+                auto_created_source: route.isAutoMatched
+                  ? `smart_import_${archiveType}_auto_routed`
+                  : `smart_import_${archiveType}`,
                 created_by: req.authUser?.id ?? null,
               })
               .returning({ id: payableItems.id });
@@ -327,7 +456,7 @@ smartImportRouter.post(
           organization_id: orgId,
           actor_user_id: req.authUser?.id,
           actor_email: req.authUser?.email,
-          action: 'smart_import.zip',
+          action: `smart_import.${archiveType}`,
           details: {
             filename: f.originalname,
             total: xmlFiles.length,
@@ -340,7 +469,7 @@ smartImportRouter.post(
 
         res.json({
           data: {
-            type: 'zip',
+            type: archiveType,
             action: 'imported',
             filename: f.originalname,
             xml_count: xmlFiles.length,

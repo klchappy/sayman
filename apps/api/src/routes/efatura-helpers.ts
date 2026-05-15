@@ -12,6 +12,9 @@ export interface ParsedInvoice {
   amount: string;
   supplier_name: string | null;
   supplier_tax_number: string | null;
+  /** Faturanın alıcısı (genelde kendi şirketimiz/tenant) */
+  recipient_name: string | null;
+  recipient_tax_number: string | null;
   profile_id: string | null;
   notes: string | null;
 }
@@ -88,6 +91,39 @@ export function parseUblXml(xml: string): ParsedInvoice {
     }
   }
 
+  // AccountingCustomerParty → bizim (recipient) tarafımız
+  const customerParty = inv.AccountingCustomerParty?.Party ?? {};
+  const customerNameNode = customerParty.PartyName?.Name;
+  const recipientName =
+    typeof customerNameNode === 'object' && customerNameNode !== null
+      ? String((customerNameNode as Record<string, unknown>)['#text'] ?? '')
+      : customerNameNode != null
+        ? String(customerNameNode)
+        : null;
+
+  const custPartyIdent = customerParty.PartyIdentification;
+  let recipientTax: string | null = null;
+  if (Array.isArray(custPartyIdent)) {
+    for (const p of custPartyIdent) {
+      const idNode = (p as Record<string, unknown>)?.ID;
+      if (typeof idNode === 'object' && idNode !== null) {
+        const scheme = (idNode as Record<string, unknown>)['@_schemeID'];
+        const val = (idNode as Record<string, unknown>)['#text'];
+        if (scheme === 'VKN' || scheme === 'TCKN') {
+          recipientTax = String(val ?? '');
+          break;
+        }
+      }
+    }
+  } else if (typeof custPartyIdent === 'object' && custPartyIdent !== null) {
+    const idNode = (custPartyIdent as Record<string, unknown>).ID;
+    if (typeof idNode === 'object' && idNode !== null) {
+      recipientTax = String((idNode as Record<string, unknown>)['#text'] ?? '');
+    } else if (idNode != null) {
+      recipientTax = String(idNode);
+    }
+  }
+
   let notes: string | null = null;
   if (inv.Note) {
     notes = Array.isArray(inv.Note) ? inv.Note.map(String).join('\n') : String(inv.Note);
@@ -101,6 +137,8 @@ export function parseUblXml(xml: string): ParsedInvoice {
     amount,
     supplier_name: supplierName?.trim() || null,
     supplier_tax_number: supplierTax?.trim() || null,
+    recipient_name: recipientName?.trim() || null,
+    recipient_tax_number: recipientTax?.trim() || null,
     profile_id: profileId,
     notes,
   };
