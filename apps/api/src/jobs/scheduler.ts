@@ -10,6 +10,7 @@ import cron from 'node-cron';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { runBudgetAlerts } from './budget-alerts';
+import { runCheckDueAlerts } from './check-due-alerts';
 import { runDeliverWebhooks } from './deliver-webhooks';
 import { runDetectAnomalies } from './detect-anomalies';
 import { runEmbedPayables } from './embed-payables';
@@ -17,6 +18,7 @@ import { runFetchFxRates } from './fetch-fx-rates';
 import { runGenerateAiSummary } from './generate-ai-summary';
 import { runGeneratePeriods } from './generate-periods';
 import { runGenerateTaxCalendar } from './generate-tax-calendar';
+import { runSendCollectionReminders } from './send-collection-reminders';
 import { runSendReminders } from './send-reminders';
 import { runSyncErpConnections } from './sync-erp-connections';
 import { runUpdateStatuses } from './update-statuses';
@@ -34,7 +36,9 @@ export type JobName =
   | 'embed-payables'
   | 'sync-erp-connections'
   | 'generate-tax-calendar'
-  | 'budget-alerts';
+  | 'budget-alerts'
+  | 'check-due-alerts'
+  | 'send-collection-reminders';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -61,6 +65,10 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runGenerateTaxCalendar();
     case 'budget-alerts':
       return runBudgetAlerts();
+    case 'check-due-alerts':
+      return runCheckDueAlerts();
+    case 'send-collection-reminders':
+      return runSendCollectionReminders();
   }
 }
 
@@ -177,6 +185,26 @@ export function startCronJobs() {
     '0 8 * * *',
     () => {
       runBudgetAlerts().catch((err) => logger.error({ err }, 'budget-alerts crashed'));
+    },
+    { timezone: TZ },
+  );
+
+  // Her gün 09:30 TR — çek/senet vade yakınında uyarı
+  cron.schedule(
+    '30 9 * * *',
+    () => {
+      runCheckDueAlerts().catch((err) => logger.error({ err }, 'check-due-alerts crashed'));
+    },
+    { timezone: TZ },
+  );
+
+  // Her gün 10:00 TR — geciken alacaklılara tahsilat hatırlatma
+  cron.schedule(
+    '0 10 * * *',
+    () => {
+      runSendCollectionReminders().catch((err) =>
+        logger.error({ err }, 'send-collection-reminders crashed'),
+      );
     },
     { timezone: TZ },
   );

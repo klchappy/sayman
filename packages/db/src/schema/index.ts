@@ -35,3 +35,5 @@ export * from './tax-calendar';
 export * from './stock';
 export * from './budgets';
 export * from './customer-portal';
+export * from './checks-notes';
+export * from './collection-reminders';

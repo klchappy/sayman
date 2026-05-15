@@ -184,6 +184,9 @@ export function DashboardPage() {
           {/* === Bütçe widget === */}
           {has('finance') && <BudgetWidget />}
 
+          {/* === Çek/Senet özet === */}
+          {has('finance') && <ChecksWidget />}
+
           {/* === Cashflow chart === */}
           {has('finance') && (
             <section className="card mb-6">
@@ -648,6 +651,85 @@ function BudgetWidget() {
             </span>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+interface ChecksSummaryData {
+  portfolio: { count: number; amount: number };
+  deposited: { count: number; amount: number };
+  outgoing_pending: { count: number; amount: number };
+  due_next_30d: { count: number; amount: number };
+  returned: { count: number; amount: number };
+}
+
+function ChecksWidget() {
+  const q = useQuery({
+    queryKey: ['checks-summary-dashboard'],
+    queryFn: async () => {
+      const res = await api.get<{ data: ChecksSummaryData }>('/checks/summary');
+      return res.data.data;
+    },
+  });
+
+  if (
+    !q.data ||
+    (q.data.portfolio.count === 0 &&
+      q.data.outgoing_pending.count === 0 &&
+      q.data.due_next_30d.count === 0)
+  ) {
+    return null;
+  }
+
+  return (
+    <section className="card mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-brand-900 dark:text-slate-100">
+          📜 Çek / Senet Özet
+        </h2>
+        <Link
+          to="/checks"
+          className="text-xs text-brand-600 dark:text-slate-400 hover:text-brand-900"
+        >
+          Tümü →
+        </Link>
+      </div>
+      <div className="grid sm:grid-cols-4 gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Portföyde</p>
+          <p className="text-lg font-semibold font-mono mt-1 text-blue-700 dark:text-blue-400">
+            {fmtTRY(q.data.portfolio.amount)}
+          </p>
+          <p className="text-[10px] text-brand-400">{q.data.portfolio.count} adet</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Bankada</p>
+          <p className="text-lg font-semibold font-mono mt-1 text-amber-700 dark:text-amber-400">
+            {fmtTRY(q.data.deposited.amount)}
+          </p>
+          <p className="text-[10px] text-brand-400">{q.data.deposited.count} adet</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Ödenecek (Çıkan)</p>
+          <p className="text-lg font-semibold font-mono mt-1 text-purple-700 dark:text-purple-400">
+            {fmtTRY(q.data.outgoing_pending.amount)}
+          </p>
+          <p className="text-[10px] text-brand-400">{q.data.outgoing_pending.count} adet</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">30 Gün Vade</p>
+          <p
+            className={`text-lg font-semibold font-mono mt-1 ${
+              q.data.due_next_30d.count > 0
+                ? 'text-red-600'
+                : 'text-brand-900 dark:text-slate-100'
+            }`}
+          >
+            {fmtTRY(q.data.due_next_30d.amount)}
+          </p>
+          <p className="text-[10px] text-brand-400">{q.data.due_next_30d.count} adet</p>
+        </div>
       </div>
     </section>
   );

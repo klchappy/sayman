@@ -59,6 +59,8 @@ import { taxCalendarRouter } from './tax-calendar';
 import { budgetsRouter } from './budgets';
 import { reconciliationRouter } from './reconciliation';
 import { customerPortalRouter } from './customer-portal';
+import { checksRouter } from './checks';
+import { collectionRemindersRouter } from './collection-reminders';
 
 export const apiRouter = Router();
 
@@ -215,3 +217,9 @@ apiRouter.use(reconciliationRouter);
 
 // Müşteri portali (public link ile cari paylaşımı)
 apiRouter.use(customerPortalRouter);
+
+// Çek/Senet takibi
+apiRouter.use(checksRouter);
+
+// Tahsilat hatırlatma kuralları + logları
+apiRouter.use(collectionRemindersRouter);

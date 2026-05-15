@@ -9,7 +9,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   CheckCircle2,
+  Loader2,
   Plus,
+  Sparkles,
   Target,
   Trash2,
   X,
@@ -96,13 +98,16 @@ export function BudgetsPage() {
             Her kategori için aylık bütçe planla. Eşik aşılınca otomatik uyarı alırsın.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-        >
-          <Plus className="size-4" />
-          Yeni Bütçe
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <AISuggestButton period={period} />
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Plus className="size-4" />
+            Yeni Bütçe
+          </button>
+        </div>
       </header>
 
       {/* Dönem seçici */}
@@ -257,6 +262,172 @@ function BudgetCard({
         </span>
       </div>
     </div>
+  );
+}
+
+interface Suggestion {
+  category: string;
+  category_label: string;
+  suggested_monthly: number;
+  reasoning: string;
+  confidence: number;
+}
+
+function AISuggestButton({ period }: { period: string }) {
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+  const [method, setMethod] = useState<'claude' | 'rule_based' | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const ask = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{
+        data: { suggestions: Suggestion[]; method: 'claude' | 'rule_based' };
+      }>('/budgets/ai-suggest');
+      return res.data.data;
+    },
+    onSuccess: (data) => {
+      setSuggestions(data.suggestions);
+      setMethod(data.method);
+      setSelected(new Set(data.suggestions.map((s) => s.category)));
+      setShowModal(true);
+    },
+  });
+
+  const apply = useMutation({
+    mutationFn: async () => {
+      if (!suggestions) return;
+      const chosen = suggestions.filter((s) => selected.has(s.category));
+      for (const s of chosen) {
+        try {
+          await api.post('/budgets', {
+            category: s.category,
+            period_kind: 'monthly',
+            period,
+            planned_amount: s.suggested_monthly,
+            alert_threshold_pct: 80,
+            notes: `AI önerisi (${method === 'claude' ? 'Claude' : 'kural-tabanlı'}): ${s.reasoning}`,
+          });
+        } catch {
+          // 409 (zaten var) yutuyoruz
+        }
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['budgets'] });
+      setShowModal(false);
+      setSuggestions(null);
+    },
+  });
+
+  return (
+    <>
+      <button
+        onClick={() => ask.mutate()}
+        disabled={ask.isPending}
+        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
+      >
+        {ask.isPending ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Sparkles className="size-4" />
+        )}
+        AI Öneri Al
+      </button>
+      {showModal && suggestions && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+                <Sparkles className="size-5 text-purple-600" />
+                AI Bütçe Önerisi ({method === 'claude' ? 'Claude' : 'Kural-tabanlı'})
+              </h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-brand-500 hover:text-brand-900 dark:text-slate-400"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <p className="text-sm text-brand-500 dark:text-slate-400 mb-3">
+              Son 6 ay verisi analiz edildi. {period} dönemi için önerilen aylık bütçeler. Onaylananlar
+              tek tıkla bütçe olarak kaydedilecek.
+            </p>
+            {suggestions.length === 0 ? (
+              <p className="text-center text-brand-500 py-6">Yeterli veri yok.</p>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {suggestions.map((s) => (
+                  <label
+                    key={s.category}
+                    className="flex items-start gap-3 p-3 border border-brand-100 dark:border-slate-800 rounded-lg cursor-pointer hover:bg-brand-50/30 dark:hover:bg-slate-800/30"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(s.category)}
+                      onChange={(e) => {
+                        const next = new Set(selected);
+                        if (e.target.checked) next.add(s.category);
+                        else next.delete(s.category);
+                        setSelected(next);
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-brand-900 dark:text-slate-100">
+                          {s.category_label}
+                        </span>
+                        <span className="font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+                          {s.suggested_monthly.toLocaleString('tr-TR', {
+                            style: 'currency',
+                            currency: 'TRY',
+                            maximumFractionDigits: 0,
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-brand-500 dark:text-slate-400 mt-0.5">
+                        {s.reasoning}
+                      </p>
+                      <p className="text-[10px] text-brand-400 mt-1">
+                        Güven: %{(s.confidence * 100).toFixed(0)}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-sm text-brand-600 dark:text-slate-400 hover:bg-brand-100 dark:hover:bg-slate-800 px-3 py-2 rounded"
+              >
+                İptal
+              </button>
+              <button
+                onClick={() => apply.mutate()}
+                disabled={apply.isPending || selected.size === 0}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-60"
+              >
+                {apply.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="size-4" />
+                )}
+                {selected.size} Öneriyi Uygula
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

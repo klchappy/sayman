@@ -22,6 +22,8 @@ import { CariDetailPage, CariListPage } from './pages/Cari';
 import { ErpConnectionsPage } from './pages/ErpConnections';
 import { ForecastPage } from './pages/Forecast';
 import { BudgetsPage } from './pages/Budgets';
+import { ChecksPage } from './pages/Checks';
+import { CollectionRemindersPage } from './pages/CollectionReminders';
 import { CariPortalTokensPage, PublicPortalPage } from './pages/CustomerPortal';
 import { ReconciliationPage } from './pages/Reconciliation';
 import { SalesInvoicesPage } from './pages/SalesInvoices';
@@ -120,6 +122,8 @@ export default function App() {
         <Route path="/stock" element={<StockPage />} />
         <Route path="/tax-calendar" element={<TaxCalendarPage />} />
         <Route path="/budgets" element={<BudgetsPage />} />
+        <Route path="/checks" element={<ChecksPage />} />
+        <Route path="/collection-reminders" element={<CollectionRemindersPage />} />
         <Route path="/cari/:id/reconciliation" element={<ReconciliationPage />} />
         <Route path="/cari/:id/portal-tokens" element={<CariPortalTokensPage />} />
 

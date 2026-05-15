@@ -14,8 +14,11 @@ import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { budgets, getDb, payableItems } from '@sayman/db';
-import { CATEGORY_LABELS, type PayableCategory } from '@sayman/shared';
+import { CATEGORY_LABELS, PAYABLE_CATEGORIES, type PayableCategory } from '@sayman/shared';
+import { env, isConfigured } from '../config/env';
+import { logger } from '../config/logger';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
 export const budgetsRouter = Router();
@@ -208,6 +211,150 @@ budgetsRouter.delete('/budgets/:id', requireAuth, requireTenant, async (req, res
       .returning({ id: budgets.id });
     if (!row) throw new HttpError(404, 'Bütçe bulunamadı');
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * AI bütçe önerisi — son 6 ayın payable_items kayıtlarına bakıp her kategori için
+ * önerilen aylık bütçe tutarı + neden açıklaması döner.
+ * Claude API kullanır; yoksa rule-based fallback (kategori ortalama + %10).
+ */
+budgetsRouter.post('/budgets/ai-suggest', requireAuth, requireTenant, async (req, res, next) => {
+  try {
+    consumeRateLimit({
+      identifier: `budget-ai:${req.authUser!.id}`,
+      limit: 10,
+      window_seconds: 3600,
+    });
+    const db = getDb();
+    const today = new Date();
+    const sixMonthsAgo = new Date(today);
+    sixMonthsAgo.setMonth(today.getMonth() - 6);
+    const fromISO = sixMonthsAgo.toISOString().slice(0, 10);
+
+    // Kategori bazlı son 6 ay toplam + ortalama + max
+    const rows = await db.execute(sql`
+      SELECT
+        category,
+        COUNT(*) AS invoice_count,
+        SUM(amount::numeric) AS total_amount,
+        AVG(amount::numeric) AS avg_amount,
+        MAX(amount::numeric) AS max_amount,
+        COUNT(DISTINCT to_char(issue_date, 'YYYY-MM')) AS month_count
+      FROM payable_items
+      WHERE tenant_id = ${req.activeTenantId!}::uuid
+        AND is_active = true
+        AND category IS NOT NULL
+        AND issue_date >= ${fromISO}
+      GROUP BY category
+      ORDER BY total_amount DESC
+      LIMIT 30
+    `);
+
+    const stats = ((rows.rows ?? rows) as Array<Record<string, unknown>>).map((r) => ({
+      category: String(r.category),
+      invoice_count: Number(r.invoice_count),
+      total_6mo: Number(r.total_amount),
+      monthly_avg: Number(r.total_amount) / Math.max(1, Number(r.month_count)),
+      max: Number(r.max_amount),
+      months_active: Number(r.month_count),
+    }));
+
+    interface Suggestion {
+      category: string;
+      category_label: string;
+      suggested_monthly: number;
+      reasoning: string;
+      confidence: number;
+    }
+
+    // Rule-based fallback: aylık ortalama + %10 buffer
+    function ruleBasedSuggest(): Suggestion[] {
+      return stats.map((s) => ({
+        category: s.category,
+        category_label:
+          CATEGORY_LABELS[s.category as PayableCategory] ?? s.category,
+        suggested_monthly: Math.round(s.monthly_avg * 1.1),
+        reasoning: `Son 6 ayda ${s.invoice_count} fatura, aylık ortalama ${s.monthly_avg.toLocaleString('tr-TR', { maximumFractionDigits: 0 })} TL. %10 tampon ekleyerek önerildi.`,
+        confidence: s.months_active >= 4 ? 0.7 : 0.5,
+      }));
+    }
+
+    if (!isConfigured.ai || stats.length === 0) {
+      res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });
+      return;
+    }
+
+    // Claude'a sor
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': env.ANTHROPIC_API_KEY!,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1500,
+          system:
+            'Sen Sayman muhasebe asistanisin. Verilen son 6 ay kategori istatistiklerine gore ' +
+            'ONUMUZDEKI AY icin makul aylik butce onerisi yap. Mevsimsellik, trend, max degerleri ' +
+            'goz onunde tut. Yanit SADECE JSON: ' +
+            '{"suggestions":[{"category":"<kategori>","suggested_monthly":<TL>,"reasoning":"<1-2 cumle Turkce>","confidence":<0-1>}]} ' +
+            'Mevcut kategoriler: ' +
+            PAYABLE_CATEGORIES.join(', '),
+          messages: [
+            {
+              role: 'user',
+              content: `Veri: ${JSON.stringify(stats, null, 2)}\n\nHer kategori icin onerini ver. JSON'da kategori kodu (etiket degil) kullan.`,
+            },
+          ],
+        }),
+      });
+
+      if (!resp.ok) {
+        const errTxt = await resp.text();
+        logger.warn({ status: resp.status, errTxt: errTxt.slice(0, 200) }, 'AI budget suggest fallback');
+        res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });
+        return;
+      }
+      const data = (await resp.json()) as { content: Array<{ type: string; text?: string }> };
+      const text = data.content
+        .filter((c) => c.type === 'text')
+        .map((c) => c.text ?? '')
+        .join('\n')
+        .trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });
+        return;
+      }
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        suggestions: Array<{
+          category: string;
+          suggested_monthly: number;
+          reasoning: string;
+          confidence: number;
+        }>;
+      };
+      const enriched: Suggestion[] = (parsed.suggestions ?? [])
+        .filter((s) => PAYABLE_CATEGORIES.includes(s.category as PayableCategory))
+        .map((s) => ({
+          category: s.category,
+          category_label:
+            CATEGORY_LABELS[s.category as PayableCategory] ?? s.category,
+          suggested_monthly: Math.round(Number(s.suggested_monthly)),
+          reasoning: String(s.reasoning ?? ''),
+          confidence: Math.min(1, Math.max(0, Number(s.confidence ?? 0.5))),
+        }));
+      res.json({ data: { suggestions: enriched, method: 'claude' } });
+    } catch (err) {
+      logger.error({ err }, 'AI budget suggest crashed');
+      res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });
+    }
   } catch (err) {
     next(err);
   }

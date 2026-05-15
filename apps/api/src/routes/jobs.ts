@@ -21,6 +21,10 @@ const ALLOWED_JOBS: JobName[] = [
   'generate-ai-summary',
   'embed-payables',
   'sync-erp-connections',
+  'generate-tax-calendar',
+  'budget-alerts',
+  'check-due-alerts',
+  'send-collection-reminders',
 ];
 
 export const jobsRouter = Router();
