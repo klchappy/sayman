@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { SECTOR_LABELS, SECTORS, type Sector } from '@sayman/shared';
+import { PendingReviewBanner, PendingReviewEmptyHint } from '../../components/PendingReviewBanner';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
@@ -75,10 +76,15 @@ export function CompaniesPage() {
         />
       )}
 
+      <PendingReviewBanner type="companies" />
+
       <div className="card overflow-x-auto">
         {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
         {q.data?.length === 0 && (
-          <p className="text-brand-500 text-sm py-6 text-center">Henüz şirket eklenmemiş.</p>
+          <>
+            <p className="text-brand-500 text-sm py-6 text-center">Henüz şirket eklenmemiş.</p>
+            <PendingReviewEmptyHint type="companies" />
+          </>
         )}
         {q.data && q.data.length > 0 && (
           <table className="w-full text-sm">

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2, UserCircle } from 'lucide-react';
 import { useState } from 'react';
+import { PendingReviewBanner, PendingReviewEmptyHint } from '../../components/PendingReviewBanner';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { SECTOR_LABELS, SECTORS, type Sector } from '@sayman/shared';
@@ -82,12 +83,17 @@ export function PersonsPage() {
         />
       )}
 
+      <PendingReviewBanner type="persons" />
+
       <div className="card overflow-x-auto">
         {personsQuery.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
         {personsQuery.data?.length === 0 && (
-          <p className="text-brand-500 text-sm py-6 text-center">
-            Henüz şahıs eklenmemiş. Yukarıdaki "Yeni Şahıs" butonunu kullan.
-          </p>
+          <>
+            <p className="text-brand-500 text-sm py-6 text-center">
+              Henüz şahıs eklenmemiş. Yukarıdaki "Yeni Şahıs" butonunu kullan.
+            </p>
+            <PendingReviewEmptyHint type="persons" />
+          </>
         )}
         {personsQuery.data && personsQuery.data.length > 0 && (
           <table className="w-full text-sm">

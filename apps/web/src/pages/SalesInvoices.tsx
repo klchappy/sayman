@@ -23,6 +23,7 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AuditHistoryButton } from '../components/AuditHistoryButton';
+import { PendingReviewBanner, PendingReviewEmptyHint } from '../components/PendingReviewBanner';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { QuickInvoiceUploadButton } from '../components/QuickInvoiceUploadButton';
 import { SavedFilters } from '../components/SavedFilters';
@@ -174,6 +175,8 @@ export function SalesInvoicesPage() {
 
       {showForm && <SalesForm onClose={() => setShowForm(false)} />}
 
+      <PendingReviewBanner type="sales_invoices" />
+
       <div className="card overflow-x-auto p-0">
         {list.isLoading && <p className="text-brand-500 text-sm p-4">Yükleniyor…</p>}
         {list.data && list.data.length === 0 && (
@@ -182,6 +185,7 @@ export function SalesInvoicesPage() {
             <p className="text-brand-700 dark:text-slate-300 font-medium">
               Henüz satış faturası yok.
             </p>
+            <PendingReviewEmptyHint type="sales_invoices" />
           </div>
         )}
         {list.data && list.data.length > 0 && (

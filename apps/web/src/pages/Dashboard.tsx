@@ -30,6 +30,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { Module } from '@sayman/shared';
+import { PendingReviewDashboardWidget } from '../components/PendingReviewBanner';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -153,6 +154,9 @@ export function DashboardPage() {
 
       {summary && (
         <>
+          {/* === Doğrulama Bekleyenler (auto-created records) === */}
+          <PendingReviewDashboardWidget />
+
           {/* === AI Summary Widget === */}
           <AISummaryWidget />
 
