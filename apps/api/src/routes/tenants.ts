@@ -49,13 +49,21 @@ const createSchema = z.object({
     .optional(),
   name: z.string().min(2).max(120),
   sector: sectorSchema,
+  tax_number: z.string().max(20).optional().nullable(),
   active_modules: z.array(moduleSchema).optional(),
 });
 
 const updateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   sector: sectorSchema.optional(),
+  tax_number: z
+    .string()
+    .max(20)
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v.replace(/[^0-9]/g, '') : v)),
   active_modules: z.array(moduleSchema).optional(),
+  is_active: z.boolean().optional(),
 });
 
 const ALLOWED_WRITE_ROLES = new Set([
@@ -158,6 +166,7 @@ tenantsRouter.post('/tenants', requireAuth, requireOrg, async (req, res, next) =
         slug: finalSlug,
         name: body.name,
         sector: body.sector,
+        tax_number: body.tax_number ? body.tax_number.replace(/[^0-9]/g, '') : null,
         active_modules: activeModules,
       })
       .returning();
@@ -223,36 +232,121 @@ tenantsRouter.patch('/tenants/:id', requireAuth, requireOrg, async (req, res, ne
 });
 
 // --- DELETE /tenants/:id ----------------------------------------------------
+// ?hard=true → kayıt tamamen DB'den silinir (cascade ile tüm fatura/data gider!)
+// Aksi halde soft delete (is_active=false) — pasif yapar, veri korunur.
+// Sadece super_admin hard delete yapabilir.
 
 tenantsRouter.delete('/tenants/:id', requireAuth, requireOrg, async (req, res, next) => {
   try {
     if (!ALLOWED_WRITE_ROLES.has(req.effectiveRole ?? '')) {
       throw new HttpError(403, 'Tenant kapatmak için yönetici yetkisi gerekli', 'FORBIDDEN');
     }
+
     const db = getDb();
+    const tenantId = String(req.params.id ?? '');
+    const hardDelete = req.query.hard === 'true' || req.query.hard === '1';
+
+    if (hardDelete && req.effectiveRole !== 'super_admin') {
+      throw new HttpError(
+        403,
+        'Tenant\'ı kalıcı silmek için super_admin yetkisi gerekli',
+        'HARD_DELETE_FORBIDDEN',
+      );
+    }
+
+    // Mevcudiyet ve org kontrolü
+    const [existing] = await db
+      .select()
+      .from(tenants)
+      .where(
+        and(
+          eq(tenants.id, tenantId),
+          eq(tenants.organization_id, req.activeOrgId!),
+        ),
+      );
+    if (!existing) throw new HttpError(404, 'Tenant bulunamadı', 'NOT_FOUND');
+
+    if (hardDelete) {
+      // CASCADE ile tüm tenant-scoped veri silinir (payable_items, sales_invoices,
+      // payments, checks, fixed_assets, employees, vb. — schema'lara ondelete='cascade')
+      await db.delete(tenants).where(eq(tenants.id, tenantId));
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'tenant.hard_delete',
+        target_type: 'tenants',
+        target_id: tenantId,
+        details: { name: existing.name, slug: existing.slug, hard: true },
+      });
+
+      res.json({
+        ok: true,
+        hard_deleted: true,
+        message: `${existing.name} kalıcı olarak silindi (tüm tenant verisi cascade).`,
+      });
+      return;
+    }
+
+    // Soft delete
     const [row] = await db
       .update(tenants)
       .set({ is_active: false, updated_at: new Date() })
-      .where(
-        and(
-          eq(tenants.id, String(req.params.id ?? '')),
-          eq(tenants.organization_id, req.activeOrgId!),
-        ),
-      )
+      .where(eq(tenants.id, tenantId))
       .returning();
-    if (!row) throw new HttpError(404, 'Tenant bulunamadı', 'NOT_FOUND');
 
     await auditFromRequest(req, {
       organization_id: req.activeOrgId!,
       actor_user_id: req.authUser?.id,
       actor_email: req.authUser?.email,
-      action: 'tenant.delete',
+      action: 'tenant.deactivate',
       target_type: 'tenants',
       target_id: row.id,
     });
 
-    res.json({ data: row });
+    res.json({ data: row, message: `${row.name} pasifleştirildi (veri korundu).` });
   } catch (err) {
     next(err);
   }
 });
+
+// --- POST /tenants/:id/reactivate — pasif tenant'ı yeniden aktive et ---------
+
+tenantsRouter.post(
+  '/tenants/:id/reactivate',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      if (!ALLOWED_WRITE_ROLES.has(req.effectiveRole ?? '')) {
+        throw new HttpError(403, 'Yetki yok', 'FORBIDDEN');
+      }
+      const db = getDb();
+      const [row] = await db
+        .update(tenants)
+        .set({ is_active: true, updated_at: new Date() })
+        .where(
+          and(
+            eq(tenants.id, String(req.params.id ?? '')),
+            eq(tenants.organization_id, req.activeOrgId!),
+          ),
+        )
+        .returning();
+      if (!row) throw new HttpError(404, 'Tenant bulunamadı', 'NOT_FOUND');
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'tenant.reactivate',
+        target_type: 'tenants',
+        target_id: row.id,
+      });
+
+      res.json({ data: row });
+    } catch (err) {
+      next(err);
+    }
+  },
+);

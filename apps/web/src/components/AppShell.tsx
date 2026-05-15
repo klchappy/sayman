@@ -196,6 +196,7 @@ const navItems: NavItem[] = [
   },
 
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
+  { to: '/sirketler', label: 'Şirketler', icon: Building2, group: 'Sistem' },
   { to: '/users', label: 'Kullanıcılar', icon: UserCog, group: 'Sistem' },
   { to: '/import', label: 'Toplu Yükleme', icon: FileUp, group: 'Sistem', requires: 'imports' },
   { to: '/review-queue', label: 'Doğrulama Bekleyen', icon: AlertCircle, group: 'Sistem' },

@@ -130,6 +130,9 @@ const SupplierScorecardDetailPage = lazy(() =>
 const SubsidiariesPage = lazy(() =>
   import('./pages/Subsidiaries').then((m) => ({ default: m.SubsidiariesPage })),
 );
+const TenantsManagementPage = lazy(() =>
+  import('./pages/TenantsManagement').then((m) => ({ default: m.TenantsManagementPage })),
+);
 const UsersPage = lazy(() => import('./pages/Users').then((m) => ({ default: m.UsersPage })));
 const BanksPage = lazy(() =>
   import('./pages/master-data/Banks').then((m) => ({ default: m.BanksPage })),
@@ -374,6 +377,14 @@ export default function App() {
           element={
             <Suspense fallback={<PageFallback />}>
               <SubsidiariesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/sirketler"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <TenantsManagementPage />
             </Suspense>
           }
         />
