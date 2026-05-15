@@ -33,6 +33,16 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
 
+  // Legacy: plain Error with .status field (auth.ts vb.)
+  const legacyStatus = (err as { status?: number }).status;
+  if (typeof legacyStatus === 'number' && legacyStatus >= 400 && legacyStatus < 600) {
+    res.status(legacyStatus).json({
+      error: (err as Error).message,
+      code: (err as { code?: string }).code ?? 'HTTP_ERROR',
+    });
+    return;
+  }
+
   const pgCode = (err as { code?: string }).code;
   if (pgCode === '23505') {
     res.status(409).json({
