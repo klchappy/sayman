@@ -1,9 +1,21 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './lib/auth';
 import { useTheme } from './lib/theme';
+
+// Route değişince sayfayı en üste kaydır (mobile-friendly UX)
+function ScrollToTopOnNavigate() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    // AppShell içeriği overflow-auto bir div ise oraya da scroll-top uygula:
+    const main = document.querySelector('main');
+    if (main) main.scrollTop = 0;
+  }, [pathname]);
+  return null;
+}
 
 // Auth flow eager (küçük + onboarding sırasında hep gerekli)
 import { LoginPage } from './pages/Login';
@@ -174,6 +186,8 @@ export default function App() {
   }, [init, initTheme]);
 
   return (
+    <>
+    <ScrollToTopOnNavigate />
     <Routes>
       {/* Public — auth gerektirmez */}
       <Route path="/portal/:token" element={<PublicPortalPage />} />
@@ -599,5 +613,6 @@ export default function App() {
         />
       </Route>
     </Routes>
+    </>
   );
 }
