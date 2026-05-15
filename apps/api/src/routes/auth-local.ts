@@ -420,6 +420,7 @@ const changePasswordSchema = z.object({
   new_password: z
     .string()
     .min(8, 'En az 8 karakter')
+    .regex(/[A-Z]/, 'En az 1 büyük harf')
     .regex(/[a-z]/, 'En az 1 küçük harf')
     .regex(/[0-9]/, 'En az 1 rakam'),
 });

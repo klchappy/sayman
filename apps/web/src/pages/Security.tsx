@@ -273,10 +273,11 @@ function ChangePasswordSection() {
   });
 
   const lenOk = newPassword.length >= 8;
+  const upperOk = /[A-Z]/.test(newPassword);
   const lowerOk = /[a-z]/.test(newPassword);
   const digitOk = /[0-9]/.test(newPassword);
   const matchOk = newPassword === confirmPassword && newPassword.length > 0;
-  const formValid = !!currentPassword && lenOk && lowerOk && digitOk && matchOk;
+  const formValid = !!currentPassword && lenOk && upperOk && lowerOk && digitOk && matchOk;
 
   return (
     <div className="card">
@@ -313,11 +314,14 @@ function ChangePasswordSection() {
               <li className={lenOk ? 'text-emerald-600' : 'text-brand-400'}>
                 {lenOk ? '✓' : '○'} En az 8 karakter
               </li>
+              <li className={upperOk ? 'text-emerald-600' : 'text-brand-400'}>
+                {upperOk ? '✓' : '○'} En az 1 büyük harf (A-Z)
+              </li>
               <li className={lowerOk ? 'text-emerald-600' : 'text-brand-400'}>
-                {lowerOk ? '✓' : '○'} En az 1 küçük harf
+                {lowerOk ? '✓' : '○'} En az 1 küçük harf (a-z)
               </li>
               <li className={digitOk ? 'text-emerald-600' : 'text-brand-400'}>
-                {digitOk ? '✓' : '○'} En az 1 rakam
+                {digitOk ? '✓' : '○'} En az 1 rakam (0-9)
               </li>
             </ul>
           )}
