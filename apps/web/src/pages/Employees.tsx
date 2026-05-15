@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { SavedFilters } from '../components/SavedFilters';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -81,13 +82,16 @@ export function EmployeesPage() {
             Personel bilgileri + brüt maaş. Bordrolar /payroll'da otomatik üretilir.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-        >
-          <Plus className="size-4" />
-          Yeni Personel
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <SavedFilters module="employees" currentFilters={{}} onApply={() => {}} />
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Plus className="size-4" />
+            Yeni Personel
+          </button>
+        </div>
       </header>
 
       {list.data && list.data.length > 0 && (

@@ -20,6 +20,7 @@ import {
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { SavedFilters } from '../components/SavedFilters';
 
 interface Check {
   id: string;
@@ -121,13 +122,18 @@ export function ChecksPage() {
             Aldığın ve yazdığın çek/senet portföyü. Vadesi yaklaşan kayıtlar için günlük uyarı.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-        >
-          <Plus className="size-4" />
-          Yeni Çek/Senet
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <SavedFilters module="checks" currentFilters={{ tab }} onApply={(f) => {
+            if (f.tab === 'incoming' || f.tab === 'outgoing') setTab(f.tab);
+          }} />
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Plus className="size-4" />
+            Yeni Çek/Senet
+          </button>
+        </div>
       </header>
 
       {summary.data && (

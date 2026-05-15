@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { SavedFilters } from '../components/SavedFilters';
 import { api } from '../lib/api';
 
 interface CariRow {
@@ -145,6 +146,14 @@ export function CariListPage() {
             </button>
           ))}
         </div>
+        <SavedFilters
+          module="cari"
+          currentFilters={{ type, search }}
+          onApply={(f) => {
+            if (typeof f.type === 'string') setType(f.type as typeof type);
+            if (typeof f.search === 'string') setSearch(f.search);
+          }}
+        />
       </div>
 
       {q.isLoading && <p className="text-sm text-brand-500">Yükleniyor…</p>}

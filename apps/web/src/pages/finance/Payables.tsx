@@ -209,6 +209,7 @@ export function PayablesPage() {
               Temizle
             </button>
           )}
+          <EmbedPendingButton />
         </div>
         {semanticQuery && Array.isArray(semanticQ.data) && (
           <p className="text-[10px] text-brand-400 mt-2">
@@ -746,5 +747,42 @@ function CariAutocomplete({
         </p>
       )}
     </label>
+  );
+}
+
+function EmbedPendingButton() {
+  const [result, setResult] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: async () =>
+      (await api.post<{ data: { attempted: number; success: number; failed: number } }>(
+        '/search/embed-pending',
+      )).data.data,
+    onSuccess: (r) => {
+      setResult(`${r.success}/${r.attempted} embedding üretildi${r.failed > 0 ? ` (${r.failed} hata)` : ''}`);
+      setTimeout(() => setResult(null), 5000);
+    },
+    onError: (e) => {
+      setResult(`Hata: ${(e as Error).message}`);
+      setTimeout(() => setResult(null), 5000);
+    },
+  });
+
+  return (
+    <>
+      <button
+        onClick={() => run.mutate()}
+        disabled={run.isPending}
+        className="text-xs text-purple-700 hover:text-purple-900 hover:bg-purple-50 dark:hover:bg-purple-900/20 px-2 py-1.5 rounded flex items-center gap-1 disabled:opacity-50"
+        title="Henüz embedding'i olmayan tüm fatura için Voyage AI'a istek gönder"
+      >
+        <Sparkles className="size-3" />
+        {run.isPending ? 'İşleniyor…' : 'Embedding Üret'}
+      </button>
+      {result && (
+        <span className="text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
+          {result}
+        </span>
+      )}
+    </>
   );
 }

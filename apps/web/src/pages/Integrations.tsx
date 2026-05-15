@@ -7,7 +7,7 @@
  * Backend: GET /v1/integrations/status — env durumlarını döner.
  * Kategorize (communication, ai, observability, integration, infra).
  */
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
   Bell,
@@ -28,8 +28,11 @@ import {
   Send,
   Shield,
   Sparkles,
+  TestTube2,
   Webhook,
+  X,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 
@@ -171,6 +174,9 @@ export function IntegrationsPage() {
 function IntegrationCard({ item }: { item: IntegrationStatus }) {
   const Icon = ICONS[item.key] ?? Hexagon;
   const link = LINKS[item.key];
+  const [showWaTest, setShowWaTest] = useState(false);
+  const isTestable = item.key === 'whatsapp' && item.configured;
+
   return (
     <div
       className={`card transition hover:shadow-md ${
@@ -232,15 +238,120 @@ function IntegrationCard({ item }: { item: IntegrationStatus }) {
             </p>
           )}
 
-          {link && (
-            <Link
-              to={link}
-              className="inline-flex items-center gap-1 text-xs text-brand-700 hover:text-brand-900 font-medium"
+          <div className="flex items-center gap-2 flex-wrap">
+            {link && (
+              <Link
+                to={link}
+                className="inline-flex items-center gap-1 text-xs text-brand-700 hover:text-brand-900 font-medium"
+              >
+                Yönet
+                <ExternalLink className="size-3" />
+              </Link>
+            )}
+            {isTestable && (
+              <button
+                onClick={() => setShowWaTest(true)}
+                className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 font-medium"
+              >
+                <TestTube2 className="size-3" />
+                Test Mesajı
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showWaTest && <WhatsAppTestModal onClose={() => setShowWaTest(false)} />}
+    </div>
+  );
+}
+
+function WhatsAppTestModal({ onClose }: { onClose: () => void }) {
+  const [to, setTo] = useState('');
+  const [text, setText] = useState('Sayman test mesajı.');
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const send = useMutation({
+    mutationFn: async () =>
+      (await api.post<{ data: { delivered: boolean; message_id?: string | null } }>(
+        '/whatsapp/test',
+        { to, text },
+      )).data.data,
+    onSuccess: (r) => {
+      setResult({
+        ok: r.delivered,
+        msg: r.delivered ? `Gönderildi (id: ${r.message_id ?? '-'})` : 'Teslim edilemedi.',
+      });
+    },
+    onError: (e) => setResult({ ok: false, msg: (e as Error).message }),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+            <MessageCircle className="size-5 text-emerald-600" />
+            WhatsApp Test Mesajı
+          </h3>
+          <button onClick={onClose} className="text-brand-500 hover:text-brand-900">
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-brand-500 dark:text-slate-400 uppercase tracking-wide">
+              Alıcı Numara (E.164)
+            </label>
+            <input
+              type="tel"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="905xxxxxxxxx"
+              className="input w-full mt-1"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-brand-500 dark:text-slate-400 uppercase tracking-wide">
+              Mesaj
+            </label>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={3}
+              maxLength={1000}
+              className="input w-full mt-1"
+            />
+          </div>
+          {result && (
+            <div
+              className={`text-sm p-3 rounded ${
+                result.ok
+                  ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                  : 'bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+              }`}
             >
-              Yönet
-              <ExternalLink className="size-3" />
-            </Link>
+              {result.msg}
+            </div>
           )}
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm text-brand-700 hover:bg-brand-50 rounded"
+            >
+              Kapat
+            </button>
+            <button
+              onClick={() => send.mutate()}
+              disabled={!to || !text || send.isPending}
+              className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50"
+            >
+              {send.isPending ? 'Gönderiliyor…' : 'Gönder'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

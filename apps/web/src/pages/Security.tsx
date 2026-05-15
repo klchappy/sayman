@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Code, Key, Monitor, Send, Shield, Trash2 } from 'lucide-react';
+import { AlertCircle, Code, Key, Monitor, Send, Shield, Smartphone, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 // --- 2FA --------------------------------------------------------------------
 
@@ -603,19 +604,182 @@ function ApiTokensSection() {
   );
 }
 
+interface PushDevice {
+  id: string;
+  platform: 'ios' | 'android' | 'web';
+  app_version: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+function PushDevicesSection() {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['push-tokens'],
+    queryFn: async () => (await api.get<{ data: PushDevice[] }>('/push/tokens')).data,
+  });
+  const del = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/push/tokens/${id}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['push-tokens'] }),
+  });
+
+  const platformLabel: Record<string, string> = {
+    ios: 'iOS',
+    android: 'Android',
+    web: 'Web',
+  };
+
+  return (
+    <div className="card">
+      <h2 className="font-semibold text-brand-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+        <Smartphone className="size-5" />
+        Push Bildirim Cihazları
+      </h2>
+      {q.data?.data.length === 0 && (
+        <p className="text-sm text-brand-500 dark:text-slate-400">
+          Kayıtlı cihaz yok. Mobil uygulamayı ilk açtığında otomatik kaydedilir.
+        </p>
+      )}
+      <ul className="divide-y divide-brand-100 dark:divide-slate-700">
+        {q.data?.data.map((d) => (
+          <li key={d.id} className="py-3 flex items-center justify-between">
+            <div className="text-sm">
+              <p className="font-medium text-brand-900 dark:text-slate-100">
+                {platformLabel[d.platform] ?? d.platform}
+                {d.app_version && (
+                  <span className="ml-2 text-xs text-brand-500 dark:text-slate-400">
+                    v{d.app_version}
+                  </span>
+                )}
+              </p>
+              <p className="text-xs text-brand-500 dark:text-slate-400">
+                {d.last_seen_at
+                  ? `Son: ${new Date(d.last_seen_at).toLocaleString('tr-TR')}`
+                  : `Kayıt: ${new Date(d.created_at).toLocaleString('tr-TR')}`}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (confirm('Cihaz çıkarılsın mı?')) del.mutate(d.id);
+              }}
+              className="text-red-500 hover:text-red-700"
+              title="Çıkar"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const CRON_JOBS: { name: string; label: string; description: string }[] = [
+  { name: 'generate-periods', label: 'Dönem Üret', description: 'Subscription/regular payment dönemleri' },
+  { name: 'send-reminders', label: 'Hatırlatma', description: 'Vade yaklaşan ödemeler' },
+  { name: 'update-statuses', label: 'Durum Güncelle', description: 'Süresi geçen ödemeleri overdue yap' },
+  { name: 'fetch-fx-rates', label: 'Döviz Kuru', description: 'TCMB döviz kurlarını çek' },
+  { name: 'deliver-webhooks', label: 'Webhook Gönder', description: 'Bekleyen webhook teslimleri' },
+  { name: 'detect-anomalies', label: 'Anomali Tespiti', description: 'Şüpheli işlem analizi' },
+  { name: 'generate-ai-summary', label: 'AI Özet', description: 'Aylık AI raporu' },
+  { name: 'embed-payables', label: 'Semantic Embed', description: 'Eksik embeddingleri üret' },
+  { name: 'sync-erp-connections', label: 'ERP Senkron', description: 'Aktif ERP bağlantılarını çek' },
+  { name: 'generate-tax-calendar', label: 'Vergi Takvimi', description: 'Gelecek dönemleri oluştur' },
+  { name: 'budget-alerts', label: 'Bütçe Uyarı', description: 'Bütçe aşımı bildirimleri' },
+  { name: 'check-due-alerts', label: 'Çek Vade Uyarı', description: 'Vadesi yaklaşan çek/senet' },
+  { name: 'send-collection-reminders', label: 'Tahsilat Hatırlatma', description: 'Bekleyen tahsilatlar' },
+  { name: 'run-depreciation', label: 'Amortisman', description: 'Aylık amortisman hesabı' },
+];
+
+function CronJobsSection() {
+  const [output, setOutput] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState<string | null>(null);
+
+  const run = useMutation({
+    mutationFn: async (job: string) =>
+      (await api.post<{ data: { job: string; result: unknown; duration_ms: number } }>(
+        `/jobs/run-now/${job}`,
+      )).data.data,
+  });
+
+  const handleRun = async (job: string) => {
+    setRunning(job);
+    try {
+      const res = await run.mutateAsync(job);
+      setOutput((prev) => ({
+        ...prev,
+        [job]: `OK (${res.duration_ms}ms) - ${JSON.stringify(res.result)}`,
+      }));
+    } catch (e) {
+      setOutput((prev) => ({
+        ...prev,
+        [job]: `HATA: ${(e as Error).message}`,
+      }));
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  return (
+    <div className="card border-2 border-red-200 dark:border-red-900/50">
+      <h2 className="font-semibold text-brand-900 dark:text-slate-100 mb-1 flex items-center gap-2">
+        <AlertCircle className="size-5 text-red-500" />
+        Cron Manuel Tetik (super_admin)
+      </h2>
+      <p className="text-xs text-brand-500 dark:text-slate-400 mb-4">
+        Production'da 3 cron schedule otomatik çalışır. Buradan elle tetiklemek operasyonel debug içindir.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-2">
+        {CRON_JOBS.map((j) => (
+          <div
+            key={j.name}
+            className="border border-brand-100 dark:border-slate-700 rounded-lg p-3 flex items-start justify-between gap-2"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-brand-900 dark:text-slate-100">{j.label}</p>
+              <p className="text-xs text-brand-500 dark:text-slate-400 truncate">{j.description}</p>
+              {output[j.name] && (
+                <p
+                  className={`text-xs mt-1 font-mono break-all ${
+                    output[j.name]!.startsWith('HATA') ? 'text-red-600' : 'text-emerald-600'
+                  }`}
+                >
+                  {output[j.name]}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => handleRun(j.name)}
+              disabled={running === j.name}
+              className="text-xs px-2 py-1 rounded bg-brand-900 hover:bg-brand-700 disabled:opacity-50 text-white shrink-0"
+            >
+              {running === j.name ? '…' : 'Çalıştır'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SecurityPage() {
+  const me = useAuth((s) => s.me);
+  const isSuperAdmin = me?.organizations.some((o) => o.role === 'super_admin') ?? false;
+
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
       <header>
         <p className="text-xs uppercase tracking-wider text-brand-500 mb-1">Güvenlik</p>
-        <h1 className="text-2xl font-semibold text-brand-900">Hesap Güvenliği</h1>
+        <h1 className="text-2xl font-semibold text-brand-900 dark:text-slate-100">Hesap Güvenliği</h1>
       </header>
 
       <TwoFASection />
       <TelegramSection />
       <ApiTokensSection />
       <SessionsSection />
+      <PushDevicesSection />
       <KvkkSection />
+      {isSuperAdmin && <CronJobsSection />}
 
       <div className="card bg-amber-50 border border-amber-200">
         <p className="text-sm text-amber-800 flex items-start gap-2">

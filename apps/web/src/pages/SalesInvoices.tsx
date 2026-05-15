@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { SavedFilters } from '../components/SavedFilters';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -120,6 +121,7 @@ export function SalesInvoicesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <SavedFilters module="sales-invoices" currentFilters={{}} onApply={() => {}} />
           <AICollectionStrategyButton />
           <button
             onClick={() => setShowForm(true)}
