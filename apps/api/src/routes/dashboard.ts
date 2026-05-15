@@ -23,7 +23,7 @@ import {
   subsidiaries,
 } from '@sayman/db';
 import { requireAuth } from '../middleware/auth';
-import { requireTenant } from '../lib/helpers';
+import { requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 
 export const dashboardRouter = Router();
 
@@ -50,10 +50,9 @@ function addMonths(d: Date, n: number): Date {
   return r;
 }
 
-dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req, res, next) => {
+dashboardRouter.get('/dashboard/summary', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
-    const tid = req.activeTenantId!;
     const now = today();
     const t30 = plusDays(now, 30);
     const t60 = plusDays(now, 60);
@@ -73,7 +72,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
       .from(paymentTransactions)
       .where(
         and(
-          eq(paymentTransactions.tenant_id, tid),
+          tenantScope(req, paymentTransactions.tenant_id),
           gte(paymentTransactions.paid_at, sixMoBackStr),
         ),
       )
@@ -103,7 +102,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
         approaching: sql<string>`COUNT(*) FILTER (WHERE ${payableItems.status} = 'approaching')`,
       })
       .from(payableItems)
-      .where(and(eq(payableItems.tenant_id, tid), eq(payableItems.is_active, true)));
+      .where(and(tenantScope(req, payableItems.tenant_id), eq(payableItems.is_active, true)));
 
     const payables_summary = {
       total: Number(payRollup?.total ?? 0),
@@ -125,7 +124,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
       .from(payableItems)
       .where(
         and(
-          eq(payableItems.tenant_id, tid),
+          tenantScope(req, payableItems.tenant_id),
           eq(payableItems.is_active, true),
           sql`${payableItems.status} IN ('pending', 'approaching')`,
           isNotNull(payableItems.due_date),
@@ -143,7 +142,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
         expiring: sql<string>`COUNT(*) FILTER (WHERE ${subscriptions.commitment_end_date} BETWEEN ${todayStr()} AND ${t60} AND ${subscriptions.is_active} = true)`,
       })
       .from(subscriptions)
-      .where(eq(subscriptions.tenant_id, tid));
+      .where(tenantScope(req, subscriptions.tenant_id));
 
     const subscriptions_kpi = {
       active_count: Number(subRollup?.active ?? 0),
@@ -159,7 +158,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
         expiring: sql<string>`COUNT(*) FILTER (WHERE ${guarantees.expiry_date} BETWEEN ${todayStr()} AND ${t60} AND ${guarantees.is_active} = true)`,
       })
       .from(guarantees)
-      .where(eq(guarantees.tenant_id, tid));
+      .where(tenantScope(req, guarantees.tenant_id));
 
     const guarantees_kpi = {
       active_count: Number(gRollup?.active ?? 0),
@@ -177,7 +176,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
         next_30: sql<string>`COUNT(*) FILTER (WHERE ${officialPaymentPeriods.due_date} BETWEEN ${todayStr()} AND ${t30} AND ${officialPaymentPeriods.status} = 'pending')`,
       })
       .from(officialPaymentPeriods)
-      .where(eq(officialPaymentPeriods.tenant_id, tid));
+      .where(tenantScope(req, officialPaymentPeriods.tenant_id));
 
     const official_payments_kpi = {
       this_month_amount: Number(opRollup?.this_month ?? 0),
@@ -191,7 +190,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
         next_30: sql<string>`COUNT(*) FILTER (WHERE ${regularPaymentPeriods.due_date} BETWEEN ${todayStr()} AND ${t30} AND ${regularPaymentPeriods.status} = 'pending')`,
       })
       .from(regularPaymentPeriods)
-      .where(eq(regularPaymentPeriods.tenant_id, tid));
+      .where(tenantScope(req, regularPaymentPeriods.tenant_id));
 
     const regular_payments_kpi = {
       this_month_amount: Number(rpRollup?.this_month ?? 0),
@@ -209,7 +208,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenant, async (req
       })
       .from(subsidiaries)
       .leftJoin(payableItems, eq(payableItems.subsidiary_id, subsidiaries.id))
-      .where(and(eq(subsidiaries.tenant_id, tid), eq(subsidiaries.is_active, true)))
+      .where(and(tenantScope(req, subsidiaries.tenant_id), eq(subsidiaries.is_active, true)))
       .groupBy(subsidiaries.id, subsidiaries.name, subsidiaries.color)
       .orderBy(desc(sql`COALESCE(SUM(${payableItems.amount}) FILTER (WHERE ${payableItems.subsidiary_id} = ${subsidiaries.id} AND ${payableItems.is_active} = true), 0)`))
       .limit(8);

@@ -99,22 +99,23 @@ export function DashboardPage() {
     },
   });
 
+  // Aggregate mode'da tenantSlug null ama veri yine de gelir (backend org-wide döner)
   const summaryQ = useQuery({
-    queryKey: ['dashboard-summary', active.orgSlug, active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['dashboard-summary', active.orgSlug, active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: DashboardSummary }>('/dashboard/summary');
       return res.data.data;
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
           <p className="text-sm text-brand-500 mt-1">
-            Üst köşedeki seçiciden bir sektör (tenant) seç.
+            Üst köşedeki seçiciden bir sektör (tenant) seç veya "Tüm Şirketler" mod'una geç.
           </p>
         </div>
       </div>
@@ -123,7 +124,10 @@ export function DashboardPage() {
 
   const summary = summaryQ.data;
   const activeTenant = tenantsQ.data?.find((t) => t.slug === active.tenantSlug);
-  const modules = new Set(activeTenant?.effective_modules ?? []);
+  // Aggregate modda tüm modüller "var" sayılır (org-wide tüm tenants)
+  const modules = active.aggregate
+    ? new Set(tenantsQ.data?.flatMap((t) => t.effective_modules) ?? [])
+    : new Set(activeTenant?.effective_modules ?? []);
 
   const has = (m: Module) => modules.has(m);
 
@@ -131,9 +135,16 @@ export function DashboardPage() {
     <div className="p-8 max-w-7xl mx-auto">
       <header className="mb-6">
         <p className="text-xs uppercase tracking-wider text-brand-500 mb-1">
-          {active.orgSlug} / {active.tenantSlug}
+          {active.orgSlug}
+          {active.aggregate
+            ? ` / Tüm Şirketler (${tenantsQ.data?.length ?? 0})`
+            : active.tenantSlug
+              ? ` / ${active.tenantSlug}`
+              : ''}
         </p>
-        <h1 className="text-2xl font-semibold text-brand-900">Operasyon Dashboard</h1>
+        <h1 className="text-2xl font-semibold text-brand-900 dark:text-slate-100">
+          {active.aggregate ? 'Konsolide Dashboard' : 'Operasyon Dashboard'}
+        </h1>
       </header>
 
       {summaryQ.isLoading && (

@@ -9,11 +9,13 @@
  * activeOrg + activeTenant: kullanıcının hangi organization ve tenant'ta
  * çalıştığını tutar. Axios her request öncesi bu değerleri header'a yapıştırır.
  */
-import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api } from './api';
-import { getSupabase, isSupabaseConfigured } from './supabase';
+
+// Supabase Auth path tamamen kaldırıldı (15 Mayıs 2026). Sadece local auth kullanılır.
+// session field geriye dönük uyumluluk için kaldı (her zaman null).
+type Session = null;
 
 const LOCAL_TOKEN_KEY = 'sayman-local-token';
 
@@ -93,7 +95,7 @@ export const useAuth = create<AuthState>()(
       initialized: false,
 
       async init() {
-        // 1. Local token varsa onu önce dene (her iki mod için)
+        // Tek auth: local. Supabase Auth path kaldırıldı.
         const storedLocal = localStorage.getItem(LOCAL_TOKEN_KEY);
         if (storedLocal) {
           applyToken(storedLocal);
@@ -108,50 +110,14 @@ export const useAuth = create<AuthState>()(
             set({ localToken: null });
           }
         }
-
-        // 2. Supabase env varsa onu da restore et
-        if (isSupabaseConfigured) {
-          const supabase = getSupabase();
-          const { data } = await supabase.auth.getSession();
-          if (data.session) {
-            applyToken(data.session.access_token);
-            set({ session: data.session });
-          }
-
-          supabase.auth.onAuthStateChange((_event, session) => {
-            applyToken(session?.access_token ?? null);
-            set({ session });
-            if (!session) set({ me: null, active: { orgSlug: null, tenantSlug: null, aggregate: false } });
-          });
-
-          if (data.session) {
-            try {
-              await get().refreshMe();
-            } catch {
-              // /v1/me 404 → public.users profili eksik
-            }
-          }
-        }
         set({ initialized: true });
       },
 
       async signIn(email, password) {
         set({ loading: true });
         try {
-          if (isSupabaseConfigured) {
-            // Önce Supabase dene
-            const supabase = getSupabase();
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-            if (!error && data.session) {
-              applyToken(data.session.access_token);
-              set({ session: data.session });
-              await get().refreshMe();
-              return;
-            }
-            // Supabase başarısız → local'e fallback (hibrit)
-          }
-
-          // Local auth
+          // Tek auth path: local. Supabase Auth artık kullanılmıyor —
+          // hibrit yapı kafa karışıklığı yaratıyordu (iki ayrı şifre store).
           const res = await api.post<{ access_token: string }>('/auth/local/sign-in', {
             identifier: email,
             password,
@@ -176,10 +142,12 @@ export const useAuth = create<AuthState>()(
           }
           localStorage.removeItem(LOCAL_TOKEN_KEY);
         }
-        if (isSupabaseConfigured) {
-          const supabase = getSupabase();
-          await supabase.auth.signOut().catch(() => undefined);
-        }
+        // Eski Supabase session'ları temizle (legacy cleanup — varsa)
+        try {
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith('sb-'))
+            .forEach((k) => localStorage.removeItem(k));
+        } catch {}
         applyToken(null);
         set({
           session: null,
