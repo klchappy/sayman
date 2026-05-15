@@ -74,17 +74,21 @@ const ALLOWED_WRITE_ROLES = new Set([
 
 // --- GET /tenants/me --------------------------------------------------------
 
-tenantsRouter.get('/tenants/me', (req, res) => {
-  const ctx = req.saymanContext;
-  if (!ctx || !ctx.tenantId) {
-    res.status(404).json({
-      error: 'no_tenant_context',
-      hint: 'Subdomain ({tenant}.{org}.host) veya X-Sayman-Org+X-Sayman-Tenant header gerekli.',
-      received: ctx ?? null,
-    });
-    return;
+tenantsRouter.get('/tenants/me', (req, res, next) => {
+  try {
+    const ctx = req.saymanContext;
+    if (!ctx || !ctx.tenantId) {
+      res.status(404).json({
+        error: 'no_tenant_context',
+        hint: 'Subdomain ({tenant}.{org}.host) veya X-Sayman-Org+X-Sayman-Tenant header gerekli.',
+        received: ctx ?? null,
+      });
+      return;
+    }
+    res.json({ data: ctx });
+  } catch (err) {
+    next(err);
   }
-  res.json({ data: ctx });
 });
 
 // --- GET /tenants?org=... ---------------------------------------------------

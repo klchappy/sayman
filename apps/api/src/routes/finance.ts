@@ -270,52 +270,55 @@ paymentsRouter.post('/payments', requireAuth, requireTenant, async (req, res, ne
     const body = createPaymentSchema.parse(req.body);
     const db = getDb();
 
-    // İlgili fatura aynı tenant'a mı? + paid_amount güncelle
-    const [payable] = await db
-      .select()
-      .from(payableItems)
-      .where(
-        and(
-          eq(payableItems.id, body.payable_id),
-          eq(payableItems.tenant_id, req.activeTenantId!),
-        ),
-      );
-    if (!payable) throw new HttpError(404, 'Fatura bulunamadı (bu tenant\'ta)');
+    const tx = await db.transaction(async (trx) => {
+      // Payable'ı transaction içinde oku — concurrent payment'lar lost update yapmasın
+      const [payable] = await trx
+        .select()
+        .from(payableItems)
+        .where(
+          and(
+            eq(payableItems.id, body.payable_id),
+            eq(payableItems.tenant_id, req.activeTenantId!),
+          ),
+        );
+      if (!payable) throw new HttpError(404, 'Fatura bulunamadı (bu tenant\'ta)');
 
-    const [tx] = await db
-      .insert(paymentTransactions)
-      .values({
-        tenant_id: req.activeTenantId!,
-        payable_id: body.payable_id,
-        paid_at: body.paid_at,
-        amount: body.amount,
-        method: body.method,
-        bank_short_code: body.bank_short_code ?? null,
-        receipt_url: body.receipt_url ?? null,
-        reference_no: body.reference_no ?? null,
-        status: body.status,
-        notes: body.notes ?? null,
-        created_by: req.authUserId,
-        approved_by: body.status === 'approved' ? req.authUserId : null,
-        approved_at: body.status === 'approved' ? new Date() : null,
-      })
-      .returning();
+      const [inserted] = await trx
+        .insert(paymentTransactions)
+        .values({
+          tenant_id: req.activeTenantId!,
+          payable_id: body.payable_id,
+          paid_at: body.paid_at,
+          amount: body.amount,
+          method: body.method,
+          bank_short_code: body.bank_short_code ?? null,
+          receipt_url: body.receipt_url ?? null,
+          reference_no: body.reference_no ?? null,
+          status: body.status,
+          notes: body.notes ?? null,
+          created_by: req.authUserId,
+          approved_by: body.status === 'approved' ? req.authUserId : null,
+          approved_at: body.status === 'approved' ? new Date() : null,
+        })
+        .returning();
 
-    // Payable.paid_amount güncelle + status'ü hesapla
-    const newPaid = Number(payable.paid_amount) + Number(body.amount);
-    const total = Number(payable.amount);
-    let newStatus = payable.status;
-    if (newPaid >= total) newStatus = 'paid';
-    else if (newPaid > 0) newStatus = 'partial_paid';
+      const newPaid = Number(payable.paid_amount) + Number(body.amount);
+      const total = Number(payable.amount);
+      let newStatus = payable.status;
+      if (newPaid >= total) newStatus = 'paid';
+      else if (newPaid > 0) newStatus = 'partial_paid';
 
-    await db
-      .update(payableItems)
-      .set({
-        paid_amount: newPaid.toFixed(2),
-        status: newStatus,
-        updated_at: new Date(),
-      })
-      .where(eq(payableItems.id, payable.id));
+      await trx
+        .update(payableItems)
+        .set({
+          paid_amount: newPaid.toFixed(2),
+          status: newStatus,
+          updated_at: new Date(),
+        })
+        .where(eq(payableItems.id, payable.id));
+
+      return inserted;
+    });
 
     res.status(201).json({ data: tx });
   } catch (err) {

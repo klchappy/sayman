@@ -20,7 +20,8 @@ const MAX_DURATION_MS = 30 * 60 * 1000; // 30 dk sonra client reconnect
 
 export const realtimeRouter = Router();
 
-realtimeRouter.get('/realtime/notifications', async (req, res) => {
+realtimeRouter.get('/realtime/notifications', async (req, res, next) => {
+  try {
   const token = String(req.query.token ?? '');
   if (!token) {
     res.status(401).json({ error: 'token query param gerekli' });
@@ -117,4 +118,7 @@ realtimeRouter.get('/realtime/notifications', async (req, res) => {
     clearInterval(pollInterval);
     clearInterval(keepAliveInterval);
   });
+  } catch (err) {
+    next(err);
+  }
 });

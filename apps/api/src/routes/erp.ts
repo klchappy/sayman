@@ -35,14 +35,18 @@ function requireAdmin(role?: string | null) {
   }
 }
 
-erpRouter.get('/erp/providers', requireAuth, requireOrg, async (_req, res) => {
-  const adapters = listAdapters();
-  res.json({
-    data: adapters.map((a) => ({
-      ...a,
-      config_fields: adapterConfigFields(a.provider),
-    })),
-  });
+erpRouter.get('/erp/providers', requireAuth, requireOrg, async (_req, res, next) => {
+  try {
+    const adapters = listAdapters();
+    res.json({
+      data: adapters.map((a) => ({
+        ...a,
+        config_fields: adapterConfigFields(a.provider),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 erpRouter.get('/erp/connections', requireAuth, requireOrg, async (req, res, next) => {

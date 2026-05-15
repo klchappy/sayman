@@ -306,25 +306,27 @@ salesInvoicesRouter.post(
           { tenantId: req.activeTenantId!, connectionId: conn.id },
         );
 
-        await db
-          .update(salesInvoices)
-          .set({
-            erp_connection_id: conn.id,
-            erp_external_id: result.external_id,
-            erp_push_status: 'pushed',
-            erp_pushed_at: new Date(),
-            erp_push_error: null,
-          })
-          .where(eq(salesInvoices.id, s.id));
+        await db.transaction(async (trx) => {
+          await trx
+            .update(salesInvoices)
+            .set({
+              erp_connection_id: conn.id,
+              erp_external_id: result.external_id,
+              erp_push_status: 'pushed',
+              erp_pushed_at: new Date(),
+              erp_push_error: null,
+            })
+            .where(eq(salesInvoices.id, s.id));
 
-        await auditFromRequest(req, {
-          organization_id: req.activeOrgId!,
-          actor_user_id: req.authUser?.id,
-          actor_email: req.authUser?.email,
-          action: 'erp.push.sales_invoice',
-          target_type: 'sales_invoices',
-          target_id: s.id,
-          details: { connection_id: conn.id, external_id: result.external_id },
+          await auditFromRequest(req, {
+            organization_id: req.activeOrgId!,
+            actor_user_id: req.authUser?.id,
+            actor_email: req.authUser?.email,
+            action: 'erp.push.sales_invoice',
+            target_type: 'sales_invoices',
+            target_id: s.id,
+            details: { connection_id: conn.id, external_id: result.external_id },
+          });
         });
 
         res.json({

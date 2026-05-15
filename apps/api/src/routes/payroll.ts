@@ -74,72 +74,77 @@ payrollRouter.post('/payroll/runs', requireAuth, requireTenant, async (req, res,
     let totalTax = 0;
     let totalEmployerCost = 0;
 
-    // Run yarat (idempotent: period unique)
-    let run;
-    try {
-      [run] = await db
-        .insert(payrollRuns)
-        .values({
-          tenant_id: req.activeTenantId!,
-          period: body.period,
-          status: 'draft',
-          employee_count: String(activeEmployees.length),
-          created_by: req.authUser?.id ?? null,
-        })
-        .returning();
-    } catch (err) {
-      if ((err as Error).message.includes('uq_payroll_runs')) {
-        throw new HttpError(409, `${body.period} dönemi için zaten bordro var`);
+    // Tek transaction: run + items + totals atomik
+    const { run, updated } = await db.transaction(async (trx) => {
+      let r;
+      try {
+        [r] = await trx
+          .insert(payrollRuns)
+          .values({
+            tenant_id: req.activeTenantId!,
+            period: body.period,
+            status: 'draft',
+            employee_count: String(activeEmployees.length),
+            created_by: req.authUser?.id ?? null,
+          })
+          .returning();
+      } catch (err) {
+        if ((err as Error).message.includes('uq_payroll_runs')) {
+          throw new HttpError(409, `${body.period} dönemi için zaten bordro var`);
+        }
+        throw err;
       }
-      throw err;
-    }
-    if (!run) throw new HttpError(500, 'Run oluşturulamadı');
+      if (!r) throw new HttpError(500, 'Run oluşturulamadı');
 
-    // Her personel için item hesapla
-    for (const emp of activeEmployees) {
-      const calc = calculatePayroll({
-        gross_monthly: Number(emp.gross_salary),
-        marital_status: emp.marital_status,
-        kids_count: Number(emp.kids_count),
-        spouse_working: emp.spouse_working,
+      // Tek batch insert (N round-trip yerine 1)
+      const itemValues = activeEmployees.map((emp) => {
+        const calc = calculatePayroll({
+          gross_monthly: Number(emp.gross_salary),
+          marital_status: emp.marital_status,
+          kids_count: Number(emp.kids_count),
+          spouse_working: emp.spouse_working,
+        });
+
+        totalGross += calc.gross;
+        totalNet += calc.net;
+        totalSgk +=
+          calc.sgk_employee + calc.unemployment_employee + calc.sgk_employer + calc.unemployment_employer;
+        totalTax += calc.income_tax + calc.stamp_tax;
+        totalEmployerCost += calc.total_employer_cost;
+
+        return {
+          run_id: r.id,
+          employee_id: emp.id,
+          gross: String(calc.gross),
+          sgk_employee: String(calc.sgk_employee),
+          unemployment_employee: String(calc.unemployment_employee),
+          income_tax: String(calc.income_tax),
+          stamp_tax: String(calc.stamp_tax),
+          agi: String(calc.agi),
+          net: String(calc.net),
+          sgk_employer: String(calc.sgk_employer),
+          unemployment_employer: String(calc.unemployment_employer),
+          total_employer_cost: String(calc.total_employer_cost),
+          breakdown: calc.breakdown,
+        };
       });
 
-      await db.insert(payrollItems).values({
-        run_id: run.id,
-        employee_id: emp.id,
-        gross: String(calc.gross),
-        sgk_employee: String(calc.sgk_employee),
-        unemployment_employee: String(calc.unemployment_employee),
-        income_tax: String(calc.income_tax),
-        stamp_tax: String(calc.stamp_tax),
-        agi: String(calc.agi),
-        net: String(calc.net),
-        sgk_employer: String(calc.sgk_employer),
-        unemployment_employer: String(calc.unemployment_employer),
-        total_employer_cost: String(calc.total_employer_cost),
-        breakdown: calc.breakdown,
-      });
+      await trx.insert(payrollItems).values(itemValues);
 
-      totalGross += calc.gross;
-      totalNet += calc.net;
-      totalSgk +=
-        calc.sgk_employee + calc.unemployment_employee + calc.sgk_employer + calc.unemployment_employer;
-      totalTax += calc.income_tax + calc.stamp_tax;
-      totalEmployerCost += calc.total_employer_cost;
-    }
+      const [u] = await trx
+        .update(payrollRuns)
+        .set({
+          total_gross: String(totalGross.toFixed(2)),
+          total_net: String(totalNet.toFixed(2)),
+          total_sgk: String(totalSgk.toFixed(2)),
+          total_tax: String(totalTax.toFixed(2)),
+          total_employer_cost: String(totalEmployerCost.toFixed(2)),
+        })
+        .where(eq(payrollRuns.id, r.id))
+        .returning();
 
-    // Run toplamlarını güncelle
-    const [updated] = await db
-      .update(payrollRuns)
-      .set({
-        total_gross: String(totalGross.toFixed(2)),
-        total_net: String(totalNet.toFixed(2)),
-        total_sgk: String(totalSgk.toFixed(2)),
-        total_tax: String(totalTax.toFixed(2)),
-        total_employer_cost: String(totalEmployerCost.toFixed(2)),
-      })
-      .where(eq(payrollRuns.id, run.id))
-      .returning();
+      return { run: r, updated: u };
+    });
 
     await auditFromRequest(req, {
       organization_id: req.activeOrgId!,
@@ -264,27 +269,26 @@ payrollRouter.post(
 payrollRouter.delete('/payroll/runs/:id', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
-    const [existing] = await db
-      .select({ status: payrollRuns.status })
-      .from(payrollRuns)
-      .where(
-        and(
-          eq(payrollRuns.id, String(req.params.id ?? '')),
-          eq(payrollRuns.tenant_id, req.activeTenantId!),
-        ),
-      );
-    if (!existing) throw new HttpError(404, 'Bordro bulunamadı');
-    if (existing.status !== 'draft') {
-      throw new HttpError(400, 'Sadece taslak (draft) bordrolar silinebilir');
-    }
-    await db
-      .delete(payrollRuns)
-      .where(
-        and(
-          eq(payrollRuns.id, String(req.params.id ?? '')),
-          eq(payrollRuns.tenant_id, req.activeTenantId!),
-        ),
-      );
+    const runId = String(req.params.id ?? '');
+
+    await db.transaction(async (trx) => {
+      const [existing] = await trx
+        .select({ status: payrollRuns.status })
+        .from(payrollRuns)
+        .where(
+          and(eq(payrollRuns.id, runId), eq(payrollRuns.tenant_id, req.activeTenantId!)),
+        );
+      if (!existing) throw new HttpError(404, 'Bordro bulunamadı');
+      if (existing.status !== 'draft') {
+        throw new HttpError(400, 'Sadece taslak (draft) bordrolar silinebilir');
+      }
+      await trx
+        .delete(payrollRuns)
+        .where(
+          and(eq(payrollRuns.id, runId), eq(payrollRuns.tenant_id, req.activeTenantId!)),
+        );
+    });
+
     res.json({ ok: true });
   } catch (err) {
     next(err);
