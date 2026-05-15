@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { SavedFilters } from '../components/SavedFilters';
+import { TruncatedListWarning } from '../components/TruncatedListWarning';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -47,10 +48,17 @@ export function EmployeesPage() {
     queryKey: ['employees', active.tenantSlug],
     enabled: !!active.tenantSlug,
     queryFn: async () => {
-      const res = await api.get<{ data: Employee[] }>('/employees');
-      return res.data.data;
+      const res = await api.get<{
+        data: Employee[];
+        total?: number;
+        limit?: number;
+        truncated?: boolean;
+        count?: number;
+      }>('/employees');
+      return res.data;
     },
   });
+  const employeeRows = list.data?.data ?? [];
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/employees/${id}`),
@@ -67,7 +75,7 @@ export function EmployeesPage() {
     );
   }
 
-  const totalGross = (list.data ?? []).reduce((sum, e) => sum + Number(e.gross_salary), 0);
+  const totalGross = employeeRows.reduce((sum, e) => sum + Number(e.gross_salary), 0);
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -94,11 +102,13 @@ export function EmployeesPage() {
         </div>
       </header>
 
-      {list.data && list.data.length > 0 && (
+      <TruncatedListWarning meta={list.data} />
+
+      {employeeRows.length > 0 && (
         <div className="grid sm:grid-cols-3 gap-3 mb-6">
           <div className="card">
             <p className="text-[10px] uppercase tracking-wide text-brand-500">Aktif Personel</p>
-            <p className="text-xl font-semibold mt-1">{list.data.length}</p>
+            <p className="text-xl font-semibold mt-1">{employeeRows.length}</p>
           </div>
           <div className="card">
             <p className="text-[10px] uppercase tracking-wide text-brand-500">Aylık Brüt Toplam</p>
@@ -117,14 +127,14 @@ export function EmployeesPage() {
 
       {list.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
 
-      {list.data && list.data.length === 0 && !showForm && (
+      {list.data && employeeRows.length === 0 && !showForm && (
         <div className="card text-center py-12">
           <Users className="size-12 mx-auto text-brand-300 mb-2" />
           <p className="text-brand-700 dark:text-slate-300 font-medium">Henüz personel yok.</p>
         </div>
       )}
 
-      {list.data && list.data.length > 0 && (
+      {employeeRows.length > 0 && (
         <div className="card p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -140,7 +150,7 @@ export function EmployeesPage() {
               </tr>
             </thead>
             <tbody>
-              {list.data.map((e) => (
+              {employeeRows.map((e) => (
                 <tr
                   key={e.id}
                   className="border-b border-brand-50 dark:border-slate-800/50 hover:bg-brand-50/30 dark:hover:bg-slate-800/30"
