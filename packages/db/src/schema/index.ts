@@ -33,3 +33,5 @@ export * from './erp';
 export * from './sales';
 export * from './tax-calendar';
 export * from './stock';
+export * from './budgets';
+export * from './customer-portal';

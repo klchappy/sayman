@@ -56,6 +56,9 @@ import { cariRouter } from './cari';
 import { salesInvoicesRouter } from './sales-invoices';
 import { stockRouter } from './stock';
 import { taxCalendarRouter } from './tax-calendar';
+import { budgetsRouter } from './budgets';
+import { reconciliationRouter } from './reconciliation';
+import { customerPortalRouter } from './customer-portal';
 
 export const apiRouter = Router();
 
@@ -203,3 +206,12 @@ apiRouter.use(stockRouter);
 
 // Türk vergi takvimi (auto + manuel)
 apiRouter.use(taxCalendarRouter);
+
+// Bütçe planlama (kategori bazlı)
+apiRouter.use(budgetsRouter);
+
+// Mutabakat (cari ↔ Sayman eşleştirme)
+apiRouter.use(reconciliationRouter);
+
+// Müşteri portali (public link ile cari paylaşımı)
+apiRouter.use(customerPortalRouter);

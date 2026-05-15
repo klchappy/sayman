@@ -21,6 +21,9 @@ import { BulkCategorizePage } from './pages/BulkCategorize';
 import { CariDetailPage, CariListPage } from './pages/Cari';
 import { ErpConnectionsPage } from './pages/ErpConnections';
 import { ForecastPage } from './pages/Forecast';
+import { BudgetsPage } from './pages/Budgets';
+import { CariPortalTokensPage, PublicPortalPage } from './pages/CustomerPortal';
+import { ReconciliationPage } from './pages/Reconciliation';
 import { SalesInvoicesPage } from './pages/SalesInvoices';
 import { StockPage } from './pages/Stock';
 import { TaxCalendarPage } from './pages/TaxCalendar';
@@ -59,7 +62,8 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Public */}
+      {/* Public — auth gerektirmez */}
+      <Route path="/portal/:token" element={<PublicPortalPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/sign-up" element={<SignUpOrgPage />} />
       <Route path="/auth/sign-up-org" element={<SignUpOrgPage />} />
@@ -115,6 +119,9 @@ export default function App() {
         <Route path="/sales-invoices" element={<SalesInvoicesPage />} />
         <Route path="/stock" element={<StockPage />} />
         <Route path="/tax-calendar" element={<TaxCalendarPage />} />
+        <Route path="/budgets" element={<BudgetsPage />} />
+        <Route path="/cari/:id/reconciliation" element={<ReconciliationPage />} />
+        <Route path="/cari/:id/portal-tokens" element={<CariPortalTokensPage />} />
 
         <Route path="/orgs" element={<HomePage />} />
         <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />

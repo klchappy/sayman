@@ -12,6 +12,7 @@ import {
   Repeat,
   ShieldCheck,
   Sparkles,
+  Target,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
@@ -179,6 +180,9 @@ export function DashboardPage() {
 
           {/* === Alacak KPI Widget === */}
           {has('finance') && <SalesKpiWidget />}
+
+          {/* === Bütçe widget === */}
+          {has('finance') && <BudgetWidget />}
 
           {/* === Cashflow chart === */}
           {has('finance') && (
@@ -570,6 +574,83 @@ interface SalesSummaryData {
   overdue_amount: number;
   collected_this_month: number;
   invoice_count: number;
+}
+
+interface BudgetComparison {
+  period: string;
+  items: Array<{
+    id: string;
+    category_label: string;
+    planned: number;
+    actual: number;
+    usage_pct: number;
+    over_budget: boolean;
+  }>;
+}
+
+function BudgetWidget() {
+  const q = useQuery({
+    queryKey: ['budget-comparison-dashboard'],
+    queryFn: async () => {
+      const res = await api.get<{ data: BudgetComparison }>('/budgets/comparison');
+      return res.data.data;
+    },
+  });
+
+  if (!q.data || q.data.items.length === 0) return null;
+
+  // En kritik 5'i göster
+  const top = q.data.items.slice(0, 5);
+
+  return (
+    <section className="card mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+          <Target className="size-5 text-amber-600" />
+          Bütçe Kullanım ({q.data.period})
+        </h2>
+        <Link
+          to="/budgets"
+          className="text-xs text-brand-600 dark:text-slate-400 hover:text-brand-900"
+        >
+          Tümü →
+        </Link>
+      </div>
+      <div className="space-y-2">
+        {top.map((b) => (
+          <div key={b.id} className="flex items-center gap-3 text-sm">
+            <span className="w-32 truncate text-brand-700 dark:text-slate-300">
+              {b.category_label}
+            </span>
+            <div className="flex-1 bg-brand-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  b.over_budget
+                    ? 'bg-red-500'
+                    : b.usage_pct >= 80
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                }`}
+                style={{ width: `${Math.min(b.usage_pct, 100)}%` }}
+              />
+            </div>
+            <span
+              className={`font-mono text-xs w-12 text-right ${
+                b.over_budget
+                  ? 'text-red-600 font-semibold'
+                  : 'text-brand-700 dark:text-slate-300'
+              }`}
+            >
+              %{b.usage_pct.toFixed(0)}
+            </span>
+            <span className="font-mono text-xs text-brand-500 w-24 text-right hidden sm:inline">
+              {fmtTRY(b.actual)} / {fmtTRY(b.planned)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function SalesKpiWidget() {

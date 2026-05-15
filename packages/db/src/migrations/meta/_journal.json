@@ -148,6 +148,13 @@
       "when": 1778780000000,
       "tag": "0020_sales_tax_stock",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1778781000000,
+      "tag": "0021_budgets_portal",
+      "breakpoints": true
     }
   ]
 }

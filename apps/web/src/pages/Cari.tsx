@@ -7,10 +7,12 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRightLeft,
   Building2,
   Download,
   FileSpreadsheet,
+  Globe,
   Mail,
   Phone,
   Search,
@@ -287,6 +289,21 @@ export function CariDetailPage() {
             )}
           </div>
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            to={`/cari/${c.id}/reconciliation`}
+            className="border border-brand-200 dark:border-slate-700 hover:bg-brand-50 dark:hover:bg-slate-800 text-brand-700 dark:text-slate-300 px-3 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <ArrowLeftRight className="size-4" />
+            Mutabakat
+          </Link>
+          <Link
+            to={`/cari/${c.id}/portal-tokens`}
+            className="border border-brand-200 dark:border-slate-700 hover:bg-brand-50 dark:hover:bg-slate-800 text-brand-700 dark:text-slate-300 px-3 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Globe className="size-4" />
+            Portal Linki
+          </Link>
         <a
           href={`/v1/cari/${c.id}/movements.xlsx`}
           className="border border-brand-200 dark:border-slate-700 hover:bg-brand-50 dark:hover:bg-slate-800 text-brand-700 dark:text-slate-300 px-3 py-2 rounded-lg text-sm flex items-center gap-2"
@@ -306,6 +323,7 @@ export function CariDetailPage() {
           <FileSpreadsheet className="size-4" />
           Excel İndir
         </a>
+        </div>
       </header>
 
       <div className="grid sm:grid-cols-4 gap-3 mb-6">

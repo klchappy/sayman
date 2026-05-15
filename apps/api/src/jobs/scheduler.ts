@@ -9,6 +9,7 @@
 import cron from 'node-cron';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { runBudgetAlerts } from './budget-alerts';
 import { runDeliverWebhooks } from './deliver-webhooks';
 import { runDetectAnomalies } from './detect-anomalies';
 import { runEmbedPayables } from './embed-payables';
@@ -32,7 +33,8 @@ export type JobName =
   | 'generate-ai-summary'
   | 'embed-payables'
   | 'sync-erp-connections'
-  | 'generate-tax-calendar';
+  | 'generate-tax-calendar'
+  | 'budget-alerts';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -57,6 +59,8 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runSyncErpConnections();
     case 'generate-tax-calendar':
       return runGenerateTaxCalendar();
+    case 'budget-alerts':
+      return runBudgetAlerts();
   }
 }
 
@@ -164,6 +168,15 @@ export function startCronJobs() {
       runGenerateTaxCalendar().catch((err) =>
         logger.error({ err }, 'generate-tax-calendar crashed'),
       );
+    },
+    { timezone: TZ },
+  );
+
+  // Her gün 08:00 TR — bütçe aşılma kontrolü
+  cron.schedule(
+    '0 8 * * *',
+    () => {
+      runBudgetAlerts().catch((err) => logger.error({ err }, 'budget-alerts crashed'));
     },
     { timezone: TZ },
   );
