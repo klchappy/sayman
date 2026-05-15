@@ -39,3 +39,4 @@ export * from './checks-notes';
 export * from './collection-reminders';
 export * from './fixed-assets';
 export * from './payroll';
+export * from './saved-searches';

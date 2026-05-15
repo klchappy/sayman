@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   CheckCircle2,
+  FileDown,
   Loader2,
   Plus,
   Receipt,
@@ -368,6 +369,7 @@ export function PayrollRunDetailPage() {
               <th className="py-2.5 px-3 text-right">AGİ</th>
               <th className="py-2.5 px-3 text-right">Net</th>
               <th className="py-2.5 px-3 text-right">İşv. Maliyet</th>
+              <th className="py-2.5 px-3"></th>
             </tr>
           </thead>
           <tbody>
@@ -408,6 +410,27 @@ export function PayrollRunDetailPage() {
                 </td>
                 <td className="py-2 px-3 text-right font-mono text-amber-700 dark:text-amber-400">
                   {fmtTRY(it.total_employer_cost)}
+                </td>
+                <td className="py-2 px-3">
+                  <button
+                    onClick={async () => {
+                      const r = await api.get<Blob>(
+                        `/payroll/runs/${run.id}/items/${it.id}/pdf`,
+                        { responseType: 'blob' },
+                      );
+                      const url = URL.createObjectURL(r.data);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `bordro-${it.employee_name.replace(/[^a-z0-9]/gi, '_')}-${run.period}.pdf`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="text-xs text-brand-600 dark:text-slate-400 hover:bg-brand-50 dark:hover:bg-slate-800 px-2 py-1 rounded flex items-center gap-1"
+                    title="Maaş pusulası PDF"
+                  >
+                    <FileDown className="size-3" />
+                    PDF
+                  </button>
                 </td>
               </tr>
             ))}

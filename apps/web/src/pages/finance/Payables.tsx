@@ -19,6 +19,7 @@ import {
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSubsidiaries } from '../../lib/use-subsidiaries';
+import { SavedFilters } from '../../components/SavedFilters';
 
 interface Payable {
   id: string;
@@ -132,7 +133,17 @@ export function PayablesPage() {
           </p>
           <h1 className="text-2xl font-semibold text-brand-900">Faturalar</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <SavedFilters
+            module="payables"
+            currentFilters={{ semanticQuery: semanticQuery || undefined }}
+            onApply={(f) => {
+              if (typeof f.semanticQuery === 'string') {
+                setSemanticQuery(f.semanticQuery);
+                setSemanticInput(f.semanticQuery);
+              }
+            }}
+          />
           <button
             onClick={async () => {
               const r = await api.get<Blob>('/export/payables.xlsx', { responseType: 'blob' });

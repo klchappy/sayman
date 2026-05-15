@@ -65,7 +65,11 @@ import { fixedAssetsRouter } from './fixed-assets';
 import { reportsPnlRouter } from './reports-pnl';
 import { employeesRouter } from './employees';
 import { payrollRouter } from './payroll';
+import { payrollPdfRouter } from './payroll-pdf';
 import { activityTimelineRouter } from './activity-timeline';
+import { reportsBalanceRouter } from './reports-balance';
+import { riskScoreRouter } from './risk-score';
+import { savedSearchesRouter } from './saved-searches';
 
 export const apiRouter = Router();
 
@@ -243,3 +247,15 @@ apiRouter.use(payrollRouter);
 
 // Aktivite zaman çizelgesi (audit log + payments)
 apiRouter.use(activityTimelineRouter);
+
+// Maaş pusulası PDF
+apiRouter.use(payrollPdfRouter);
+
+// Bilanço raporu
+apiRouter.use(reportsBalanceRouter);
+
+// AI risk skoru (cari profili)
+apiRouter.use(riskScoreRouter);
+
+// Kayıtlı filtreler
+apiRouter.use(savedSearchesRouter);

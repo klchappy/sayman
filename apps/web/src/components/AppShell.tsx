@@ -24,6 +24,7 @@ import {
   Network,
   Package,
   Plug,
+  Scale,
   ShieldAlert,
   Tag,
   Target,
@@ -107,6 +108,13 @@ const navItems: NavItem[] = [
   },
   { to: '/employees', label: 'Personel', icon: Users, group: 'İnsan Kaynakları' },
   { to: '/payroll', label: 'Bordro', icon: Wallet, group: 'İnsan Kaynakları' },
+  {
+    to: '/reports/balance-sheet',
+    label: 'Bilanço',
+    icon: Scale,
+    requires: 'finance',
+    group: 'Rapor',
+  },
   {
     to: '/reports/profit-loss',
     label: 'Gelir / Gider',

@@ -4,18 +4,21 @@
  * Veri ERP bağlantısından gelir (Paraşüt, Logo, Mikro, vb).
  * READ-ONLY — düzenleme ERP tarafında yapılır.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowLeftRight,
   ArrowRightLeft,
+  Brain,
   Building2,
   Download,
   FileSpreadsheet,
   Globe,
+  Loader2,
   Mail,
   Phone,
   Search,
+  Shield,
   TrendingDown,
   TrendingUp,
   Users,
@@ -326,6 +329,8 @@ export function CariDetailPage() {
         </div>
       </header>
 
+      <RiskScoreCard cariId={c.id} />
+
       <div className="grid sm:grid-cols-4 gap-3 mb-6">
         <Kpi
           label="Güncel Bakiye"
@@ -457,6 +462,112 @@ export function CariDetailPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+interface RiskScoreData {
+  score: number;
+  level: 'low' | 'medium' | 'high';
+  summary: string;
+  factors: Array<{
+    factor: string;
+    impact: 'positive' | 'negative' | 'neutral';
+    weight: number;
+  }>;
+  method: 'claude' | 'rule_based';
+}
+
+function RiskScoreCard({ cariId }: { cariId: string }) {
+  const [data, setData] = useState<RiskScoreData | null>(null);
+
+  const ask = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ data: RiskScoreData }>(`/cari/${cariId}/risk-score`);
+      return res.data.data;
+    },
+    onSuccess: (d) => setData(d),
+  });
+
+  const levelColor = {
+    low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+    medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+    high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800',
+  };
+
+  const levelLabel = { low: 'Düşük Risk', medium: 'Orta Risk', high: 'Yüksek Risk' };
+
+  return (
+    <div className="card mb-6 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/10 dark:to-blue-900/10 border-purple-200 dark:border-purple-800">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+          <Shield className="size-5 text-purple-600" />
+          AI Risk Skoru
+        </h3>
+        {!data && (
+          <button
+            onClick={() => ask.mutate()}
+            disabled={ask.isPending}
+            className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 disabled:opacity-60"
+          >
+            {ask.isPending ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Brain className="size-3" />
+            )}
+            Hesapla
+          </button>
+        )}
+      </div>
+      {!data && !ask.isPending && (
+        <p className="text-xs text-brand-500 dark:text-slate-400">
+          Hareket geçmişi + bakiye + paterni Claude tarafından analiz edilip 0-100 risk
+          skoru üretir.
+        </p>
+      )}
+      {data && (
+        <>
+          <div className="flex items-center gap-4 mb-3">
+            <div className="text-center">
+              <p className="text-4xl font-bold font-mono text-brand-900 dark:text-slate-100">
+                {data.score}
+              </p>
+              <p className="text-[10px] text-brand-400">/ 100</p>
+            </div>
+            <div className="flex-1">
+              <span
+                className={`text-xs px-3 py-1 rounded-full border ${levelColor[data.level]}`}
+              >
+                {levelLabel[data.level]}
+              </span>
+              <p className="text-sm text-brand-700 dark:text-slate-300 mt-2">{data.summary}</p>
+            </div>
+          </div>
+          {data.factors.length > 0 && (
+            <div className="border-t border-purple-200 dark:border-purple-800 pt-2 mt-2">
+              <p className="text-[10px] uppercase tracking-wide text-brand-500 mb-1">
+                Faktörler
+              </p>
+              <ul className="space-y-1">
+                {data.factors.map((f, i) => (
+                  <li key={i} className="text-xs flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      {f.impact === 'positive' && '✓'}
+                      {f.impact === 'negative' && '✗'}
+                      {f.impact === 'neutral' && '○'}
+                      <span className="text-brand-700 dark:text-slate-300">{f.factor}</span>
+                    </span>
+                    <span className="text-brand-400 font-mono">w:{f.weight}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="text-[10px] text-brand-400 mt-2">
+            Method: {data.method === 'claude' ? 'Claude AI' : 'Kural tabanlı'}
+          </p>
+        </>
+      )}
     </div>
   );
 }
