@@ -412,46 +412,91 @@ export function ImportPage() {
   );
 }
 
-// --- Smart Import Section (auto-route) --------------------------------------
+// --- Smart Import Section (preview + commit) --------------------------------
 
-interface SmartResult {
+interface SmartPreview {
   type: string;
-  action?: string;
-  hint?: string;
+  action: 'preview' | 'imported' | 'skipped_duplicate';
+  filename: string;
   parsed?: any;
-  file_count?: number;
-  by_extension?: Record<string, number>;
-  route?: string;
-  files?: Array<{ name: string; ext: string }>;
-  detected_resource?: string | null;
+  hint?: string;
+  format?: string;
   row_count?: number;
   headers?: string[];
-  sample_valid?: unknown[];
-  sample_errors?: Array<{ row: number; error: string }>;
-  format?: string;
+  detected_resource?: string | null;
+  valid_count?: number;
+  invalid_count?: number;
+  preview_rows?: unknown[];
+  errors?: Array<{ row: number; error: string; data?: unknown }>;
+  xml_count?: number;
+  other_count?: number;
+  xml_files?: Array<{ name: string }>;
+  other_files?: Array<{ name: string; ext: string }>;
   mime?: string;
   size_bytes?: number;
 }
 
+interface SmartImportResult {
+  type: string;
+  action: 'imported' | 'skipped_duplicate';
+  filename: string;
+  message: string;
+  parsed?: any;
+  payable?: { id: string; title: string };
+  supplier_resolution?: {
+    id: string;
+    is_new: boolean;
+    needs_review: boolean;
+    matched_by?: string;
+  } | null;
+  resource?: string;
+  inserted?: number;
+  inserted_ids?: string[];
+  new_suppliers?: number;
+  invalid_count?: number;
+  errors?: Array<{ row: number; error: string }>;
+  success?: number;
+  duplicates?: number;
+  failed?: number;
+  results?: Array<{
+    file: string;
+    ok: boolean;
+    invoice_number?: string;
+    payable_id?: string;
+    supplier_new?: boolean;
+    error?: string;
+  }>;
+}
+
 function SmartImportSection() {
   const active = useAuth((s) => s.active);
-  const [result, setResult] = useState<SmartResult | null>(null);
-  const [filename, setFilename] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<SmartPreview | null>(null);
+  const [imported, setImported] = useState<SmartImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [committing, setCommitting] = useState(false);
 
-  async function onFile(file: File) {
-    setFilename(file.name);
-    setResult(null);
+  function reset() {
+    setFile(null);
+    setPreview(null);
+    setImported(null);
+    setError(null);
+  }
+
+  async function onFile(picked: File) {
+    setFile(picked);
+    setPreview(null);
+    setImported(null);
     setError(null);
     setUploading(true);
     try {
       const fd = new FormData();
-      fd.append('file', file);
-      const res = await api.post<{ data: SmartResult }>('/smart-import', fd, {
+      fd.append('file', picked);
+      const res = await api.post<{ data: SmartPreview }>('/smart-import', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setResult(res.data.data);
+      setPreview(res.data.data);
     } catch (e) {
       const err = e as { response?: { data?: { error?: string; message?: string } } };
       setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
@@ -460,19 +505,23 @@ function SmartImportSection() {
     }
   }
 
-  // İkinci adım: yükle ve onayla (sadece e-fatura için şimdilik)
-  async function confirmImport() {
-    if (!result) return;
-    setUploading(true);
+  async function commitImport() {
+    if (!file) return;
+    setCommitting(true);
     setError(null);
     try {
-      if (result.type === 'efatura_xml' && result.parsed) {
-        // XML body'i tekrar göndermek için tekrar okumamız gerekti — basitlik: kullanıcı XML'i yeniden yükledi varsayımı yerine
-        // sadece bilgi göster:
-        alert('e-Fatura preview yapıldı. Onaylamak için "e-Fatura XML" sekmesinden gerçek import yapın.');
-      }
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post<{ data: SmartImportResult }>('/smart-import?commit=true', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImported(res.data.data);
+      setPreview(null);
+    } catch (e) {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
     } finally {
-      setUploading(false);
+      setCommitting(false);
     }
   }
 
@@ -487,165 +536,418 @@ function SmartImportSection() {
   return (
     <div className="card">
       <div className="mb-4">
-        <h2 className="font-semibold text-brand-900 flex items-center gap-2 mb-1">
+        <h2 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2 mb-1">
           <Sparkles className="size-5" />
-          Akıllı Dosya Yönlendirme
+          Akıllı Yükleme — Önizle ve İçeriye Aktar
         </h2>
-        <p className="text-sm text-brand-500">
-          CSV, XLSX, XML, ZIP, PDF, JPG — herhangi bir dosya at, Sayman tipi tespit edip uygun
-          işleme yönlendirir (e-fatura parse, bulk import, attachment).
+        <p className="text-sm text-brand-500 dark:text-slate-400">
+          Dosya at → Sayman analiz edip önizleme verir → onayladığında ilgili yere kayıt eder.
+          Sistemde olmayan tedarikçi varsa otomatik oluşturulur ve "doğrulama" listesine düşer.
         </p>
       </div>
 
-      <Dropzone
-        accept=".csv,.xlsx,.xls,.xml,.zip,.pdf,.jpg,.jpeg,.png,.webp"
-        label={uploading ? 'Yükleniyor…' : 'Dosya sürükle bırak veya seç (CSV/XLSX/XML/ZIP/PDF/IMG)'}
-        hint="Maks 30 MB. ZIP içindeki tüm dosyalar analizi edilir."
-        onFile={onFile}
-        disabled={uploading}
-      />
+      {!file && !imported && (
+        <Dropzone
+          accept=".csv,.xlsx,.xls,.xml,.zip,.pdf,.jpg,.jpeg,.png,.webp"
+          label={uploading ? 'Yükleniyor…' : 'Dosya sürükle bırak veya seç (CSV/XLSX/XML/ZIP/PDF/IMG)'}
+          hint="Maks 30 MB · XML/ZIP→e-Fatura · CSV/XLSX→fatura/cari/abone vs. · tedarikçi yoksa otomatik açılır"
+          onFile={onFile}
+          disabled={uploading}
+        />
+      )}
 
-      {filename && !uploading && (
-        <p className="text-xs text-brand-500 mt-2">Yüklenen: <strong>{filename}</strong></p>
+      {file && (preview || imported) && (
+        <div className="flex items-center justify-between bg-brand-50 dark:bg-slate-800 rounded-lg p-3 mb-3">
+          <span className="text-sm">
+            📎 <strong>{file.name}</strong>{' '}
+            <span className="text-brand-500 dark:text-slate-400">
+              ({Math.round(file.size / 1024)} KB)
+            </span>
+          </span>
+          <button
+            onClick={reset}
+            className="text-xs text-red-600 hover:underline flex items-center gap-1"
+          >
+            <X className="size-3" />
+            Temizle
+          </button>
+        </div>
       )}
 
       {error && (
-        <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2">
+        <div className="mt-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
           <AlertCircle className="size-4 mt-0.5 shrink-0" />
           {error}
         </div>
       )}
 
-      {result && (
-        <div className="mt-4 space-y-3">
-          {/* Genel sonuç kartı */}
-          <div className="bg-brand-50 rounded-lg p-4 border border-brand-200">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle2 className="size-5 text-emerald-600" />
-              <strong className="text-brand-900">Tespit: {result.type}</strong>
-            </div>
-            {result.action && (
-              <p className="text-xs text-brand-600 font-mono bg-white px-2 py-1 rounded">
-                → {result.action}
-              </p>
+      {uploading && (
+        <p className="text-sm text-brand-500 mt-3 flex items-center gap-2">
+          <span className="inline-block size-3 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          Dosya analiz ediliyor…
+        </p>
+      )}
+
+      {preview && !imported && (
+        <PreviewPanel preview={preview} onCommit={commitImport} committing={committing} />
+      )}
+
+      {imported && <ImportResultPanel result={imported} onAgain={reset} />}
+    </div>
+  );
+}
+
+function PreviewPanel({
+  preview,
+  onCommit,
+  committing,
+}: {
+  preview: SmartPreview;
+  onCommit: () => void;
+  committing: boolean;
+}) {
+  let canCommit = false;
+  let summary = '';
+
+  if (preview.type === 'efatura_xml' && preview.parsed) {
+    canCommit = true;
+    summary = `e-Fatura tespit edildi · ${preview.parsed.invoice_number} · ${preview.parsed.amount} ${preview.parsed.currency ?? 'TRY'}`;
+  } else if (preview.type === 'zip') {
+    canCommit = (preview.xml_count ?? 0) > 0;
+    summary = `ZIP içinde ${preview.xml_count ?? 0} e-Fatura XML bulundu`;
+  } else if (preview.type === 'tabular' && preview.detected_resource) {
+    canCommit = (preview.valid_count ?? 0) > 0;
+    summary = `${preview.detected_resource} tespit edildi · ${preview.valid_count}/${preview.row_count} satır geçerli`;
+  } else if (preview.type === 'tabular') {
+    summary = 'Tablo formatı tespit edildi ama tipi belirlenemedi. Resource\'u elle "CSV/XLSX Toplu" sekmesinden seç.';
+  } else if (preview.type === 'document') {
+    summary = 'PDF/görsel dosya. Bu sekmeden değil, ilgili fatura/teminat detayına eklenmelidir.';
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="card bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+        <div className="flex items-start gap-2">
+          <Sparkles className="size-5 text-blue-600 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-semibold text-blue-900 dark:text-blue-200">{summary}</p>
+            {preview.hint && (
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">{preview.hint}</p>
             )}
-            {result.hint && <p className="text-sm text-brand-700 mt-2">{result.hint}</p>}
           </div>
+        </div>
+      </div>
 
-          {/* e-Fatura preview */}
-          {result.type === 'efatura_xml' && result.parsed && (
-            <div className="card">
-              <h3 className="font-medium mb-2">Fatura Bilgileri</h3>
-              <dl className="grid grid-cols-2 gap-2 text-sm">
-                <dt className="text-brand-500">Fatura No</dt>
-                <dd className="font-mono">{result.parsed.invoice_number}</dd>
-                <dt className="text-brand-500">Düzenleme</dt>
-                <dd>{result.parsed.issue_date ?? '-'}</dd>
-                <dt className="text-brand-500">Vade</dt>
-                <dd>{result.parsed.due_date ?? '-'}</dd>
-                <dt className="text-brand-500">Tedarikçi</dt>
-                <dd>{result.parsed.supplier_name ?? '-'}</dd>
-                <dt className="text-brand-500">VKN/TCKN</dt>
-                <dd className="font-mono">{result.parsed.supplier_tax_number ?? '-'}</dd>
-                <dt className="text-brand-500">Tutar</dt>
-                <dd className="font-mono font-semibold">
-                  {result.parsed.amount} {result.parsed.currency}
-                </dd>
-              </dl>
-              <button
-                onClick={() => alert('Onaylamak için "e-Fatura XML" sekmesinden devam et.')}
-                className="mt-3 text-xs text-brand-700 hover:underline"
+      {preview.type === 'efatura_xml' && preview.parsed && (
+        <EfaturaPreview parsed={preview.parsed} />
+      )}
+      {preview.type === 'tabular' && <TabularPreview preview={preview} />}
+      {preview.type === 'zip' && <ZipPreview preview={preview} />}
+
+      {canCommit && (
+        <div className="flex items-center gap-2 sticky bottom-2 bg-white dark:bg-slate-900 border-2 border-emerald-300 dark:border-emerald-700 rounded-lg p-3 shadow-lg">
+          <button
+            onClick={onCommit}
+            disabled={committing}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {committing ? (
+              <>
+                <span className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                İçeriye Aktarılıyor…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-4" />
+                İçeriye Aktar (Onayla ve Kaydet)
+              </>
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EfaturaPreview({ parsed }: { parsed: any }) {
+  return (
+    <div className="card">
+      <h3 className="font-medium mb-3 text-brand-900 dark:text-slate-100">Fatura Detayı</h3>
+      <dl className="grid grid-cols-2 gap-2 text-sm">
+        <dt className="text-brand-500 dark:text-slate-400">Fatura No</dt>
+        <dd className="font-mono font-semibold">{parsed.invoice_number}</dd>
+        <dt className="text-brand-500 dark:text-slate-400">Düzenleme</dt>
+        <dd className="font-mono">{parsed.issue_date ?? '-'}</dd>
+        <dt className="text-brand-500 dark:text-slate-400">Vade</dt>
+        <dd className="font-mono">{parsed.due_date ?? '-'}</dd>
+        <dt className="text-brand-500 dark:text-slate-400">Tedarikçi</dt>
+        <dd className="font-medium">{parsed.supplier_name ?? '-'}</dd>
+        <dt className="text-brand-500 dark:text-slate-400">VKN/TCKN</dt>
+        <dd className="font-mono">{parsed.supplier_tax_number ?? '-'}</dd>
+        <dt className="text-brand-500 dark:text-slate-400">Tutar</dt>
+        <dd className="font-mono font-semibold text-lg text-emerald-700 dark:text-emerald-400">
+          {Number(parsed.amount).toLocaleString('tr-TR', {
+            style: 'currency',
+            currency: parsed.currency ?? 'TRY',
+          })}
+        </dd>
+        {parsed.profile_id && (
+          <>
+            <dt className="text-brand-500 dark:text-slate-400">Profil</dt>
+            <dd className="font-mono text-xs">{parsed.profile_id}</dd>
+          </>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+function TabularPreview({ preview }: { preview: SmartPreview }) {
+  return (
+    <div className="card">
+      <h3 className="font-medium mb-3 text-brand-900 dark:text-slate-100">Tablo Analizi</h3>
+      <div className="grid sm:grid-cols-4 gap-3 mb-3 text-sm">
+        <div>
+          <span className="text-[10px] text-brand-400 uppercase">Format</span>
+          <p className="font-mono">{preview.format}</p>
+        </div>
+        <div>
+          <span className="text-[10px] text-brand-400 uppercase">Toplam</span>
+          <p className="font-mono font-semibold">{preview.row_count}</p>
+        </div>
+        <div>
+          <span className="text-[10px] text-brand-400 uppercase">Geçerli</span>
+          <p className="font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+            {preview.valid_count}
+          </p>
+        </div>
+        <div>
+          <span className="text-[10px] text-brand-400 uppercase">Hatalı</span>
+          <p
+            className={`font-mono font-semibold ${
+              (preview.invalid_count ?? 0) > 0 ? 'text-red-600' : 'text-brand-500'
+            }`}
+          >
+            {preview.invalid_count}
+          </p>
+        </div>
+      </div>
+      {preview.detected_resource ? (
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded p-2 text-xs text-emerald-800 dark:text-emerald-300">
+          ✓ Resource tespit edildi:{' '}
+          <strong className="font-mono">{preview.detected_resource}</strong>
+        </div>
+      ) : (
+        <div className="bg-amber-50 dark:bg-amber-900/20 rounded p-2 text-xs text-amber-800 dark:text-amber-300">
+          ⚠ Resource otomatik tespit edilemedi. "CSV/XLSX Toplu" sekmesinden manuel seç.
+        </div>
+      )}
+      {preview.headers && preview.headers.length > 0 && (
+        <details className="mt-3">
+          <summary className="text-xs text-brand-600 dark:text-slate-400 cursor-pointer">
+            Header'lar ({preview.headers.length})
+          </summary>
+          <div className="flex flex-wrap gap-1 mt-2">
+            {preview.headers.map((h, i) => (
+              <span
+                key={i}
+                className="text-[10px] font-mono bg-brand-50 dark:bg-slate-800 px-1.5 py-0.5 rounded"
               >
-                → Onaylayıp payable_items'a kaydet
-              </button>
-            </div>
-          )}
+                {h}
+              </span>
+            ))}
+          </div>
+        </details>
+      )}
+      {preview.preview_rows && preview.preview_rows.length > 0 && (
+        <details className="mt-2" open>
+          <summary className="text-xs text-brand-600 dark:text-slate-400 cursor-pointer">
+            İlk {preview.preview_rows.length} satır önizleme
+          </summary>
+          <pre className="text-[10px] font-mono bg-brand-50 dark:bg-slate-800 p-2 rounded mt-2 overflow-x-auto max-h-40">
+            {JSON.stringify(preview.preview_rows, null, 2)}
+          </pre>
+        </details>
+      )}
+      {preview.errors && preview.errors.length > 0 && (
+        <details className="mt-2">
+          <summary className="text-xs text-red-600 cursor-pointer">
+            Hatalar ({preview.errors.length})
+          </summary>
+          <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+            {preview.errors.slice(0, 20).map((e, i) => (
+              <li key={i} className="text-[10px] bg-red-50 dark:bg-red-900/20 rounded px-2 py-1">
+                <strong>Satır {e.row}:</strong> {e.error}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
 
-          {/* ZIP analiz */}
-          {result.type === 'zip' && (
-            <div className="card">
-              <h3 className="font-medium mb-2">ZIP İçeriği</h3>
-              <p className="text-sm text-brand-700 mb-2">
-                <strong>{result.file_count}</strong> dosya, ana rota:{' '}
-                <span className="font-mono bg-brand-50 px-2 py-0.5 rounded">{result.route}</span>
-              </p>
-              {result.by_extension && (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {Object.entries(result.by_extension).map(([ext, n]) => (
-                    <span
-                      key={ext}
-                      className="text-xs bg-brand-50 px-2 py-0.5 rounded text-brand-700 font-mono"
-                    >
-                      .{ext}: {n}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {result.files && result.files.length > 0 && (
-                <details>
-                  <summary className="text-xs text-brand-600 cursor-pointer">
-                    Dosya listesi
-                  </summary>
-                  <ul className="mt-2 space-y-1 max-h-48 overflow-y-auto">
-                    {result.files.map((f, i) => (
-                      <li key={i} className="text-xs font-mono text-brand-700">
-                        {f.name}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </div>
-          )}
+function ZipPreview({ preview }: { preview: SmartPreview }) {
+  return (
+    <div className="card">
+      <h3 className="font-medium mb-3 text-brand-900 dark:text-slate-100">ZIP İçeriği</h3>
+      <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+        <div>
+          <span className="text-[10px] text-brand-400 uppercase">e-Fatura XML</span>
+          <p className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+            {preview.xml_count}
+          </p>
+        </div>
+        <div>
+          <span className="text-[10px] text-brand-400 uppercase">Diğer dosya</span>
+          <p className="font-mono text-brand-500">{preview.other_count}</p>
+        </div>
+      </div>
+      {preview.xml_files && preview.xml_files.length > 0 && (
+        <details>
+          <summary className="text-xs text-brand-600 dark:text-slate-400 cursor-pointer">
+            XML dosyaları (ilk 50)
+          </summary>
+          <ul className="mt-2 space-y-0.5 max-h-40 overflow-y-auto">
+            {preview.xml_files.map((f, i) => (
+              <li key={i} className="text-[10px] font-mono text-brand-700 dark:text-slate-300">
+                📄 {f.name}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
 
-          {/* CSV/XLSX detected */}
-          {result.type === 'tabular' && (
-            <div className="card">
-              <h3 className="font-medium mb-2">Tablo Analizi</h3>
-              <div className="grid grid-cols-3 gap-2 mb-3 text-sm">
-                <div>
-                  <span className="text-brand-500 text-xs">Format</span>
-                  <p className="font-mono">{result.format}</p>
-                </div>
-                <div>
-                  <span className="text-brand-500 text-xs">Satır</span>
-                  <p className="font-mono">{result.row_count}</p>
-                </div>
-                <div>
-                  <span className="text-brand-500 text-xs">Resource</span>
-                  <p className="font-mono">
-                    {result.detected_resource ? (
-                      <span className="text-emerald-700">{result.detected_resource}</span>
-                    ) : (
-                      <span className="text-amber-700">tespit edilemedi</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-              {result.headers && (
-                <div className="mb-2">
-                  <p className="text-xs text-brand-500 mb-1">Header'lar:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {result.headers.map((h, i) => (
-                      <span
-                        key={i}
-                        className="text-[10px] font-mono bg-brand-50 px-1.5 py-0.5 rounded"
-                      >
-                        {h}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {result.detected_resource && (
-                <p className="text-xs text-brand-600 mt-2">
-                  → "CSV / XLSX Toplu" sekmesinden bu resource'u seç + dosyayı tekrar yükle.
-                </p>
-              )}
-            </div>
+function ImportResultPanel({
+  result,
+  onAgain,
+}: {
+  result: SmartImportResult;
+  onAgain: () => void;
+}) {
+  return (
+    <div className="mt-3 card bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
+      <h3 className="font-semibold flex items-center gap-2 mb-2 text-brand-900 dark:text-slate-100">
+        <CheckCircle2 className="size-5 text-emerald-600" />
+        {result.action === 'skipped_duplicate' ? 'Zaten Kayıtlı' : 'İçeriye Aktarıldı'}
+      </h3>
+      <p className="text-sm text-brand-700 dark:text-slate-300 mb-2">{result.message}</p>
+
+      {result.type === 'efatura_xml' && result.payable && (
+        <div className="bg-white dark:bg-slate-900 rounded p-3 mb-2 text-sm">
+          <a
+            href={`/payables/${result.payable.id}`}
+            className="text-brand-700 dark:text-slate-300 hover:underline font-medium"
+          >
+            {result.payable.title} →
+          </a>
+          {result.supplier_resolution?.is_new && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+              ⚠ Tedarikçi otomatik oluşturuldu, doğrulama bekliyor.{' '}
+              <a href="/review-queue" className="underline font-medium">
+                Review Queue'ya git →
+              </a>
+            </p>
           )}
         </div>
       )}
+
+      {result.type === 'tabular' && (
+        <div className="bg-white dark:bg-slate-900 rounded p-3 text-sm">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-[10px] text-brand-400 uppercase">Resource</p>
+              <p className="font-mono">{result.resource}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-brand-400 uppercase">Eklendi</p>
+              <p className="font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+                {result.inserted}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-brand-400 uppercase">Atlandı</p>
+              <p className="font-mono text-amber-700">{result.invalid_count ?? 0}</p>
+            </div>
+          </div>
+          {(result.new_suppliers ?? 0) > 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-3">
+              ⚠ {result.new_suppliers} yeni tedarikçi otomatik oluşturuldu.{' '}
+              <a href="/review-queue" className="underline font-medium">
+                Doğrula →
+              </a>
+            </p>
+          )}
+        </div>
+      )}
+
+      {result.type === 'zip' && (
+        <div className="bg-white dark:bg-slate-900 rounded p-3 text-sm">
+          <div className="grid grid-cols-4 gap-2 text-center text-xs">
+            <div>
+              <p className="text-brand-400 uppercase">Toplam</p>
+              <p className="font-mono font-semibold">
+                {(result.success ?? 0) + (result.duplicates ?? 0) + (result.failed ?? 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-emerald-600 uppercase">Eklendi</p>
+              <p className="font-mono font-semibold text-emerald-700">{result.success}</p>
+            </div>
+            <div>
+              <p className="text-amber-600 uppercase">Mükerrer</p>
+              <p className="font-mono text-amber-700">{result.duplicates}</p>
+            </div>
+            <div>
+              <p className="text-red-600 uppercase">Hata</p>
+              <p className="font-mono text-red-700">{result.failed}</p>
+            </div>
+          </div>
+          {(result.new_suppliers ?? 0) > 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-3">
+              ⚠ {result.new_suppliers} yeni tedarikçi oluşturuldu —{' '}
+              <a href="/review-queue" className="underline font-medium">
+                Review Queue
+              </a>
+            </p>
+          )}
+          {result.results && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-brand-600 dark:text-slate-400">
+                Detay (her dosya)
+              </summary>
+              <ul className="mt-2 space-y-0.5 text-[10px] max-h-60 overflow-y-auto">
+                {result.results.map((r, i) => (
+                  <li
+                    key={i}
+                    className={`px-2 py-1 rounded ${
+                      r.ok && !r.error
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20'
+                        : r.ok && r.error
+                          ? 'bg-amber-50 dark:bg-amber-900/20'
+                          : 'bg-red-50 dark:bg-red-900/20'
+                    }`}
+                  >
+                    {r.ok && !r.error ? '✓' : r.ok ? '⊙' : '✗'} <strong>{r.file}</strong>
+                    {r.invoice_number && <> — {r.invoice_number}</>}
+                    {r.error && <span className="text-red-600"> — {r.error}</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+
+      <button
+        onClick={onAgain}
+        className="mt-3 text-sm text-brand-700 dark:text-slate-300 hover:underline"
+      >
+        ↺ Yeni dosya yükle
+      </button>
     </div>
   );
 }

@@ -35,6 +35,7 @@ import { SalesInvoicesPage } from './pages/SalesInvoices';
 import { StockPage } from './pages/Stock';
 import { TaxCalendarPage } from './pages/TaxCalendar';
 import { ImportPage } from './pages/Import';
+import { ReviewQueuePage } from './pages/ReviewQueue';
 import { InboundWebhooksPage } from './pages/InboundWebhooks';
 import { InboxPage } from './pages/Inbox';
 import { IntegrationsPage } from './pages/Integrations';
@@ -106,6 +107,7 @@ export default function App() {
         <Route path="/audit" element={<AuditLogPage />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/import" element={<ImportPage />} />
+        <Route path="/review-queue" element={<ReviewQueuePage />} />
         <Route path="/ocr" element={<OCRPage />} />
         <Route path="/ai" element={<AIAssistantPage />} />
         <Route path="/subsidiaries" element={<SubsidiariesPage />} />

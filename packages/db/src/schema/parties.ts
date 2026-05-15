@@ -86,6 +86,11 @@ export const persons = pgTable(
       .$type<ShareScope>()
       .default(sql`'"*"'::jsonb`)
       .notNull(),
+    needs_review: boolean('needs_review').notNull().default(false),
+    auto_created_source: text('auto_created_source'),
+    auto_created_at: timestamp('auto_created_at', { withTimezone: true }),
+    reviewed_at: timestamp('reviewed_at', { withTimezone: true }),
+    reviewed_by: uuid('reviewed_by'),
     is_active: boolean('is_active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -114,6 +119,13 @@ export const companies = pgTable(
       .$type<ShareScope>()
       .default(sql`'"*"'::jsonb`)
       .notNull(),
+    /** Otomatik yaratıldı, kullanıcı doğrulamalı */
+    needs_review: boolean('needs_review').notNull().default(false),
+    /** Hangi kaynaktan otomatik yaratıldı: 'efatura' | 'csv_import' | 'erp_sync' | 'smart_import' */
+    auto_created_source: text('auto_created_source'),
+    auto_created_at: timestamp('auto_created_at', { withTimezone: true }),
+    reviewed_at: timestamp('reviewed_at', { withTimezone: true }),
+    reviewed_by: uuid('reviewed_by'),
     is_active: boolean('is_active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

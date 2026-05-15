@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
+  AlertCircle,
   Bell,
   Building,
   Building2,
@@ -196,6 +197,7 @@ const navItems: NavItem[] = [
   { to: '/orgs', label: 'Organizasyonlar', icon: Layers, group: 'Sistem' },
   { to: '/users', label: 'Kullanıcılar', icon: UserCog, group: 'Sistem' },
   { to: '/import', label: 'Toplu Yükleme', icon: FileUp, group: 'Sistem', requires: 'imports' },
+  { to: '/review-queue', label: 'Doğrulama Bekleyen', icon: AlertCircle, group: 'Sistem' },
   { to: '/ocr', label: 'OCR (Belge Oku)', icon: FileText, group: 'Sistem' },
   { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },

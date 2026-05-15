@@ -70,6 +70,7 @@ import { activityTimelineRouter } from './activity-timeline';
 import { reportsBalanceRouter } from './reports-balance';
 import { riskScoreRouter } from './risk-score';
 import { savedSearchesRouter } from './saved-searches';
+import { reviewQueueRouter } from './review-queue';
 
 export const apiRouter = Router();
 
@@ -259,3 +260,6 @@ apiRouter.use(riskScoreRouter);
 
 // Kayıtlı filtreler
 apiRouter.use(savedSearchesRouter);
+
+// Review queue (otomatik yaratılan kayıt doğrulama)
+apiRouter.use(reviewQueueRouter);

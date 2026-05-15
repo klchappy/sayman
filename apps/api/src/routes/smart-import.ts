@@ -1,31 +1,37 @@
 /**
- * /v1/smart-import — Akıllı dosya yönlendirici.
+ * /v1/smart-import — Akıllı dosya yönlendirici (preview + commit).
  *
- * Tek bir dosya yüklenir (CSV/XLSX/XML/ZIP/PDF/Image), Sayman:
- *   - Uzantı + MIME + içerik sniff → tip tespit
- *   - Uygun handler'a otomatik yönlendir:
- *     * .xml + UBL imzası → /efatura/import
- *     * .zip → içindeki XML'ler için /efatura/import-zip, diğerleri raporlanır
- *     * .csv / .xlsx → resource auto-detect (header'a göre) + /import bulk
- *     * .pdf / .jpg / .png → attachment olarak yükle (related_table+id gerekli, yoksa staging)
+ *   POST /v1/smart-import          → preview (dry-run)
+ *   POST /v1/smart-import?commit=true → preview + gerçek import + auto-create supplier
  *
- * Body: multipart/form-data, field: file
- * Query: ?related_table=&related_id=  (PDF/image için optional)
- * Response: { type, action, summary, dry_run? }
+ * Tek bir dosya yüklenir (CSV/XLSX/XML/ZIP/PDF/Image). İki adım:
+ *   1. Preview: tip tespit + ilk N satır + valid/invalid sayısı
+ *   2. Commit: gerçek import (XML → payable, CSV → bulk, ZIP → XML toplu)
+ *
+ * Otomatik supplier yaratımı: import sırasında supplier_name varsa companies'a
+ * needs_review=true ile eklenir; payable.company_id otomatik bağlanır.
  */
 import { parse as parseCsv } from 'csv-parse/sync';
+import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import JSZip from 'jszip';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
+import {
+  getDb,
+  payableItems,
+} from '@sayman/db';
+import { auditFromRequest } from '../lib/audit';
+import { resolveOrCreateCompany } from '../lib/auto-create-party';
+import { logger } from '../config/logger';
 import { HttpError, requireTenant } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 import { IMPORT_HANDLERS, type ImportConfig } from '../lib/import-handlers';
+import { parseUblXml } from './efatura-helpers';
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE } });
 
-// Header → resource eşleştirmesi (CSV/XLSX content sniff)
 const HEADER_HINTS: Array<{ resource: string; required: string[]; score: number }> = [
   { resource: 'payables', required: ['title', 'amount'], score: 100 },
   { resource: 'guarantees', required: ['beneficiary_name', 'amount'], score: 100 },
@@ -61,73 +67,295 @@ smartImportRouter.post(
       if (!req.file) throw new HttpError(400, 'Dosya gerekli (field: file)', 'NO_FILE');
       const f = req.file;
       const name = f.originalname.toLowerCase();
-      const dryRun = req.query.dry_run === 'true' || req.body.dry_run === 'true';
+      const commit = req.query.commit === 'true' || req.body?.commit === 'true';
+      const tenantId = req.activeTenantId!;
+      const orgId = req.activeOrgId!;
 
-      // XML — UBL e-Fatura
+      // ===== XML — UBL e-Fatura =====
       if (name.endsWith('.xml')) {
         const xml = f.buffer.toString('utf-8');
-        const { parseUblXml } = await import('./efatura-helpers');
-        const parsed = parseUblXml(xml);
+        let parsed;
+        try {
+          parsed = parseUblXml(xml);
+        } catch (err) {
+          throw new HttpError(400, `XML parse hatası: ${(err as Error).message}`, 'XML_PARSE');
+        }
+
+        if (!commit) {
+          res.json({
+            data: {
+              type: 'efatura_xml',
+              action: 'preview',
+              parsed,
+              filename: f.originalname,
+              hint: 'Önizleme. "İçeriye Aktar" butonu ile gerçek import başlatılır.',
+            },
+          });
+          return;
+        }
+
+        // Commit mode — auto-create supplier + payable yarat
+        if (!parsed.invoice_number) {
+          throw new HttpError(400, 'Fatura numarası bulunamadı', 'INVALID_INVOICE');
+        }
+
+        // Aynı invoice_number var mı (idempotent)
+        const db = getDb();
+        const [existing] = await db
+          .select({ id: payableItems.id, title: payableItems.title })
+          .from(payableItems)
+          .where(
+            and(
+              eq(payableItems.tenant_id, tenantId),
+              eq(payableItems.invoice_number, parsed.invoice_number),
+            ),
+          )
+          .limit(1);
+
+        let supplierResolution = null;
+        if (parsed.supplier_name) {
+          try {
+            supplierResolution = await resolveOrCreateCompany(orgId, {
+              name: parsed.supplier_name,
+              tax_number: parsed.supplier_tax_number,
+              source: 'efatura',
+            });
+          } catch (err) {
+            logger.warn({ err }, 'auto-create supplier failed');
+          }
+        }
+
+        if (existing) {
+          res.json({
+            data: {
+              type: 'efatura_xml',
+              action: 'skipped_duplicate',
+              filename: f.originalname,
+              parsed,
+              payable_id: existing.id,
+              supplier_resolution: supplierResolution,
+              message: `"${parsed.invoice_number}" zaten kayıtlı (${existing.title}). Yeniden eklenmedi.`,
+            },
+          });
+          return;
+        }
+
+        const [created] = await db
+          .insert(payableItems)
+          .values({
+            tenant_id: tenantId,
+            owner_type: 'company',
+            company_id: supplierResolution?.id ?? null,
+            title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
+            category: 'e-fatura',
+            invoice_number: parsed.invoice_number,
+            supplier_name: parsed.supplier_name,
+            issue_date: parsed.issue_date,
+            due_date: parsed.due_date,
+            amount: parsed.amount,
+            currency: parsed.currency,
+            status: 'pending',
+            notes: parsed.notes,
+            metadata: {
+              source: 'smart_import',
+              filename: f.originalname,
+              supplier_tax_number: parsed.supplier_tax_number,
+            },
+            created_by: req.authUser?.id ?? null,
+          })
+          .returning({ id: payableItems.id, title: payableItems.title });
+
+        await auditFromRequest(req, {
+          organization_id: orgId,
+          actor_user_id: req.authUser?.id,
+          actor_email: req.authUser?.email,
+          action: 'smart_import.efatura',
+          target_type: 'payable_items',
+          target_id: created?.id,
+          details: { filename: f.originalname, invoice_number: parsed.invoice_number },
+        });
+
         res.json({
           data: {
             type: 'efatura_xml',
-            action: dryRun ? 'preview' : 'next:efatura_import',
+            action: 'imported',
+            filename: f.originalname,
             parsed,
-            hint: dryRun
-              ? 'Önizleme. Onaylayıp /v1/efatura/import\'a XML\'i gönder.'
-              : 'POST /v1/efatura/import { xml }',
+            payable: created,
+            supplier_resolution: supplierResolution,
+            message: supplierResolution?.is_new
+              ? `Fatura içeriye aktarıldı. Yeni tedarikçi "${parsed.supplier_name}" otomatik oluşturuldu (doğrulama bekliyor).`
+              : `Fatura içeriye aktarıldı${supplierResolution?.matched_by ? ` (mevcut tedarikçiye bağlandı)` : ''}.`,
           },
         });
         return;
       }
 
-      // ZIP
+      // ===== ZIP =====
       if (name.endsWith('.zip')) {
         const zip = await JSZip.loadAsync(f.buffer);
-        const fileList: Array<{ name: string; ext: string; size: number }> = [];
+        const xmlFiles: Array<{ name: string; content: string }> = [];
+        const otherFiles: Array<{ name: string; ext: string }> = [];
+
+        const promises: Promise<void>[] = [];
         zip.forEach((relPath, entry) => {
-          if (!entry.dir) {
-            const ext = relPath.split('.').pop()?.toLowerCase() ?? '';
-            fileList.push({ name: relPath, ext, size: 0 });
+          if (entry.dir) return;
+          const ext = relPath.split('.').pop()?.toLowerCase() ?? '';
+          if (ext === 'xml') {
+            promises.push(
+              entry.async('text').then((content) => {
+                xmlFiles.push({ name: relPath, content });
+              }),
+            );
+          } else {
+            otherFiles.push({ name: relPath, ext });
           }
         });
+        await Promise.all(promises);
 
-        const byExt = fileList.reduce<Record<string, number>>((acc, x) => {
-          acc[x.ext] = (acc[x.ext] ?? 0) + 1;
-          return acc;
-        }, {});
+        if (!commit) {
+          res.json({
+            data: {
+              type: 'zip',
+              action: 'preview',
+              filename: f.originalname,
+              xml_count: xmlFiles.length,
+              other_count: otherFiles.length,
+              xml_files: xmlFiles.slice(0, 50).map((x) => ({ name: x.name })),
+              other_files: otherFiles.slice(0, 50),
+              hint: `${xmlFiles.length} adet e-Fatura XML bulundu. "İçeriye Aktar" ile hepsi yüklenecek.`,
+            },
+          });
+          return;
+        }
 
-        // En çok XML → e-fatura import-zip yönlendir
-        const xmlCount = byExt.xml ?? 0;
-        const csvCount = (byExt.csv ?? 0) + (byExt.xlsx ?? 0);
-        const docCount = (byExt.pdf ?? 0) + (byExt.jpg ?? 0) + (byExt.jpeg ?? 0) + (byExt.png ?? 0);
+        // Commit — her XML için import + auto-create
+        const db = getDb();
+        const results: Array<{
+          file: string;
+          ok: boolean;
+          invoice_number?: string;
+          payable_id?: string;
+          supplier_new?: boolean;
+          error?: string;
+        }> = [];
 
-        let route = 'unknown';
-        if (xmlCount > 0 && xmlCount >= csvCount) route = 'efatura_zip';
-        else if (csvCount > 0) route = 'bulk_zip';
-        else if (docCount > 0) route = 'attachment_zip';
+        for (const xf of xmlFiles.slice(0, 100)) {
+          try {
+            const parsed = parseUblXml(xf.content);
+            if (!parsed.invoice_number) {
+              results.push({ file: xf.name, ok: false, error: 'invoice_number bulunamadı' });
+              continue;
+            }
+
+            const [existing] = await db
+              .select({ id: payableItems.id })
+              .from(payableItems)
+              .where(
+                and(
+                  eq(payableItems.tenant_id, tenantId),
+                  eq(payableItems.invoice_number, parsed.invoice_number),
+                ),
+              )
+              .limit(1);
+            if (existing) {
+              results.push({
+                file: xf.name,
+                ok: true,
+                invoice_number: parsed.invoice_number,
+                error: 'duplicate (skipped)',
+              });
+              continue;
+            }
+
+            let supplier = null;
+            if (parsed.supplier_name) {
+              try {
+                supplier = await resolveOrCreateCompany(orgId, {
+                  name: parsed.supplier_name,
+                  tax_number: parsed.supplier_tax_number,
+                  source: 'efatura',
+                });
+              } catch {}
+            }
+
+            const [created] = await db
+              .insert(payableItems)
+              .values({
+                tenant_id: tenantId,
+                owner_type: 'company',
+                company_id: supplier?.id ?? null,
+                title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
+                category: 'e-fatura',
+                invoice_number: parsed.invoice_number,
+                supplier_name: parsed.supplier_name,
+                issue_date: parsed.issue_date,
+                due_date: parsed.due_date,
+                amount: parsed.amount,
+                currency: parsed.currency,
+                status: 'pending',
+                notes: parsed.notes,
+                metadata: {
+                  source: 'smart_import_zip',
+                  zip_filename: f.originalname,
+                  xml_filename: xf.name,
+                },
+                created_by: req.authUser?.id ?? null,
+              })
+              .returning({ id: payableItems.id });
+
+            results.push({
+              file: xf.name,
+              ok: true,
+              invoice_number: parsed.invoice_number,
+              payable_id: created?.id,
+              supplier_new: supplier?.is_new ?? false,
+            });
+          } catch (err) {
+            results.push({ file: xf.name, ok: false, error: (err as Error).message.slice(0, 150) });
+          }
+        }
+
+        const success = results.filter((r) => r.ok && !r.error).length;
+        const duplicates = results.filter((r) => r.ok && r.error === 'duplicate (skipped)').length;
+        const failed = results.filter((r) => !r.ok).length;
+        const newSuppliers = results.filter((r) => r.supplier_new).length;
+
+        await auditFromRequest(req, {
+          organization_id: orgId,
+          actor_user_id: req.authUser?.id,
+          actor_email: req.authUser?.email,
+          action: 'smart_import.zip',
+          details: {
+            filename: f.originalname,
+            total: xmlFiles.length,
+            success,
+            duplicates,
+            failed,
+            new_suppliers: newSuppliers,
+          },
+        });
 
         res.json({
           data: {
             type: 'zip',
-            file_count: fileList.length,
-            by_extension: byExt,
-            route,
-            action:
-              route === 'efatura_zip'
-                ? 'POST /v1/efatura/import-zip { zip_base64 }'
-                : route === 'bulk_zip'
-                  ? 'Her CSV/XLSX için /v1/import/:resource çağır (header sniff)'
-                  : 'PDF/Image\'lar attachment olarak yüklenebilir',
-            files: fileList.slice(0, 50),
+            action: 'imported',
+            filename: f.originalname,
+            xml_count: xmlFiles.length,
+            success,
+            duplicates,
+            failed,
+            new_suppliers: newSuppliers,
+            results: results.slice(0, 200),
+            message: `${success} fatura içeriye aktarıldı, ${duplicates} mükerrer atlandı, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi oluşturuldu` : ''}.`,
           },
         });
         return;
       }
 
-      // CSV / XLSX — resource auto-detect
+      // ===== CSV / XLSX =====
       if (name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls')) {
-        let rows: unknown[] = [];
+        let rows: Record<string, unknown>[] = [];
         let headers: string[] = [];
 
         if (name.endsWith('.csv')) {
@@ -138,7 +366,7 @@ smartImportRouter.post(
               skip_empty_lines: true,
               trim: true,
               relax_quotes: true,
-            }) as unknown[];
+            }) as Record<string, unknown>[];
             const firstLine = txt.split(/\r?\n/)[0] ?? '';
             headers = firstLine.split(',').map((s) => s.trim().replace(/^"|"$/g, ''));
           } catch (e) {
@@ -149,7 +377,10 @@ smartImportRouter.post(
             const wb = XLSX.read(f.buffer, { type: 'buffer' });
             const sheetName = wb.SheetNames[0]!;
             const ws = wb.Sheets[sheetName]!;
-            rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
+            rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+              defval: null,
+              raw: false,
+            });
             if (rows.length > 0) {
               headers = Object.keys(rows[0] as Record<string, unknown>);
             }
@@ -159,54 +390,128 @@ smartImportRouter.post(
         }
 
         const detected = detectResource(headers);
+
         if (!detected) {
           res.json({
             data: {
               type: 'tabular',
+              action: 'preview',
+              filename: f.originalname,
               format: name.endsWith('.csv') ? 'csv' : 'xlsx',
               row_count: rows.length,
               headers,
               detected_resource: null,
-              action: 'manual',
-              hint:
-                'Resource otomatik tespit edilemedi. Header\'a göre el ile resource seç ve /v1/import/:resource çağır.',
+              preview_rows: rows.slice(0, 5),
+              hint: 'Tip otomatik tespit edilemedi. "CSV / XLSX Toplu" sekmesinden resource elle seç.',
             },
           });
           return;
         }
 
         const handler = IMPORT_HANDLERS[detected] as ImportConfig;
-        // Dry-run validate first 5
-        const sampleErrors: Array<{ row: number; error: string }> = [];
-        const sampleValid: unknown[] = [];
-        for (let i = 0; i < Math.min(5, rows.length); i++) {
+        const validatedRows: any[] = [];
+        const errors: Array<{ row: number; error: string; data?: unknown }> = [];
+        for (let i = 0; i < rows.length; i++) {
           const result = handler.schema.safeParse(rows[i]);
-          if (result.success) sampleValid.push(result.data);
-          else
-            sampleErrors.push({
+          if (result.success) {
+            validatedRows.push(result.data);
+          } else {
+            errors.push({
               row: i + 1,
               error: result.error.issues
                 .map((iss) => `${iss.path.join('.')}: ${iss.message}`)
                 .join(', '),
+              data: rows[i],
             });
+          }
         }
+
+        if (!commit) {
+          res.json({
+            data: {
+              type: 'tabular',
+              action: 'preview',
+              filename: f.originalname,
+              format: name.endsWith('.csv') ? 'csv' : 'xlsx',
+              row_count: rows.length,
+              headers,
+              detected_resource: detected,
+              valid_count: validatedRows.length,
+              invalid_count: errors.length,
+              preview_rows: validatedRows.slice(0, 5),
+              errors: errors.slice(0, 20),
+              hint: `${detected} olarak tespit edildi. ${validatedRows.length} satır geçerli. "İçeriye Aktar" tıkla.`,
+            },
+          });
+          return;
+        }
+
+        // Commit — bulk insert with auto-create supplier for payables
+        if (validatedRows.length === 0) {
+          throw new HttpError(400, 'Geçerli satır yok, import yapılamaz', 'NO_VALID');
+        }
+
+        // Sadece payables resource için auto-create supplier
+        let newSuppliers = 0;
+        if (detected === 'payables') {
+          for (const row of validatedRows) {
+            const r = row as Record<string, unknown>;
+            const supplierName = r.supplier_name as string | null;
+            if (supplierName && typeof supplierName === 'string') {
+              try {
+                const sup = await resolveOrCreateCompany(orgId, {
+                  name: supplierName,
+                  tax_number: null,
+                  source: 'csv_import',
+                });
+                if (sup.is_new) newSuppliers++;
+                (row as any).company_id = sup.id;
+              } catch (err) {
+                logger.warn({ err }, 'csv import auto-supplier failed');
+              }
+            }
+          }
+        }
+
+        // Insert
+        const insertedIds = await handler.insert(validatedRows, {
+          orgId,
+          tenantId: handler.scope === 'tenant' ? tenantId : undefined,
+        });
+
+        await auditFromRequest(req, {
+          organization_id: orgId,
+          actor_user_id: req.authUser?.id,
+          actor_email: req.authUser?.email,
+          action: 'smart_import.tabular',
+          details: {
+            filename: f.originalname,
+            resource: detected,
+            inserted: insertedIds.length,
+            new_suppliers: newSuppliers,
+          },
+        });
 
         res.json({
           data: {
             type: 'tabular',
-            format: name.endsWith('.csv') ? 'csv' : 'xlsx',
+            action: 'imported',
+            filename: f.originalname,
+            resource: detected,
             row_count: rows.length,
-            headers,
-            detected_resource: detected,
-            sample_valid: sampleValid,
-            sample_errors: sampleErrors,
-            action: `POST /v1/import/${detected} { format, data }`,
+            valid_count: validatedRows.length,
+            invalid_count: errors.length,
+            inserted: insertedIds.length,
+            inserted_ids: insertedIds,
+            new_suppliers: newSuppliers,
+            errors: errors.slice(0, 20),
+            message: `${insertedIds.length} kayıt eklendi${errors.length > 0 ? `, ${errors.length} hatalı satır atlandı` : ''}${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi (doğrulama bekliyor)` : ''}.`,
           },
         });
         return;
       }
 
-      // PDF / Image → attachment
+      // ===== PDF / Image =====
       if (
         name.endsWith('.pdf') ||
         name.endsWith('.jpg') ||
@@ -214,16 +519,17 @@ smartImportRouter.post(
         name.endsWith('.png') ||
         name.endsWith('.webp')
       ) {
-        const related_table = String(req.query.related_table ?? '');
-        const related_id = String(req.query.related_id ?? '');
         res.json({
           data: {
             type: 'document',
+            action: 'preview',
+            filename: f.originalname,
             mime: f.mimetype,
             size_bytes: f.size,
-            action: related_table && related_id
-              ? `POST /v1/attachments (multipart, file=binary) ?related_table=${related_table}&related_id=${related_id}`
-              : 'PDF/Image bir kayda eklenmek için related_table + related_id gerekli (örn payable_items + payable_id). OCR için /ocr sayfası kullanılabilir.',
+            hint:
+              'PDF/görsel dosyalar fatura/teminat gibi bir kayda eklenmeli. ' +
+              'Önce ilgili fatura/teminat kaydını oluştur, sonra detayında "Ek dosya" alanından yükle. ' +
+              'OCR için /ocr sayfasını kullanabilirsin.',
           },
         });
         return;
