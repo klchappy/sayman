@@ -21,6 +21,7 @@ import { useAuth } from '../../lib/auth';
 import { useSubsidiaries } from '../../lib/use-subsidiaries';
 import { AuditHistoryButton } from '../../components/AuditHistoryButton';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
+import { QuickInvoiceUploadButton } from '../../components/QuickInvoiceUploadButton';
 import { SavedFilters } from '../../components/SavedFilters';
 
 interface Payable {
@@ -167,6 +168,7 @@ export function PayablesPage() {
             <FileSpreadsheet className="size-4" />
             Excel
           </button>
+          <QuickInvoiceUploadButton label="Dosya Yükle" />
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"

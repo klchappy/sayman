@@ -24,6 +24,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AuditHistoryButton } from '../components/AuditHistoryButton';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
+import { QuickInvoiceUploadButton } from '../components/QuickInvoiceUploadButton';
 import { SavedFilters } from '../components/SavedFilters';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -129,6 +130,7 @@ export function SalesInvoicesPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <SavedFilters module="sales-invoices" currentFilters={{}} onApply={() => {}} />
           <AICollectionStrategyButton />
+          <QuickInvoiceUploadButton label="Dosya Yükle" />
           <button
             onClick={() => setShowForm(true)}
             className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"

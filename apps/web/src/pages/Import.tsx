@@ -848,19 +848,22 @@ function ImportResultPanel({
       <p className="text-sm text-brand-700 dark:text-slate-300 mb-2">{result.message}</p>
 
       {result.type === 'efatura_xml' && result.payable && (
-        <div className="bg-white dark:bg-slate-900 rounded p-3 mb-2 text-sm">
-          <a
-            href={`/payables/${result.payable.id}`}
-            className="text-brand-700 dark:text-slate-300 hover:underline font-medium"
-          >
-            {result.payable.title} →
-          </a>
+        <div className="bg-white dark:bg-slate-900 rounded p-3 mb-2 text-sm space-y-2">
+          <p className="font-medium text-brand-900 dark:text-slate-100">{result.payable.title}</p>
+          <div className="p-2 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+            <p className="text-xs text-blue-800 dark:text-blue-300 mb-2">
+              📋 Fatura otomatik yaratıldı, onay bekliyor. Tek tek onaylayabilir / düzenleyebilirsin.
+            </p>
+            <a
+              href="/review-queue"
+              className="inline-flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium"
+            >
+              Onay Bekleyenler'e Git →
+            </a>
+          </div>
           {result.supplier_resolution?.is_new && (
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
-              ⚠ Tedarikçi otomatik oluşturuldu, doğrulama bekliyor.{' '}
-              <a href="/review-queue" className="underline font-medium">
-                Review Queue'ya git →
-              </a>
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              ⚠ Yeni tedarikçi şirket de oluşturuldu (review queue'da)
             </p>
           )}
         </div>
@@ -895,7 +898,7 @@ function ImportResultPanel({
         </div>
       )}
 
-      {result.type === 'zip' && (
+      {(result.type === 'zip' || result.type === 'rar') && (
         <div className="bg-white dark:bg-slate-900 rounded p-3 text-sm">
           <div className="grid grid-cols-4 gap-2 text-center text-xs">
             <div>
@@ -917,12 +920,26 @@ function ImportResultPanel({
               <p className="font-mono text-red-700">{result.failed}</p>
             </div>
           </div>
-          {(result.new_suppliers ?? 0) > 0 && (
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-3">
-              ⚠ {result.new_suppliers} yeni tedarikçi oluşturuldu —{' '}
-              <a href="/review-queue" className="underline font-medium">
-                Review Queue
+
+          {/* Kritik bilgi: eklenen faturalar review queue'da bekliyor */}
+          {(result.success ?? 0) > 0 && (
+            <div className="mt-3 p-3 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs text-blue-800 dark:text-blue-300 font-medium mb-2">
+                📋 {result.success} fatura içeriye alındı ve <strong>Onay Bekleyenler</strong> sayfasına düştü.
+                Otomatik yaratıldığı için tek tek onaylanmalı.
+              </p>
+              <a
+                href="/review-queue"
+                className="inline-flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium"
+              >
+                Onay Bekleyenler'e Git →
               </a>
+            </div>
+          )}
+
+          {(result.new_suppliers ?? 0) > 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+              ⚠ {result.new_suppliers} yeni tedarikçi şirket otomatik oluşturuldu (review queue'da)
             </p>
           )}
           {result.results && (
