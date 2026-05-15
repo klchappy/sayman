@@ -412,6 +412,87 @@ authLocalRouter.post('/auth/reset-password', async (req, res, next) => {
   }
 });
 
+// --- POST /v1/auth/change-password ------------------------------------------
+// Giriş yapmış kullanıcı kendi şifresini değiştirir (mevcut şifre + yeni şifre)
+
+const changePasswordSchema = z.object({
+  current_password: z.string().min(1, 'Mevcut şifre zorunlu'),
+  new_password: z
+    .string()
+    .min(8, 'En az 8 karakter')
+    .regex(/[a-z]/, 'En az 1 küçük harf')
+    .regex(/[0-9]/, 'En az 1 rakam'),
+});
+
+authLocalRouter.post('/auth/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.authUser!;
+    if (!user.auth_account_id) {
+      throw new HttpError(
+        400,
+        'Bu hesap Supabase ile yönetiliyor — şifre değişimi için /auth/forgot-password kullan',
+        'NOT_LOCAL_ACCOUNT',
+      );
+    }
+
+    const body = changePasswordSchema.parse(req.body);
+
+    const ip = getIp(req);
+    await consumeRateLimit({
+      identifier: `change_pw:${user.auth_account_id}`,
+      limit: 5,
+      window_seconds: 600,
+    });
+
+    const db = getDb();
+    const [account] = await db
+      .select()
+      .from(authAccounts)
+      .where(eq(authAccounts.id, user.auth_account_id));
+    if (!account) throw new HttpError(404, 'Hesap bulunamadı', 'NOT_FOUND');
+
+    // Mevcut şifre doğru mu?
+    const ok = await bcrypt.compare(body.current_password, account.password_hash);
+    if (!ok) {
+      throw new HttpError(401, 'Mevcut şifre hatalı', 'INVALID_CURRENT_PASSWORD');
+    }
+
+    // Aynı şifre mi?
+    const same = await bcrypt.compare(body.new_password, account.password_hash);
+    if (same) {
+      throw new HttpError(
+        400,
+        'Yeni şifre eski şifreyle aynı olamaz',
+        'SAME_PASSWORD',
+      );
+    }
+
+    const newHash = await bcrypt.hash(body.new_password, 10);
+    await db
+      .update(authAccounts)
+      .set({ password_hash: newHash, updated_at: new Date() })
+      .where(eq(authAccounts.id, account.id));
+
+    // Mevcut session dışındaki tüm session'ları iptal (güvenlik)
+    const header = req.headers.authorization ?? '';
+    const currentToken = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    const offline = verifyLocalJwtOffline(currentToken);
+    const currentJti = offline.ok && offline.jti ? offline.jti : undefined;
+    await revokeAllSessionsForAccount(account.id, currentJti);
+
+    await auditFromRequest(req, {
+      actor_user_id: account.id,
+      actor_email: account.email,
+      action: 'auth.password_changed',
+      details: { from: ip ?? null },
+    });
+
+    res.json({ ok: true, message: 'Şifre başarıyla değiştirildi. Diğer cihazlardan çıkış yapıldı.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // --- POST /v1/auth/logout ---------------------------------------------------
 
 authLocalRouter.post('/auth/logout', async (req, res, next) => {

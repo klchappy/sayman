@@ -242,6 +242,129 @@ function SessionsSection() {
   );
 }
 
+// --- Change Password (giriş yapmış kullanıcı kendi şifresini değiştirir) ----
+
+function ChangePasswordSection() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const change = useMutation({
+    mutationFn: async () => {
+      await api.post('/auth/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+    },
+    onSuccess: () => {
+      setSuccess(true);
+      setError(null);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setSuccess(false), 5000);
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string } }; message?: string };
+      setError(err.response?.data?.error ?? err.message ?? 'Şifre değiştirilemedi');
+    },
+  });
+
+  const lenOk = newPassword.length >= 8;
+  const lowerOk = /[a-z]/.test(newPassword);
+  const digitOk = /[0-9]/.test(newPassword);
+  const matchOk = newPassword === confirmPassword && newPassword.length > 0;
+  const formValid = !!currentPassword && lenOk && lowerOk && digitOk && matchOk;
+
+  return (
+    <div className="card">
+      <h2 className="font-semibold text-brand-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+        <Key className="size-5" />
+        Şifre Değiştir
+      </h2>
+      <div className="space-y-3 max-w-md">
+        <div>
+          <label className="text-xs text-brand-500 dark:text-slate-400 uppercase tracking-wide">
+            Mevcut Şifre
+          </label>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            className="input w-full mt-1"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-brand-500 dark:text-slate-400 uppercase tracking-wide">
+            Yeni Şifre
+          </label>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            className="input w-full mt-1"
+          />
+          {newPassword.length > 0 && (
+            <ul className="mt-1 text-[10px] space-y-0.5">
+              <li className={lenOk ? 'text-emerald-600' : 'text-brand-400'}>
+                {lenOk ? '✓' : '○'} En az 8 karakter
+              </li>
+              <li className={lowerOk ? 'text-emerald-600' : 'text-brand-400'}>
+                {lowerOk ? '✓' : '○'} En az 1 küçük harf
+              </li>
+              <li className={digitOk ? 'text-emerald-600' : 'text-brand-400'}>
+                {digitOk ? '✓' : '○'} En az 1 rakam
+              </li>
+            </ul>
+          )}
+        </div>
+        <div>
+          <label className="text-xs text-brand-500 dark:text-slate-400 uppercase tracking-wide">
+            Yeni Şifre (Tekrar)
+          </label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+            className="input w-full mt-1"
+          />
+          {confirmPassword.length > 0 && !matchOk && (
+            <p className="text-[10px] text-red-600 mt-1">○ Şifreler eşleşmiyor</p>
+          )}
+        </div>
+
+        {error && (
+          <div className="text-sm p-3 rounded bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="text-sm p-3 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300">
+            Şifre değiştirildi. Diğer cihazlardaki oturumlar kapatıldı.
+          </div>
+        )}
+
+        <button
+          onClick={() => {
+            setError(null);
+            setSuccess(false);
+            change.mutate();
+          }}
+          disabled={!formValid || change.isPending}
+          className="bg-brand-900 hover:bg-brand-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm"
+        >
+          {change.isPending ? 'Değiştiriliyor…' : 'Şifreyi Değiştir'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- KVKK Export ------------------------------------------------------------
 
 function KvkkSection() {
@@ -773,6 +896,7 @@ export function SecurityPage() {
         <h1 className="text-2xl font-semibold text-brand-900 dark:text-slate-100">Hesap Güvenliği</h1>
       </header>
 
+      <ChangePasswordSection />
       <TwoFASection />
       <TelegramSection />
       <ApiTokensSection />

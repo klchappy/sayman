@@ -219,6 +219,21 @@ export const useAuth = create<AuthState>()(
     {
       name: 'sayman-active',
       partialize: (s) => ({ active: s.active }),
+      // Eski persist'lerde active.aggregate yoktu — undefined'ı false yap
+      version: 2,
+      migrate: (persisted: unknown, _version: number) => {
+        const p = persisted as { active?: Partial<ActiveSelection> } | undefined;
+        if (p?.active) {
+          return {
+            active: {
+              orgSlug: p.active.orgSlug ?? null,
+              tenantSlug: p.active.tenantSlug ?? null,
+              aggregate: p.active.aggregate ?? false,
+            },
+          };
+        }
+        return { active: { orgSlug: null, tenantSlug: null, aggregate: false } };
+      },
     },
   ),
 );
