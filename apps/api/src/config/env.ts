@@ -99,6 +99,16 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string().min(8).optional(),
   ),
+
+  /** Upstash Redis — cluster-safe rate limit için (yoksa in-memory fallback) */
+  UPSTASH_REDIS_REST_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
+  UPSTASH_REDIS_REST_TOKEN: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(10).optional(),
+  ),
 });
 
 export const env = envSchema.parse(process.env);
@@ -115,4 +125,5 @@ export const isConfigured = {
   ai: Boolean(env.ANTHROPIC_API_KEY),
   whatsapp: Boolean(env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID),
   embeddings: Boolean(env.VOYAGE_API_KEY),
+  upstashRedis: Boolean(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN),
 };

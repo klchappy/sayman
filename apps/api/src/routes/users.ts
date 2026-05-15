@@ -248,7 +248,7 @@ usersRouter.post(
       const body = inviteSchema.parse(req.body);
       const email = body.email.toLowerCase().trim();
 
-      consumeRateLimit({
+      await consumeRateLimit({
         identifier: `invite:org:${req.activeOrgId}`,
         limit: 30,
         window_seconds: 3600,
@@ -495,7 +495,7 @@ const acceptSchema = z.object({
 usersRouter.post('/users/accept-invite', async (req, res, next) => {
   try {
     const body = acceptSchema.parse(req.body);
-    consumeRateLimit({ identifier: `accept:ip:${getIp(req) ?? '0'}`, limit: 5, window_seconds: 600 });
+    await consumeRateLimit({ identifier: `accept:ip:${getIp(req) ?? '0'}`, limit: 5, window_seconds: 600 });
 
     const db = getDb();
     const tokenHash = sha256Hex(body.token);

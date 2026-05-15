@@ -61,20 +61,36 @@ payablesRouter.get(
     try {
       const db = getDb();
       const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      const limit = Math.min(Number(req.query.limit ?? 100), 500);
+      // Cursor: önceki sayfanın son satırının created_at ISO timestamp'i
+      const cursor = req.query.cursor ? String(req.query.cursor) : null;
+
       const tenantScope = req.aggregateTenantIds
         ? inArray(payableItems.tenant_id, req.aggregateTenantIds)
         : eq(payableItems.tenant_id, req.activeTenantId!);
       const conditions = [tenantScope];
       if (!includeReview) conditions.push(eq(payableItems.needs_review, false));
+      if (cursor) {
+        // created_at < cursor — bir önceki sayfa devamı
+        conditions.push(sql`${payableItems.created_at} < ${cursor}::timestamptz`);
+      }
+
       const rows = await db
         .select()
         .from(payableItems)
         .where(and(...conditions))
         .orderBy(desc(payableItems.due_date), desc(payableItems.created_at))
-        .limit(500);
+        .limit(limit + 1);
+
+      const hasMore = rows.length > limit;
+      const data = hasMore ? rows.slice(0, limit) : rows;
+      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1]!.created_at : null;
+
       res.json({
-        data: rows,
-        count: rows.length,
+        data,
+        count: data.length,
+        has_more: hasMore,
+        next_cursor: nextCursor,
         aggregate: req.aggregateTenantIds ? { tenant_count: req.aggregateTenantIds.length } : null,
       });
     } catch (err) {

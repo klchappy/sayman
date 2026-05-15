@@ -234,7 +234,7 @@ aiAssistantRouter.post('/ai/ask', requireAuth, requireOrg, async (req, res, next
     if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
 
     const body = askSchema.parse(req.body);
-    consumeRateLimit({
+    await consumeRateLimit({
       identifier: `ai:${req.authUser!.id}`,
       limit: 30,
       window_seconds: 3600,

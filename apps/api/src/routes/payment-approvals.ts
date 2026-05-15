@@ -170,29 +170,34 @@ paymentApprovalsRouter.post(
         );
       }
 
-      // Onayla + asıl payment transaction oluştur
-      await db
-        .update(paymentApprovals)
-        .set({
-          status: 'approved',
-          approver_user_id: req.authUser!.id,
-          decision_reason: reason ?? null,
-          decided_at: new Date(),
-        })
-        .where(eq(paymentApprovals.id, appr.id));
+      // Onayla + asıl payment transaction oluştur — atomik
+      // Eğer payment insert fail ederse approval 'pending' kalır, audit log düşmez,
+      // kullanıcı tekrar deneyebilir.
+      const payment = await db.transaction(async (tx) => {
+        await tx
+          .update(paymentApprovals)
+          .set({
+            status: 'approved',
+            approver_user_id: req.authUser!.id,
+            decision_reason: reason ?? null,
+            decided_at: new Date(),
+          })
+          .where(eq(paymentApprovals.id, appr.id));
 
-      const [payment] = await db
-        .insert(paymentTransactions)
-        .values({
-          tenant_id: appr.tenant_id,
-          payable_id: appr.payable_id,
-          paid_at: appr.paid_at,
-          amount: appr.amount,
-          method: appr.method as any,
-          reference_no: appr.reference_no,
-          status: 'approved',
-        })
-        .returning({ id: paymentTransactions.id });
+        const [row] = await tx
+          .insert(paymentTransactions)
+          .values({
+            tenant_id: appr.tenant_id,
+            payable_id: appr.payable_id,
+            paid_at: appr.paid_at,
+            amount: appr.amount,
+            method: appr.method as any,
+            reference_no: appr.reference_no,
+            status: 'approved',
+          })
+          .returning({ id: paymentTransactions.id });
+        return row;
+      });
 
       await auditFromRequest(req, {
         organization_id: req.activeOrgId!,

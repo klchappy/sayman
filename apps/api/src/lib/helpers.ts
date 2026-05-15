@@ -1,7 +1,7 @@
 /**
  * API helpers — tenant scope + share_scope filtering + organization gate.
  */
-import { eq, sql, type SQL } from 'drizzle-orm';
+import { eq, inArray, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Request, Response, NextFunction } from 'express';
 import { getDb, tenants, userOrganizationRoles, userTenantOverrides, organizations } from '@sayman/db';
 
@@ -13,6 +13,21 @@ export class HttpError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+/**
+ * tenantScope — Aggregate mode'a hazır tenant filtresi.
+ *   - Tek tenant: eq(column, activeTenantId)
+ *   - Aggregate (admin): inArray(column, aggregateTenantIds)
+ *
+ * Kullanım:
+ *   const where = and(tenantScope(req, payableItems.tenant_id), eq(payableItems.is_active, true))
+ */
+export function tenantScope(req: Request, column: AnyColumn): SQL {
+  if (req.aggregateTenantIds && req.aggregateTenantIds.length > 0) {
+    return inArray(column, req.aggregateTenantIds);
+  }
+  return eq(column, req.activeTenantId!);
 }
 
 /**

@@ -74,9 +74,9 @@ authLocalRouter.post('/auth/local/sign-in', async (req, res, next) => {
     const identifier = body.identifier.toLowerCase().trim();
 
     // Rate limit: identifier (5/dk) + ip (20/dk)
-    consumeRateLimit({ identifier: `signin:id:${identifier}`, limit: 5, window_seconds: 60 });
+    await consumeRateLimit({ identifier: `signin:id:${identifier}`, limit: 5, window_seconds: 60 });
     const ip = getIp(req);
-    if (ip) consumeRateLimit({ identifier: `signin:ip:${ip}`, limit: 20, window_seconds: 60 });
+    if (ip) await consumeRateLimit({ identifier: `signin:ip:${ip}`, limit: 20, window_seconds: 60 });
 
     const db = getDb();
     const [account] = await db
@@ -194,7 +194,7 @@ authLocalRouter.post('/auth/local/sign-up-org', async (req, res, next) => {
     const body = signUpOrgSchema.parse(req.body);
     const email = body.email.toLowerCase().trim();
 
-    consumeRateLimit({ identifier: `signup:ip:${getIp(req) ?? '0'}`, limit: 5, window_seconds: 300 });
+    await consumeRateLimit({ identifier: `signup:ip:${getIp(req) ?? '0'}`, limit: 5, window_seconds: 300 });
 
     const db = getDb();
 
@@ -299,9 +299,9 @@ authLocalRouter.post('/auth/forgot-password', async (req, res, next) => {
     const identifier = (body.identifier ?? body.email ?? '').toLowerCase().trim();
     if (!identifier) throw new HttpError(400, 'identifier veya email gerekli', 'MISSING_ID');
 
-    consumeRateLimit({ identifier: `forgot:id:${identifier}`, limit: 3, window_seconds: 3600 });
+    await consumeRateLimit({ identifier: `forgot:id:${identifier}`, limit: 3, window_seconds: 3600 });
     const ip = getIp(req);
-    if (ip) consumeRateLimit({ identifier: `forgot:ip:${ip}`, limit: 10, window_seconds: 3600 });
+    if (ip) await consumeRateLimit({ identifier: `forgot:ip:${ip}`, limit: 10, window_seconds: 3600 });
 
     const db = getDb();
     const [account] = await db.select().from(authAccounts).where(eq(authAccounts.email, identifier));
@@ -377,7 +377,7 @@ authLocalRouter.post('/auth/reset-password', async (req, res, next) => {
   try {
     const body = resetSchema.parse(req.body);
     const ip = getIp(req);
-    consumeRateLimit({ identifier: `reset:ip:${ip ?? '0'}`, limit: 5, window_seconds: 3600 });
+    await consumeRateLimit({ identifier: `reset:ip:${ip ?? '0'}`, limit: 5, window_seconds: 3600 });
 
     const result = await consumeResetToken({ token: body.token, new_password: body.password });
     if (!result.ok || !result.account_id || !result.email) {

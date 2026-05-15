@@ -1,64 +1,168 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './lib/auth';
 import { useTheme } from './lib/theme';
-import { DashboardPage } from './pages/Dashboard';
-import { HomePage } from './pages/Home';
+
+// Auth flow eager (küçük + onboarding sırasında hep gerekli)
 import { LoginPage } from './pages/Login';
-import { AuditLogPage } from './pages/AuditLog';
-import { NotificationsPage } from './pages/Notifications';
-import { OrganizationDetailPage } from './pages/OrganizationDetail';
-import { SecurityPage } from './pages/Security';
-import { TasksPage } from './pages/Tasks';
 import { AcceptInvitePage } from './pages/auth/AcceptInvite';
 import { ForgotPasswordPage } from './pages/auth/ForgotPassword';
 import { ResetPasswordPage } from './pages/auth/ResetPassword';
 import { SignUpOrgPage } from './pages/auth/SignUpOrg';
-import { AIAssistantPage } from './pages/AIAssistant';
-import { BulkCategorizePage } from './pages/BulkCategorize';
-import { CariDetailPage, CariListPage } from './pages/Cari';
-import { ErpConnectionsPage } from './pages/ErpConnections';
-import { ForecastPage } from './pages/Forecast';
-import { BudgetsPage } from './pages/Budgets';
-import { ChecksPage } from './pages/Checks';
-import { CollectionRemindersPage } from './pages/CollectionReminders';
-import { CariPortalTokensPage, PublicPortalPage } from './pages/CustomerPortal';
-import { BalanceSheetPage } from './pages/BalanceSheet';
-import { EmployeesPage } from './pages/Employees';
-import { FixedAssetsPage } from './pages/FixedAssets';
-import { PayrollPage, PayrollRunDetailPage } from './pages/Payroll';
-import { ProfitLossPage } from './pages/ProfitLoss';
-import { ReconciliationPage } from './pages/Reconciliation';
-import { SalesInvoicesPage } from './pages/SalesInvoices';
-import { StockPage } from './pages/Stock';
-import { TaxCalendarPage } from './pages/TaxCalendar';
-import { ImportPage } from './pages/Import';
-import { ReviewQueuePage } from './pages/ReviewQueue';
-import { InboundWebhooksPage } from './pages/InboundWebhooks';
-import { InboxPage } from './pages/Inbox';
-import { IntegrationsPage } from './pages/Integrations';
-import { OCRPage } from './pages/OCR';
-import { OnboardingPage } from './pages/Onboarding';
-import { PaymentApprovalsPage } from './pages/PaymentApprovals';
-import {
-  SupplierScorecardDetailPage,
-  SupplierScorecardListPage,
-} from './pages/SupplierScorecard';
-import { SubsidiariesPage } from './pages/Subsidiaries';
-import { UsersPage } from './pages/Users';
-import { BanksPage } from './pages/master-data/Banks';
-import { CompaniesPage } from './pages/master-data/Companies';
-import { InstitutionsPage } from './pages/master-data/Institutions';
-import { PersonsPage } from './pages/master-data/Persons';
-import { PropertiesPage } from './pages/master-data/Properties';
-import { GuaranteesPage } from './pages/finance/Guarantees';
-import { OfficialPaymentsPage } from './pages/finance/OfficialPayments';
-import { PayableDetailPage } from './pages/finance/PayableDetail';
-import { PayablesPage } from './pages/finance/Payables';
-import { RegularPaymentsPage } from './pages/finance/RegularPayments';
-import { SubscriptionsPage } from './pages/finance/Subscriptions';
+import { PublicPortalPage } from './pages/CustomerPortal';
+
+// Korumalı sayfalar lazy — bundle initial size'ı düşürür (~2.2MB → ~600KB)
+const DashboardPage = lazy(() =>
+  import('./pages/Dashboard').then((m) => ({ default: m.DashboardPage })),
+);
+const HomePage = lazy(() => import('./pages/Home').then((m) => ({ default: m.HomePage })));
+const AuditLogPage = lazy(() =>
+  import('./pages/AuditLog').then((m) => ({ default: m.AuditLogPage })),
+);
+const NotificationsPage = lazy(() =>
+  import('./pages/Notifications').then((m) => ({ default: m.NotificationsPage })),
+);
+const OrganizationDetailPage = lazy(() =>
+  import('./pages/OrganizationDetail').then((m) => ({ default: m.OrganizationDetailPage })),
+);
+const SecurityPage = lazy(() =>
+  import('./pages/Security').then((m) => ({ default: m.SecurityPage })),
+);
+const TasksPage = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.TasksPage })));
+const AIAssistantPage = lazy(() =>
+  import('./pages/AIAssistant').then((m) => ({ default: m.AIAssistantPage })),
+);
+const BulkCategorizePage = lazy(() =>
+  import('./pages/BulkCategorize').then((m) => ({ default: m.BulkCategorizePage })),
+);
+const CariListPage = lazy(() =>
+  import('./pages/Cari').then((m) => ({ default: m.CariListPage })),
+);
+const CariDetailPage = lazy(() =>
+  import('./pages/Cari').then((m) => ({ default: m.CariDetailPage })),
+);
+const ErpConnectionsPage = lazy(() =>
+  import('./pages/ErpConnections').then((m) => ({ default: m.ErpConnectionsPage })),
+);
+const ForecastPage = lazy(() =>
+  import('./pages/Forecast').then((m) => ({ default: m.ForecastPage })),
+);
+const BudgetsPage = lazy(() =>
+  import('./pages/Budgets').then((m) => ({ default: m.BudgetsPage })),
+);
+const ChecksPage = lazy(() =>
+  import('./pages/Checks').then((m) => ({ default: m.ChecksPage })),
+);
+const CollectionRemindersPage = lazy(() =>
+  import('./pages/CollectionReminders').then((m) => ({ default: m.CollectionRemindersPage })),
+);
+const CariPortalTokensPage = lazy(() =>
+  import('./pages/CustomerPortal').then((m) => ({ default: m.CariPortalTokensPage })),
+);
+const BalanceSheetPage = lazy(() =>
+  import('./pages/BalanceSheet').then((m) => ({ default: m.BalanceSheetPage })),
+);
+const EmployeesPage = lazy(() =>
+  import('./pages/Employees').then((m) => ({ default: m.EmployeesPage })),
+);
+const FixedAssetsPage = lazy(() =>
+  import('./pages/FixedAssets').then((m) => ({ default: m.FixedAssetsPage })),
+);
+const PayrollPage = lazy(() =>
+  import('./pages/Payroll').then((m) => ({ default: m.PayrollPage })),
+);
+const PayrollRunDetailPage = lazy(() =>
+  import('./pages/Payroll').then((m) => ({ default: m.PayrollRunDetailPage })),
+);
+const ProfitLossPage = lazy(() =>
+  import('./pages/ProfitLoss').then((m) => ({ default: m.ProfitLossPage })),
+);
+const ReconciliationPage = lazy(() =>
+  import('./pages/Reconciliation').then((m) => ({ default: m.ReconciliationPage })),
+);
+const SalesInvoicesPage = lazy(() =>
+  import('./pages/SalesInvoices').then((m) => ({ default: m.SalesInvoicesPage })),
+);
+const StockPage = lazy(() => import('./pages/Stock').then((m) => ({ default: m.StockPage })));
+const TaxCalendarPage = lazy(() =>
+  import('./pages/TaxCalendar').then((m) => ({ default: m.TaxCalendarPage })),
+);
+const ImportPage = lazy(() =>
+  import('./pages/Import').then((m) => ({ default: m.ImportPage })),
+);
+const ReviewQueuePage = lazy(() =>
+  import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueuePage })),
+);
+const InboundWebhooksPage = lazy(() =>
+  import('./pages/InboundWebhooks').then((m) => ({ default: m.InboundWebhooksPage })),
+);
+const InboxPage = lazy(() => import('./pages/Inbox').then((m) => ({ default: m.InboxPage })));
+const IntegrationsPage = lazy(() =>
+  import('./pages/Integrations').then((m) => ({ default: m.IntegrationsPage })),
+);
+const OCRPage = lazy(() => import('./pages/OCR').then((m) => ({ default: m.OCRPage })));
+const OnboardingPage = lazy(() =>
+  import('./pages/Onboarding').then((m) => ({ default: m.OnboardingPage })),
+);
+const PaymentApprovalsPage = lazy(() =>
+  import('./pages/PaymentApprovals').then((m) => ({ default: m.PaymentApprovalsPage })),
+);
+const SupplierScorecardListPage = lazy(() =>
+  import('./pages/SupplierScorecard').then((m) => ({ default: m.SupplierScorecardListPage })),
+);
+const SupplierScorecardDetailPage = lazy(() =>
+  import('./pages/SupplierScorecard').then((m) => ({ default: m.SupplierScorecardDetailPage })),
+);
+const SubsidiariesPage = lazy(() =>
+  import('./pages/Subsidiaries').then((m) => ({ default: m.SubsidiariesPage })),
+);
+const UsersPage = lazy(() => import('./pages/Users').then((m) => ({ default: m.UsersPage })));
+const BanksPage = lazy(() =>
+  import('./pages/master-data/Banks').then((m) => ({ default: m.BanksPage })),
+);
+const CompaniesPage = lazy(() =>
+  import('./pages/master-data/Companies').then((m) => ({ default: m.CompaniesPage })),
+);
+const InstitutionsPage = lazy(() =>
+  import('./pages/master-data/Institutions').then((m) => ({ default: m.InstitutionsPage })),
+);
+const PersonsPage = lazy(() =>
+  import('./pages/master-data/Persons').then((m) => ({ default: m.PersonsPage })),
+);
+const PropertiesPage = lazy(() =>
+  import('./pages/master-data/Properties').then((m) => ({ default: m.PropertiesPage })),
+);
+const GuaranteesPage = lazy(() =>
+  import('./pages/finance/Guarantees').then((m) => ({ default: m.GuaranteesPage })),
+);
+const OfficialPaymentsPage = lazy(() =>
+  import('./pages/finance/OfficialPayments').then((m) => ({ default: m.OfficialPaymentsPage })),
+);
+const PayableDetailPage = lazy(() =>
+  import('./pages/finance/PayableDetail').then((m) => ({ default: m.PayableDetailPage })),
+);
+const PayablesPage = lazy(() =>
+  import('./pages/finance/Payables').then((m) => ({ default: m.PayablesPage })),
+);
+const RegularPaymentsPage = lazy(() =>
+  import('./pages/finance/RegularPayments').then((m) => ({ default: m.RegularPaymentsPage })),
+);
+const SubscriptionsPage = lazy(() =>
+  import('./pages/finance/Subscriptions').then((m) => ({ default: m.SubscriptionsPage })),
+);
+
+function PageFallback() {
+  return (
+    <div className="min-h-[40vh] grid place-items-center text-brand-500 dark:text-slate-400 text-sm">
+      <div className="text-center">
+        <div className="size-8 mx-auto mb-2 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        Sayfa yükleniyor…
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const init = useAuth((s) => s.init);
@@ -87,61 +191,411 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route
+          index
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <DashboardPage />
+            </Suspense>
+          }
+        />
 
-        <Route path="/payables" element={<PayablesPage />} />
-        <Route path="/payables/:id" element={<PayableDetailPage />} />
-        <Route path="/subscriptions" element={<SubscriptionsPage />} />
-        <Route path="/regular-payments" element={<RegularPaymentsPage />} />
-        <Route path="/official-payments" element={<OfficialPaymentsPage />} />
-        <Route path="/guarantees" element={<GuaranteesPage />} />
+        <Route
+          path="/payables"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <PayablesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/payables/:id"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <PayableDetailPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/subscriptions"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SubscriptionsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/regular-payments"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <RegularPaymentsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/official-payments"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <OfficialPaymentsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/guarantees"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <GuaranteesPage />
+            </Suspense>
+          }
+        />
 
-        <Route path="/master-data/persons" element={<PersonsPage />} />
-        <Route path="/master-data/companies" element={<CompaniesPage />} />
-        <Route path="/master-data/properties" element={<PropertiesPage />} />
-        <Route path="/master-data/banks" element={<BanksPage />} />
-        <Route path="/master-data/institutions" element={<InstitutionsPage />} />
+        <Route
+          path="/master-data/persons"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <PersonsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/master-data/companies"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <CompaniesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/master-data/properties"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <PropertiesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/master-data/banks"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <BanksPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/master-data/institutions"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <InstitutionsPage />
+            </Suspense>
+          }
+        />
 
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/audit" element={<AuditLogPage />} />
-        <Route path="/users" element={<UsersPage />} />
-        <Route path="/import" element={<ImportPage />} />
-        <Route path="/review-queue" element={<ReviewQueuePage />} />
-        <Route path="/ocr" element={<OCRPage />} />
-        <Route path="/ai" element={<AIAssistantPage />} />
-        <Route path="/subsidiaries" element={<SubsidiariesPage />} />
+        <Route
+          path="/tasks"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <TasksPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <NotificationsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/audit"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <AuditLogPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <UsersPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/import"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ImportPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/review-queue"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ReviewQueuePage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/ocr"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <OCRPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/ai"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <AIAssistantPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/subsidiaries"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SubsidiariesPage />
+            </Suspense>
+          }
+        />
 
-        <Route path="/security" element={<SecurityPage />} />
-        <Route path="/integrations" element={<IntegrationsPage />} />
-        <Route path="/integrations/inbound-webhooks" element={<InboundWebhooksPage />} />
-        <Route path="/forecast" element={<ForecastPage />} />
-        <Route path="/inbox" element={<InboxPage />} />
-        <Route path="/suppliers" element={<SupplierScorecardListPage />} />
-        <Route path="/suppliers/:name" element={<SupplierScorecardDetailPage />} />
-        <Route path="/tools/bulk-categorize" element={<BulkCategorizePage />} />
-        <Route path="/onboarding" element={<OnboardingPage />} />
-        <Route path="/payment-approvals" element={<PaymentApprovalsPage />} />
-        <Route path="/erp" element={<ErpConnectionsPage />} />
-        <Route path="/cari" element={<CariListPage />} />
-        <Route path="/cari/:id" element={<CariDetailPage />} />
-        <Route path="/sales-invoices" element={<SalesInvoicesPage />} />
-        <Route path="/stock" element={<StockPage />} />
-        <Route path="/tax-calendar" element={<TaxCalendarPage />} />
-        <Route path="/budgets" element={<BudgetsPage />} />
-        <Route path="/checks" element={<ChecksPage />} />
-        <Route path="/collection-reminders" element={<CollectionRemindersPage />} />
-        <Route path="/fixed-assets" element={<FixedAssetsPage />} />
-        <Route path="/reports/profit-loss" element={<ProfitLossPage />} />
-        <Route path="/reports/balance-sheet" element={<BalanceSheetPage />} />
-        <Route path="/employees" element={<EmployeesPage />} />
-        <Route path="/payroll" element={<PayrollPage />} />
-        <Route path="/payroll/:id" element={<PayrollRunDetailPage />} />
-        <Route path="/cari/:id/reconciliation" element={<ReconciliationPage />} />
-        <Route path="/cari/:id/portal-tokens" element={<CariPortalTokensPage />} />
+        <Route
+          path="/security"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SecurityPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/integrations"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <IntegrationsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/integrations/inbound-webhooks"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <InboundWebhooksPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/forecast"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ForecastPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/inbox"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <InboxPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/suppliers"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SupplierScorecardListPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/suppliers/:name"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SupplierScorecardDetailPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/tools/bulk-categorize"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <BulkCategorizePage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/onboarding"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <OnboardingPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/payment-approvals"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <PaymentApprovalsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/erp"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ErpConnectionsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/cari"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <CariListPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/cari/:id"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <CariDetailPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/sales-invoices"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SalesInvoicesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/stock"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <StockPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/tax-calendar"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <TaxCalendarPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/budgets"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <BudgetsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/checks"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ChecksPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/collection-reminders"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <CollectionRemindersPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/fixed-assets"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <FixedAssetsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reports/profit-loss"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ProfitLossPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reports/balance-sheet"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <BalanceSheetPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/employees"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <EmployeesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/payroll"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <PayrollPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/payroll/:id"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <PayrollRunDetailPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/cari/:id/reconciliation"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ReconciliationPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/cari/:id/portal-tokens"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <CariPortalTokensPage />
+            </Suspense>
+          }
+        />
 
-        <Route path="/orgs" element={<HomePage />} />
-        <Route path="/orgs/:slug" element={<OrganizationDetailPage />} />
+        <Route
+          path="/orgs"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <HomePage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/orgs/:slug"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <OrganizationDetailPage />
+            </Suspense>
+          }
+        />
       </Route>
     </Routes>
   );

@@ -14,7 +14,7 @@ import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { checksAndNotes, getDb } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const checksRouter = Router();
@@ -74,11 +74,11 @@ checksRouter.get('/checks/summary', requireAuth, requireTenant, async (req, res,
   }
 });
 
-checksRouter.get('/checks', requireAuth, requireTenant, async (req, res, next) => {
+checksRouter.get('/checks', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const conditions: any[] = [
-      eq(checksAndNotes.tenant_id, req.activeTenantId!),
+      tenantScope(req, checksAndNotes.tenant_id),
       eq(checksAndNotes.is_active, true),
     ];
     if (req.query.direction) {

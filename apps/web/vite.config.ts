@@ -19,5 +19,21 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
     },
+    build: {
+      // Vendor chunk'ları ayır: hot path'te tekrar tekrar download'lanmasın.
+      // Sayfaların kendi lazy chunk'ları zaten App.tsx React.lazy ile ayrılıyor.
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-query': ['@tanstack/react-query', 'zustand'],
+            'vendor-charts': ['recharts'],
+            'vendor-icons': ['lucide-react'],
+            'vendor-utils': ['axios', '@supabase/supabase-js'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 700,
+    },
   };
 });

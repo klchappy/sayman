@@ -13,16 +13,16 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { employees, getDb } from '@sayman/db';
 import { calculatePayroll } from '../lib/payroll-calc';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const employeesRouter = Router();
 
-employeesRouter.get('/employees', requireAuth, requireTenant, async (req, res, next) => {
+employeesRouter.get('/employees', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const conditions: any[] = [
-      eq(employees.tenant_id, req.activeTenantId!),
+      tenantScope(req, employees.tenant_id),
       eq(employees.is_active, true),
     ];
     if (req.query.status) conditions.push(eq(employees.status, String(req.query.status)));

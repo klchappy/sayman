@@ -42,7 +42,7 @@ riskScoreRouter.post(
   requireTenant,
   async (req, res, next) => {
     try {
-      consumeRateLimit({
+      await consumeRateLimit({
         identifier: `risk-score:${req.authUser!.id}`,
         limit: 30,
         window_seconds: 3600,

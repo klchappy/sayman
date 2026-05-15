@@ -19,7 +19,7 @@ import {
   getDb,
 } from '@sayman/db';
 import { buildSchedule, calculateMonthlyDepreciation } from '../lib/depreciation';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const fixedAssetsRouter = Router();
@@ -84,11 +84,11 @@ fixedAssetsRouter.get(
   },
 );
 
-fixedAssetsRouter.get('/fixed-assets', requireAuth, requireTenant, async (req, res, next) => {
+fixedAssetsRouter.get('/fixed-assets', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const conditions: any[] = [
-      eq(fixedAssets.tenant_id, req.activeTenantId!),
+      tenantScope(req, fixedAssets.tenant_id),
       eq(fixedAssets.is_active, true),
     ];
     if (req.query.category) conditions.push(eq(fixedAssets.category, String(req.query.category)));

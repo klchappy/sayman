@@ -30,7 +30,7 @@ aiExplainRouter.get(
       const tenantId = req.saymanContext?.tenantId;
       if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
 
-      consumeRateLimit({
+      await consumeRateLimit({
         identifier: `ai-explain:${req.authUser!.id}`,
         limit: 20,
         window_seconds: 3600,

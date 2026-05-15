@@ -189,41 +189,75 @@ smartImportRouter.post(
           return;
         }
 
-        const [created] = await db
-          .insert(payableItems)
-          .values({
-            tenant_id: targetTenantId,
-            owner_type: 'company',
-            company_id: supplierResolution?.id ?? null,
-            title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
-            category: 'e-fatura',
-            invoice_number: parsed.invoice_number,
-            supplier_name: parsed.supplier_name,
-            issue_date: parsed.issue_date,
-            due_date: parsed.due_date,
-            amount: parsed.amount,
-            currency: parsed.currency,
-            status: 'pending',
-            notes: parsed.notes,
-            metadata: {
-              source: 'smart_import',
-              filename: f.originalname,
-              supplier_tax_number: parsed.supplier_tax_number,
-              recipient_tax_number: parsed.recipient_tax_number,
-              recipient_name: parsed.recipient_name,
-              tenant_routing: {
-                auto_matched: route.isAutoMatched,
-                mismatch_with_active: route.mismatch,
-                active_tenant_at_upload: tenantId,
+        // Race-safe insert: DB-level UNIQUE (tenant_id, invoice_number) ile concurrent
+        // import'larda iki kayıt yaratılmaz. 23505 = unique_violation
+        let created: { id: string; title: string } | undefined;
+        try {
+          [created] = await db
+            .insert(payableItems)
+            .values({
+              tenant_id: targetTenantId,
+              owner_type: 'company',
+              company_id: supplierResolution?.id ?? null,
+              title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
+              category: 'e-fatura',
+              invoice_number: parsed.invoice_number,
+              supplier_name: parsed.supplier_name,
+              issue_date: parsed.issue_date,
+              due_date: parsed.due_date,
+              amount: parsed.amount,
+              currency: parsed.currency,
+              status: 'pending',
+              notes: parsed.notes,
+              metadata: {
+                source: 'smart_import',
+                filename: f.originalname,
+                supplier_tax_number: parsed.supplier_tax_number,
+                recipient_tax_number: parsed.recipient_tax_number,
+                recipient_name: parsed.recipient_name,
+                tenant_routing: {
+                  auto_matched: route.isAutoMatched,
+                  mismatch_with_active: route.mismatch,
+                  active_tenant_at_upload: tenantId,
+                },
               },
-            },
-            needs_review: true,
-            auto_created_source: route.isAutoMatched
-              ? 'efatura_auto_routed'
-              : 'efatura',
-            created_by: req.authUser?.id ?? null,
-          })
-          .returning({ id: payableItems.id, title: payableItems.title });
+              needs_review: true,
+              auto_created_source: route.isAutoMatched
+                ? 'efatura_auto_routed'
+                : 'efatura',
+              created_by: req.authUser?.id ?? null,
+            })
+            .returning({ id: payableItems.id, title: payableItems.title });
+        } catch (e) {
+          if ((e as { code?: string }).code === '23505') {
+            // Concurrent upload won the race
+            const [dup] = await db
+              .select({ id: payableItems.id, title: payableItems.title })
+              .from(payableItems)
+              .where(
+                and(
+                  eq(payableItems.tenant_id, targetTenantId),
+                  eq(payableItems.invoice_number, parsed.invoice_number),
+                ),
+              )
+              .limit(1);
+            if (dup) {
+              res.json({
+                data: {
+                  type: 'efatura_xml',
+                  action: 'skipped_duplicate',
+                  filename: f.originalname,
+                  parsed,
+                  payable_id: dup.id,
+                  supplier_resolution: supplierResolution,
+                  message: `"${parsed.invoice_number}" race condition'da yaratıldı, mevcut kayıt kullanılıyor (${dup.title}).`,
+                },
+              });
+              return;
+            }
+          }
+          throw e;
+        }
 
         await auditFromRequest(req, {
           organization_id: orgId,
@@ -399,49 +433,62 @@ smartImportRouter.post(
               } catch {}
             }
 
-            const [created] = await db
-              .insert(payableItems)
-              .values({
-                tenant_id: targetTenantId,
-                owner_type: 'company',
-                company_id: supplier?.id ?? null,
-                title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
-                category: 'e-fatura',
-                invoice_number: parsed.invoice_number,
-                supplier_name: parsed.supplier_name,
-                issue_date: parsed.issue_date,
-                due_date: parsed.due_date,
-                amount: parsed.amount,
-                currency: parsed.currency,
-                status: 'pending',
-                notes: parsed.notes,
-                metadata: {
-                  source: `smart_import_${archiveType}`,
-                  archive_filename: f.originalname,
-                  xml_filename: xf.name,
-                  recipient_tax_number: parsed.recipient_tax_number,
-                  recipient_name: parsed.recipient_name,
-                  tenant_routing: {
-                    auto_matched: route.isAutoMatched,
-                    mismatch_with_active: route.mismatch,
-                    active_tenant_at_upload: tenantId,
+            try {
+              const [created] = await db
+                .insert(payableItems)
+                .values({
+                  tenant_id: targetTenantId,
+                  owner_type: 'company',
+                  company_id: supplier?.id ?? null,
+                  title: `e-Fatura: ${parsed.supplier_name ?? parsed.invoice_number}`,
+                  category: 'e-fatura',
+                  invoice_number: parsed.invoice_number,
+                  supplier_name: parsed.supplier_name,
+                  issue_date: parsed.issue_date,
+                  due_date: parsed.due_date,
+                  amount: parsed.amount,
+                  currency: parsed.currency,
+                  status: 'pending',
+                  notes: parsed.notes,
+                  metadata: {
+                    source: `smart_import_${archiveType}`,
+                    archive_filename: f.originalname,
+                    xml_filename: xf.name,
+                    recipient_tax_number: parsed.recipient_tax_number,
+                    recipient_name: parsed.recipient_name,
+                    tenant_routing: {
+                      auto_matched: route.isAutoMatched,
+                      mismatch_with_active: route.mismatch,
+                      active_tenant_at_upload: tenantId,
+                    },
                   },
-                },
-                needs_review: true,
-                auto_created_source: route.isAutoMatched
-                  ? `smart_import_${archiveType}_auto_routed`
-                  : `smart_import_${archiveType}`,
-                created_by: req.authUser?.id ?? null,
-              })
-              .returning({ id: payableItems.id });
+                  needs_review: true,
+                  auto_created_source: route.isAutoMatched
+                    ? `smart_import_${archiveType}_auto_routed`
+                    : `smart_import_${archiveType}`,
+                  created_by: req.authUser?.id ?? null,
+                })
+                .returning({ id: payableItems.id });
 
-            results.push({
-              file: xf.name,
-              ok: true,
-              invoice_number: parsed.invoice_number,
-              payable_id: created?.id,
-              supplier_new: supplier?.is_new ?? false,
-            });
+              results.push({
+                file: xf.name,
+                ok: true,
+                invoice_number: parsed.invoice_number,
+                payable_id: created?.id,
+                supplier_new: supplier?.is_new ?? false,
+              });
+            } catch (insertErr) {
+              if ((insertErr as { code?: string }).code === '23505') {
+                results.push({
+                  file: xf.name,
+                  ok: true,
+                  invoice_number: parsed.invoice_number,
+                  error: 'duplicate (race)',
+                });
+              } else {
+                throw insertErr;
+              }
+            }
           } catch (err) {
             results.push({ file: xf.name, ok: false, error: (err as Error).message.slice(0, 150) });
           }

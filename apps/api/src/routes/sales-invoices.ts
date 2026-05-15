@@ -51,21 +51,33 @@ salesInvoicesRouter.get(
     try {
       const db = getDb();
       const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      const limit = Math.min(Number(req.query.limit ?? 100), 500);
+      const cursor = req.query.cursor ? String(req.query.cursor) : null;
+
       const tenantScope = req.aggregateTenantIds
         ? inArray(salesInvoices.tenant_id, req.aggregateTenantIds)
         : eq(salesInvoices.tenant_id, req.activeTenantId!);
       const conditions = [tenantScope, eq(salesInvoices.is_active, true)];
-      if (!includeReview) {
-        conditions.push(eq(salesInvoices.needs_review, false));
+      if (!includeReview) conditions.push(eq(salesInvoices.needs_review, false));
+      if (cursor) {
+        conditions.push(sql`${salesInvoices.created_at} < ${cursor}::timestamptz`);
       }
+
       const rows = await db
         .select()
         .from(salesInvoices)
         .where(and(...conditions))
         .orderBy(desc(salesInvoices.due_date), desc(salesInvoices.created_at))
-        .limit(500);
+        .limit(limit + 1);
+
+      const hasMore = rows.length > limit;
+      const data = hasMore ? rows.slice(0, limit) : rows;
+      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1]!.created_at : null;
+
       res.json({
-        data: rows,
+        data,
+        has_more: hasMore,
+        next_cursor: nextCursor,
         aggregate: req.aggregateTenantIds ? { tenant_count: req.aggregateTenantIds.length } : null,
       });
     } catch (err) {
@@ -350,7 +362,7 @@ salesInvoicesRouter.post(
   requireTenant,
   async (req, res, next) => {
     try {
-      consumeRateLimit({
+      await consumeRateLimit({
         identifier: `collection-ai:${req.authUser!.id}`,
         limit: 10,
         window_seconds: 3600,

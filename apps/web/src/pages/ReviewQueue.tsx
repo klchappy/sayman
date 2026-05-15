@@ -453,6 +453,24 @@ function PayableReviewCard({
   );
 }
 
+function validateAmount(s: string): string | null {
+  if (!s || !s.trim()) return 'Tutar zorunlu';
+  if (!/^-?\d+(\.\d{1,2})?$/.test(s)) return 'Geçerli bir tutar gir (örn 1500.50)';
+  const n = Number(s);
+  if (!isFinite(n)) return 'Tutar geçersiz';
+  if (n === 0) return 'Tutar 0 olamaz';
+  if (Math.abs(n) > 1e12) return 'Tutar çok büyük';
+  return null;
+}
+
+function validateDate(s: string): string | null {
+  if (!s) return null; // Opsiyonel
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return 'Tarih YYYY-MM-DD formatında olmalı';
+  const t = Date.parse(s);
+  if (isNaN(t)) return 'Geçersiz tarih';
+  return null;
+}
+
 function PayableEditForm({
   item,
   onClose,
@@ -469,6 +487,18 @@ function PayableEditForm({
   const [category, setCategory] = useState(item.category ?? '');
   const [invoiceNumber, setInvoiceNumber] = useState(item.invoice_number ?? '');
   const [targetTenantId, setTargetTenantId] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const titleErr = title.trim().length < 2 ? 'Başlık en az 2 karakter' : null;
+  const amountErr = validateAmount(amount);
+  const issueDateErr = validateDate(issueDate);
+  const dueDateErr = validateDate(dueDate);
+  const dateOrderErr =
+    issueDate && dueDate && !issueDateErr && !dueDateErr && dueDate < issueDate
+      ? 'Vade tarihi düzenleme tarihinden önce olamaz'
+      : null;
+  const formInvalid =
+    !!titleErr || !!amountErr || !!issueDateErr || !!dueDateErr || !!dateOrderErr;
 
   const orgTenants = useQuery({
     queryKey: ['review-queue-org-tenants'],
@@ -495,6 +525,10 @@ function PayableEditForm({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['review-queue'] });
       onClose();
+    },
+    onError: (err) => {
+      const e = err as { response?: { data?: { error?: string; code?: string } }; message?: string };
+      setSubmitError(e.response?.data?.error ?? e.message ?? 'Kaydedilemedi');
     },
   });
 
@@ -584,8 +618,12 @@ function PayableEditForm({
           <X className="size-3 inline" /> İptal
         </button>
         <button
-          onClick={() => save.mutate()}
-          disabled={save.isPending}
+          onClick={() => {
+            setSubmitError(null);
+            save.mutate();
+          }}
+          disabled={save.isPending || formInvalid}
+          title={formInvalid ? 'Form hatalı, kontrol et' : ''}
           className="text-xs bg-brand-900 hover:bg-brand-700 text-white px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-60"
         >
           {save.isPending ? (
@@ -596,6 +634,16 @@ function PayableEditForm({
           Kaydet
         </button>
       </div>
+      {(titleErr || amountErr || issueDateErr || dueDateErr || dateOrderErr || submitError) && (
+        <ul className="mt-2 text-xs text-red-600 dark:text-red-400 space-y-0.5">
+          {titleErr && <li>• {titleErr}</li>}
+          {amountErr && <li>• Tutar: {amountErr}</li>}
+          {issueDateErr && <li>• Düzenleme tarihi: {issueDateErr}</li>}
+          {dueDateErr && <li>• Vade tarihi: {dueDateErr}</li>}
+          {dateOrderErr && <li>• {dateOrderErr}</li>}
+          {submitError && <li>• Kayıt: {submitError}</li>}
+        </ul>
+      )}
     </div>
   );
 }
@@ -694,6 +742,18 @@ function SalesInvoiceEditForm({
   const [dueDate, setDueDate] = useState(item.due_date ?? '');
   const [invoiceNumber, setInvoiceNumber] = useState(item.invoice_number ?? '');
   const [targetTenantId, setTargetTenantId] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const titleErr = title.trim().length < 2 ? 'Başlık en az 2 karakter' : null;
+  const amountErr = validateAmount(amount);
+  const issueDateErr = validateDate(issueDate);
+  const dueDateErr = validateDate(dueDate);
+  const dateOrderErr =
+    issueDate && dueDate && !issueDateErr && !dueDateErr && dueDate < issueDate
+      ? 'Vade tarihi düzenleme tarihinden önce olamaz'
+      : null;
+  const formInvalid =
+    !!titleErr || !!amountErr || !!issueDateErr || !!dueDateErr || !!dateOrderErr;
 
   const orgTenants = useQuery({
     queryKey: ['review-queue-org-tenants'],
@@ -719,6 +779,10 @@ function SalesInvoiceEditForm({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['review-queue'] });
       onClose();
+    },
+    onError: (err) => {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setSubmitError(e.response?.data?.error ?? e.message ?? 'Kaydedilemedi');
     },
   });
 
@@ -779,14 +843,28 @@ function SalesInvoiceEditForm({
           <X className="size-3 inline" /> İptal
         </button>
         <button
-          onClick={() => save.mutate()}
-          disabled={save.isPending}
+          onClick={() => {
+            setSubmitError(null);
+            save.mutate();
+          }}
+          disabled={save.isPending || formInvalid}
+          title={formInvalid ? 'Form hatalı, kontrol et' : ''}
           className="text-xs bg-brand-900 hover:bg-brand-700 text-white px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-60"
         >
           {save.isPending ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
           Kaydet
         </button>
       </div>
+      {(titleErr || amountErr || issueDateErr || dueDateErr || dateOrderErr || submitError) && (
+        <ul className="mt-2 text-xs text-red-600 dark:text-red-400 space-y-0.5">
+          {titleErr && <li>• {titleErr}</li>}
+          {amountErr && <li>• Tutar: {amountErr}</li>}
+          {issueDateErr && <li>• Düzenleme tarihi: {issueDateErr}</li>}
+          {dueDateErr && <li>• Vade tarihi: {dueDateErr}</li>}
+          {dateOrderErr && <li>• {dateOrderErr}</li>}
+          {submitError && <li>• Kayıt: {submitError}</li>}
+        </ul>
+      )}
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { budgets, getDb, payableItems } from '@sayman/db';
 import { CATEGORY_LABELS, PAYABLE_CATEGORIES, type PayableCategory } from '@sayman/shared';
 import { env, isConfigured } from '../config/env';
 import { logger } from '../config/logger';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
@@ -82,12 +82,12 @@ async function computeActual(
   return Number(r?.total ?? 0);
 }
 
-budgetsRouter.get('/budgets', requireAuth, requireTenant, async (req, res, next) => {
+budgetsRouter.get('/budgets', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const period = req.query.period ? String(req.query.period) : null;
     const db = getDb();
     const conditions: any[] = [
-      eq(budgets.tenant_id, req.activeTenantId!),
+      tenantScope(req, budgets.tenant_id),
       eq(budgets.is_active, true),
     ];
     if (period) conditions.push(eq(budgets.period, period));
@@ -223,7 +223,7 @@ budgetsRouter.delete('/budgets/:id', requireAuth, requireTenant, async (req, res
  */
 budgetsRouter.post('/budgets/ai-suggest', requireAuth, requireTenant, async (req, res, next) => {
   try {
-    consumeRateLimit({
+    await consumeRateLimit({
       identifier: `budget-ai:${req.authUser!.id}`,
       limit: 10,
       window_seconds: 3600,

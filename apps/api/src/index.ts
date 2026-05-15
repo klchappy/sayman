@@ -18,10 +18,25 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
+// API JSON döner — restrictive CSP (sayfa render etmiyoruz).
+// Swagger UI lokal kullanılırsa scriptSrc'i genişlet.
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'none'"],
+        connectSrc: ["'self'"],
+        // Swagger UI için inline gerekirse:
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        baseUri: ["'self'"],
+        frameAncestors: ["'none'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   }),
 );
 
