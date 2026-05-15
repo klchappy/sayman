@@ -6,20 +6,24 @@ import { useAuth } from '../lib/auth';
 
 const ONBOARDING_DISMISSED_KEY = 'sayman.onboarding_dismissed';
 
+interface TenantInfo {
+  slug: string;
+}
+
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const initialized = useAuth((s) => s.initialized);
   const session = useAuth((s) => s.session);
   const localToken = useAuth((s) => s.localToken);
   const init = useAuth((s) => s.init);
   const active = useAuth((s) => s.active);
+  const isAdmin = useAuth((s) => s.isAdmin());
+  const setActive = useAuth((s) => s.setActive);
   const location = useLocation();
 
   useEffect(() => {
     if (!initialized) init();
   }, [initialized, init]);
 
-  // İlk kez login olan kullanıcıyı /onboarding'e yönlendir
-  // — sadece /login dışındaki ilk girişte tetikle, bir kez dismiss edilirse tekrar etme
   const authed = !!session || !!localToken;
   const dismissed =
     typeof window !== 'undefined' &&
@@ -27,13 +31,26 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const onOnboardingRoute = location.pathname === '/onboarding';
 
   const tenantsQ = useQuery({
-    queryKey: ['tenants-onboarding-check', active.orgSlug],
-    enabled: authed && !!active.orgSlug && !dismissed && !onOnboardingRoute,
+    queryKey: ['tenants-list', active.orgSlug],
+    enabled: authed && !!active.orgSlug && !onOnboardingRoute,
     queryFn: async () => {
-      const res = await api.get<{ data: Array<unknown> }>(`/tenants?org=${active.orgSlug}`);
+      const res = await api.get<{ data: TenantInfo[] }>(`/tenants?org=${active.orgSlug}`);
       return res.data.data;
     },
   });
+
+  // Admin için tenant otomatik seçimi: tenant seçilmemişse ilk tenant otomatik atanır
+  useEffect(() => {
+    if (
+      authed &&
+      isAdmin &&
+      !active.tenantSlug &&
+      tenantsQ.data &&
+      tenantsQ.data.length > 0
+    ) {
+      setActive({ tenantSlug: tenantsQ.data[0]!.slug });
+    }
+  }, [authed, isAdmin, active.tenantSlug, tenantsQ.data, setActive]);
 
   if (!initialized) {
     return (
@@ -55,6 +72,24 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     !dismissed
   ) {
     return <Navigate to="/onboarding" replace />;
+  }
+
+  // Admin için tenant otomatik seçim bekleniyor: ekran flicker'ını önle.
+  if (
+    isAdmin &&
+    !active.tenantSlug &&
+    tenantsQ.data &&
+    tenantsQ.data.length > 0 &&
+    !onOnboardingRoute
+  ) {
+    return (
+      <div className="min-h-full grid place-items-center text-brand-500 dark:text-slate-400 text-sm">
+        <div className="text-center">
+          <div className="size-8 mx-auto mb-2 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          Tenant yükleniyor…
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

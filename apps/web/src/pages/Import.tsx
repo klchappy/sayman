@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle2, FileCode, FileUp, Sparkles, Upload, X } from 'lucide-react';
 import { useState } from 'react';
 import { Dropzone } from '../components/Dropzone';
+import { ImportAnimation, type ImportStage } from '../components/ImportAnimation';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -470,18 +471,19 @@ interface SmartImportResult {
 
 function SmartImportSection() {
   const active = useAuth((s) => s.active);
+  const isAdmin = useAuth((s) => s.isAdmin());
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<SmartPreview | null>(null);
   const [imported, setImported] = useState<SmartImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [committing, setCommitting] = useState(false);
+  const [stage, setStage] = useState<ImportStage>('idle');
 
   function reset() {
     setFile(null);
     setPreview(null);
     setImported(null);
     setError(null);
+    setStage('idle');
   }
 
   async function onFile(picked: File) {
@@ -489,46 +491,60 @@ function SmartImportSection() {
     setPreview(null);
     setImported(null);
     setError(null);
-    setUploading(true);
+    setStage('uploading');
     try {
       const fd = new FormData();
       fd.append('file', picked);
+      // Kısa görsel pause — kullanıcı stage transition'ı görsün
+      await new Promise((r) => setTimeout(r, 400));
+      setStage('analyzing');
       const res = await api.post<{ data: SmartPreview }>('/smart-import', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setPreview(res.data.data);
+      setStage('idle');
     } catch (e) {
       const err = e as { response?: { data?: { error?: string; message?: string } } };
       setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
-    } finally {
-      setUploading(false);
+      setStage('idle');
     }
   }
 
   async function commitImport() {
     if (!file) return;
-    setCommitting(true);
     setError(null);
+    setStage('importing');
     try {
       const fd = new FormData();
       fd.append('file', file);
       const res = await api.post<{ data: SmartImportResult }>('/smart-import?commit=true', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      setStage('success');
+      await new Promise((r) => setTimeout(r, 700));
       setImported(res.data.data);
       setPreview(null);
+      setStage('idle');
     } catch (e) {
       const err = e as { response?: { data?: { error?: string; message?: string } } };
       setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);
-    } finally {
-      setCommitting(false);
+      setStage('idle');
     }
   }
 
-  if (!active.tenantSlug) {
+  // Adminler için tenant bypass — ProtectedRoute zaten ilk tenant'ı otomatik seçiyor
+  // ama hala seçilmediyse adminlere "yükleniyor" göster, normal kullanıcıya uyarı
+  if (!active.tenantSlug && !isAdmin) {
     return (
       <div className="card text-center">
         <p className="text-amber-700 text-sm">Tenant seçilmedi. Üst köşeden bir tenant seç.</p>
+      </div>
+    );
+  }
+  if (!active.tenantSlug && isAdmin) {
+    return (
+      <div className="card text-center">
+        <p className="text-brand-500 text-sm">Tenant yükleniyor…</p>
       </div>
     );
   }
@@ -546,17 +562,16 @@ function SmartImportSection() {
         </p>
       </div>
 
-      {!file && !imported && (
+      {!file && !imported && stage === 'idle' && (
         <Dropzone
           accept=".csv,.xlsx,.xls,.xml,.zip,.pdf,.jpg,.jpeg,.png,.webp"
-          label={uploading ? 'Yükleniyor…' : 'Dosya sürükle bırak veya seç (CSV/XLSX/XML/ZIP/PDF/IMG)'}
+          label="Dosya sürükle bırak veya seç (CSV/XLSX/XML/ZIP/PDF/IMG)"
           hint="Maks 30 MB · XML/ZIP→e-Fatura · CSV/XLSX→fatura/cari/abone vs. · tedarikçi yoksa otomatik açılır"
           onFile={onFile}
-          disabled={uploading}
         />
       )}
 
-      {file && (preview || imported) && (
+      {file && (preview || imported) && stage === 'idle' && (
         <div className="flex items-center justify-between bg-brand-50 dark:bg-slate-800 rounded-lg p-3 mb-3">
           <span className="text-sm">
             📎 <strong>{file.name}</strong>{' '}
@@ -581,18 +596,14 @@ function SmartImportSection() {
         </div>
       )}
 
-      {uploading && (
-        <p className="text-sm text-brand-500 mt-3 flex items-center gap-2">
-          <span className="inline-block size-3 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-          Dosya analiz ediliyor…
-        </p>
+      {/* Yükleme / analiz / aktarma animasyonu */}
+      <ImportAnimation stage={stage} filename={file?.name} />
+
+      {preview && !imported && stage === 'idle' && (
+        <PreviewPanel preview={preview} onCommit={commitImport} committing={false} />
       )}
 
-      {preview && !imported && (
-        <PreviewPanel preview={preview} onCommit={commitImport} committing={committing} />
-      )}
-
-      {imported && <ImportResultPanel result={imported} onAgain={reset} />}
+      {imported && stage === 'idle' && <ImportResultPanel result={imported} onAgain={reset} />}
     </div>
   );
 }

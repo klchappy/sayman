@@ -63,6 +63,8 @@ interface AuthState {
   signOut: () => Promise<void>;
   refreshMe: () => Promise<void>;
   setActive: (a: Partial<ActiveSelection>) => void;
+  /** true ise kullanıcı aktif org'da super_admin / organization_admin / yonetici rolüne sahip */
+  isAdmin: () => boolean;
 }
 
 function applyToken(token: string | null) {
@@ -193,6 +195,14 @@ export const useAuth = create<AuthState>()(
             set({ active: { orgSlug: firstOrg.slug, tenantSlug: null } });
           }
         }
+      },
+
+      isAdmin() {
+        const me = get().me;
+        const orgSlug = get().active.orgSlug;
+        if (!me || !orgSlug) return false;
+        const role = me.organizations.find((o) => o.slug === orgSlug)?.role;
+        return ['super_admin', 'organization_admin', 'yonetici'].includes(role ?? '');
       },
 
       setActive(a) {
