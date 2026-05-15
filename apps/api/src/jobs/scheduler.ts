@@ -11,6 +11,7 @@ import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { runBudgetAlerts } from './budget-alerts';
 import { runCheckDueAlerts } from './check-due-alerts';
+import { runDepreciation } from './run-depreciation';
 import { runDeliverWebhooks } from './deliver-webhooks';
 import { runDetectAnomalies } from './detect-anomalies';
 import { runEmbedPayables } from './embed-payables';
@@ -38,7 +39,8 @@ export type JobName =
   | 'generate-tax-calendar'
   | 'budget-alerts'
   | 'check-due-alerts'
-  | 'send-collection-reminders';
+  | 'send-collection-reminders'
+  | 'run-depreciation';
 
 export async function runJob(name: JobName): Promise<unknown> {
   logger.info({ job: name }, 'manual job run');
@@ -69,6 +71,8 @@ export async function runJob(name: JobName): Promise<unknown> {
       return runCheckDueAlerts();
     case 'send-collection-reminders':
       return runSendCollectionReminders();
+    case 'run-depreciation':
+      return runDepreciation();
   }
 }
 
@@ -205,6 +209,15 @@ export function startCronJobs() {
       runSendCollectionReminders().catch((err) =>
         logger.error({ err }, 'send-collection-reminders crashed'),
       );
+    },
+    { timezone: TZ },
+  );
+
+  // Her ayın 1'i 03:30 TR — demirbaş amortisman entry'leri (önceki ay)
+  cron.schedule(
+    '30 3 1 * *',
+    () => {
+      runDepreciation().catch((err) => logger.error({ err }, 'run-depreciation crashed'));
     },
     { timezone: TZ },
   );

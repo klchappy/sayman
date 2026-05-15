@@ -187,6 +187,9 @@ export function DashboardPage() {
           {/* === Çek/Senet özet === */}
           {has('finance') && <ChecksWidget />}
 
+          {/* === Demirbaş özet === */}
+          {has('finance') && <FixedAssetsWidget />}
+
           {/* === Cashflow chart === */}
           {has('finance') && (
             <section className="card mb-6">
@@ -662,6 +665,70 @@ interface ChecksSummaryData {
   outgoing_pending: { count: number; amount: number };
   due_next_30d: { count: number; amount: number };
   returned: { count: number; amount: number };
+}
+
+interface FixedAssetsSummary {
+  total_cost: number;
+  total_accumulated_depreciation: number;
+  net_book_value: number;
+  active_count: number;
+  disposed_count: number;
+}
+
+function FixedAssetsWidget() {
+  const q = useQuery({
+    queryKey: ['fixed-assets-summary-dashboard'],
+    queryFn: async () => {
+      const res = await api.get<{ data: FixedAssetsSummary }>('/fixed-assets/summary');
+      return res.data.data;
+    },
+  });
+
+  if (!q.data || q.data.active_count === 0) return null;
+
+  const pct = q.data.total_cost > 0 ? (q.data.total_accumulated_depreciation / q.data.total_cost) * 100 : 0;
+
+  return (
+    <section className="card mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-brand-900 dark:text-slate-100">📦 Demirbaş Özet</h2>
+        <Link
+          to="/fixed-assets"
+          className="text-xs text-brand-600 dark:text-slate-400 hover:text-brand-900"
+        >
+          Tümü →
+        </Link>
+      </div>
+      <div className="grid sm:grid-cols-4 gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Toplam Maliyet</p>
+          <p className="text-lg font-semibold font-mono mt-1 text-brand-900 dark:text-slate-100">
+            {fmtTRY(q.data.total_cost)}
+          </p>
+          <p className="text-[10px] text-brand-400">{q.data.active_count} aktif</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Birikmiş Amortisman</p>
+          <p className="text-lg font-semibold font-mono mt-1 text-amber-700 dark:text-amber-400">
+            {fmtTRY(q.data.total_accumulated_depreciation)}
+          </p>
+          <p className="text-[10px] text-brand-400">%{pct.toFixed(0)} tükenmiş</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Net Defter Değeri</p>
+          <p className="text-lg font-semibold font-mono mt-1 text-emerald-700 dark:text-emerald-400">
+            {fmtTRY(q.data.net_book_value)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wide text-brand-500">Çıkarılmış</p>
+          <p className="text-lg font-semibold mt-1 text-brand-700 dark:text-slate-300">
+            {q.data.disposed_count}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function ChecksWidget() {

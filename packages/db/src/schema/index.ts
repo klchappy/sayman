@@ -37,3 +37,4 @@ export * from './budgets';
 export * from './customer-portal';
 export * from './checks-notes';
 export * from './collection-reminders';
+export * from './fixed-assets';

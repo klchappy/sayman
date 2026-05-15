@@ -8,12 +8,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowUpRight,
+  Brain,
   Coins,
   FileSpreadsheet,
   Loader2,
+  Phone,
   Plus,
   Receipt,
   Send,
+  Sparkles,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -116,13 +119,16 @@ export function SalesInvoicesPage() {
             kaydedebilir veya geri push edebilirsin.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-        >
-          <Plus className="size-4" />
-          Yeni Satış Faturası
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <AICollectionStrategyButton />
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          >
+            <Plus className="size-4" />
+            Yeni Satış Faturası
+          </button>
+        </div>
       </header>
 
       {/* KPI özet */}
@@ -424,5 +430,152 @@ function SalesPushButton({ invoice }: { invoice: SalesInvoice }) {
         </option>
       ))}
     </select>
+  );
+}
+
+interface CollectionSuggestion {
+  invoice_id: string;
+  customer_name: string | null;
+  outstanding: number;
+  days_overdue: number;
+  priority: string;
+  recommended_channel: string;
+  reasoning: string;
+}
+
+const PRIORITY_COLOR: Record<string, string> = {
+  high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  low: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+};
+
+const CHANNEL_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  phone: Phone,
+  whatsapp: Send,
+  email: Send,
+  legal: AlertCircle,
+};
+
+function AICollectionStrategyButton() {
+  const [showModal, setShowModal] = useState(false);
+  const [strategy, setStrategy] = useState<{
+    method: string;
+    summary: string;
+    suggestions: CollectionSuggestion[];
+  } | null>(null);
+
+  const ask = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{
+        data: {
+          method: string;
+          summary: string;
+          suggestions: CollectionSuggestion[];
+        };
+      }>('/sales-invoices/ai-collection-strategy');
+      return res.data.data;
+    },
+    onSuccess: (data) => {
+      setStrategy(data);
+      setShowModal(true);
+    },
+  });
+
+  return (
+    <>
+      <button
+        onClick={() => ask.mutate()}
+        disabled={ask.isPending}
+        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-60"
+      >
+        {ask.isPending ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Brain className="size-4" />
+        )}
+        AI Tahsilat Stratejisi
+      </button>
+      {showModal && strategy && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-4xl w-full max-h-[85vh] overflow-y-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+                <Brain className="size-5 text-purple-600" />
+                Tahsilat Stratejisi (
+                {strategy.method === 'claude' ? 'Claude AI' : 'Kural-tabanlı'})
+              </h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-brand-500 hover:text-brand-900 dark:text-slate-400"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            {strategy.summary && (
+              <p className="text-sm text-brand-700 dark:text-slate-300 bg-purple-50 dark:bg-purple-900/20 rounded p-3 mb-4">
+                {strategy.summary}
+              </p>
+            )}
+            {strategy.suggestions.length === 0 ? (
+              <p className="text-center text-brand-500 py-6">Geciken alacak yok.</p>
+            ) : (
+              <div className="space-y-2">
+                {strategy.suggestions.map((s) => {
+                  const ChannelIcon = CHANNEL_ICON[s.recommended_channel] ?? Send;
+                  return (
+                    <div
+                      key={s.invoice_id}
+                      className="border border-brand-100 dark:border-slate-800 rounded-lg p-3"
+                    >
+                      <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded uppercase font-medium ${PRIORITY_COLOR[s.priority] ?? PRIORITY_COLOR.low}`}
+                          >
+                            {s.priority === 'high'
+                              ? 'Yüksek'
+                              : s.priority === 'medium'
+                                ? 'Orta'
+                                : 'Düşük'}
+                          </span>
+                          <span className="font-medium text-brand-900 dark:text-slate-100">
+                            {s.customer_name ?? '?'}
+                          </span>
+                          <span className="text-xs text-brand-500 font-mono">
+                            {s.days_overdue} gün
+                          </span>
+                          <Link
+                            to={`/sales-invoices/${s.invoice_id}`}
+                            className="text-xs text-brand-600 hover:text-brand-900"
+                          >
+                            (fatura →)
+                          </Link>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold">
+                            {fmtTRY(s.outstanding)}
+                          </span>
+                          <span className="text-xs flex items-center gap-1 bg-brand-50 dark:bg-slate-800 text-brand-700 dark:text-slate-300 px-2 py-0.5 rounded">
+                            <ChannelIcon className="size-3" />
+                            {s.recommended_channel}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-brand-600 dark:text-slate-400">{s.reasoning}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

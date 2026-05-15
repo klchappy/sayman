@@ -17,10 +17,13 @@ import {
   getDb,
   salesInvoices,
 } from '@sayman/db';
+import { env, isConfigured } from '../config/env';
+import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
 import { getAdapter } from '../lib/erp';
 import { decryptSecret } from '../lib/secret-box';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
 export const salesInvoicesRouter = Router();
@@ -319,6 +322,168 @@ salesInvoicesRouter.post(
           })
           .where(eq(salesInvoices.id, s.id));
         throw new HttpError(502, errMsg);
+      }
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * AI tahsilat stratejisi — Claude geciken alacaklıları + ödeme geçmişini analiz eder,
+ * öncelik + yaklaşım önerir.
+ */
+salesInvoicesRouter.post(
+  '/sales-invoices/ai-collection-strategy',
+  requireAuth,
+  requireTenant,
+  async (req, res, next) => {
+    try {
+      consumeRateLimit({
+        identifier: `collection-ai:${req.authUser!.id}`,
+        limit: 10,
+        window_seconds: 3600,
+      });
+      const db = getDb();
+      const today = new Date().toISOString().slice(0, 10);
+
+      const overdue = await db.execute(sql`
+        SELECT id, title, invoice_number, customer_name, amount, paid_amount, due_date,
+               (CURRENT_DATE - due_date) AS days_overdue
+        FROM sales_invoices
+        WHERE tenant_id = ${req.activeTenantId!}::uuid
+          AND is_active = true
+          AND status NOT IN ('paid', 'cancelled')
+          AND due_date < ${today}::date
+        ORDER BY due_date ASC
+        LIMIT 30
+      `);
+
+      const overdueList = ((overdue.rows ?? overdue) as Array<Record<string, unknown>>).map((r) => ({
+        id: String(r.id),
+        title: String(r.title),
+        invoice_number: r.invoice_number ?? null,
+        customer_name: r.customer_name ?? null,
+        amount: Number(r.amount),
+        paid_amount: Number(r.paid_amount ?? 0),
+        outstanding: Number(r.amount) - Number(r.paid_amount ?? 0),
+        due_date: String(r.due_date),
+        days_overdue: Number(r.days_overdue),
+      }));
+
+      if (overdueList.length === 0) {
+        res.json({
+          data: {
+            method: 'no_overdue',
+            suggestions: [],
+            summary: 'Geciken alacak yok — iyi durumdasın.',
+          },
+        });
+        return;
+      }
+
+      function ruleBased() {
+        return [...overdueList]
+          .sort((a, b) => b.outstanding * b.days_overdue - a.outstanding * a.days_overdue)
+          .slice(0, 10)
+          .map((inv, idx) => ({
+            invoice_id: inv.id,
+            customer_name: inv.customer_name,
+            outstanding: inv.outstanding,
+            days_overdue: inv.days_overdue,
+            priority: idx < 3 ? 'high' : idx < 7 ? 'medium' : 'low',
+            recommended_channel:
+              inv.days_overdue > 30 ? 'phone' : inv.days_overdue > 14 ? 'whatsapp' : 'email',
+            reasoning: `${inv.days_overdue} gün gecikme + ${inv.outstanding.toLocaleString('tr-TR')} TL.`,
+          }));
+      }
+
+      if (!isConfigured.ai) {
+        res.json({
+          data: {
+            method: 'rule_based',
+            suggestions: ruleBased(),
+            summary: `${overdueList.length} geciken fatura — tutar × gecikme skoruna göre öncelik.`,
+          },
+        });
+        return;
+      }
+
+      try {
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': env.ANTHROPIC_API_KEY!,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 2000,
+            system:
+              'Sen Sayman tahsilat danismanisin. Geciken faturalari incele. Hangi alacaklilari ONCE ' +
+              'takip etmeli, hangi kanali kullanmali? Yanit SADECE JSON: {"summary":"<2-3 cumle>",' +
+              '"suggestions":[{"invoice_id":"<id>","priority":"high|medium|low",' +
+              '"recommended_channel":"phone|whatsapp|email|legal","reasoning":"<1-2 cumle Turkce>"}]}',
+            messages: [
+              {
+                role: 'user',
+                content: `Geciken faturalar: ${JSON.stringify(overdueList.slice(0, 20), null, 2)}\n\nStratejik oncelik listesi ver.`,
+              },
+            ],
+          }),
+        });
+        if (!resp.ok) {
+          res.json({
+            data: { method: 'rule_based', suggestions: ruleBased(), summary: `${overdueList.length} geciken fatura.` },
+          });
+          return;
+        }
+        const data = (await resp.json()) as { content: Array<{ type: string; text?: string }> };
+        const text = data.content
+          .filter((c) => c.type === 'text')
+          .map((c) => c.text ?? '')
+          .join('\n')
+          .trim();
+        const m = text.match(/\{[\s\S]*\}/);
+        if (!m) {
+          res.json({
+            data: { method: 'rule_based', suggestions: ruleBased(), summary: `${overdueList.length} geciken fatura.` },
+          });
+          return;
+        }
+        const parsed = JSON.parse(m[0]) as {
+          summary?: string;
+          suggestions: Array<{
+            invoice_id: string;
+            priority: string;
+            recommended_channel: string;
+            reasoning: string;
+          }>;
+        };
+        const invMap = new Map(overdueList.map((i) => [i.id, i]));
+        const enriched = (parsed.suggestions ?? [])
+          .filter((s) => invMap.has(s.invoice_id))
+          .map((s) => {
+            const inv = invMap.get(s.invoice_id)!;
+            return {
+              invoice_id: s.invoice_id,
+              customer_name: inv.customer_name,
+              outstanding: inv.outstanding,
+              days_overdue: inv.days_overdue,
+              priority: s.priority,
+              recommended_channel: s.recommended_channel,
+              reasoning: s.reasoning,
+            };
+          });
+        res.json({
+          data: { method: 'claude', summary: parsed.summary ?? '', suggestions: enriched },
+        });
+      } catch (err) {
+        logger.error({ err }, 'AI collection strategy crashed');
+        res.json({
+          data: { method: 'rule_based', suggestions: ruleBased(), summary: `${overdueList.length} geciken fatura.` },
+        });
       }
     } catch (err) {
       next(err);

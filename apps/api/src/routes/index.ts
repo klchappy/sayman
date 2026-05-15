@@ -61,6 +61,8 @@ import { reconciliationRouter } from './reconciliation';
 import { customerPortalRouter } from './customer-portal';
 import { checksRouter } from './checks';
 import { collectionRemindersRouter } from './collection-reminders';
+import { fixedAssetsRouter } from './fixed-assets';
+import { reportsPnlRouter } from './reports-pnl';
 
 export const apiRouter = Router();
 
@@ -223,3 +225,9 @@ apiRouter.use(checksRouter);
 
 // Tahsilat hatırlatma kuralları + logları
 apiRouter.use(collectionRemindersRouter);
+
+// Demirbaş ve amortisman
+apiRouter.use(fixedAssetsRouter);
+
+// Gelir-Gider tablosu (P&L)
+apiRouter.use(reportsPnlRouter);

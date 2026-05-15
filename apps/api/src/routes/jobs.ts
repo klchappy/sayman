@@ -25,6 +25,7 @@ const ALLOWED_JOBS: JobName[] = [
   'budget-alerts',
   'check-due-alerts',
   'send-collection-reminders',
+  'run-depreciation',
 ];
 
 export const jobsRouter = Router();
