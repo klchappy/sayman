@@ -42,6 +42,7 @@ import { aiSummaryRouter } from './ai-summary';
 import { forecastRouter } from './forecast';
 import { semanticSearchRouter } from './semantic-search';
 import { integrationsStatusRouter } from './integrations-status';
+import { integrationCredentialsRouter } from './integration-credentials';
 import { whatsappRouter } from './whatsapp';
 import { pushRouter } from './push';
 import { aiExplainRouter } from './ai-explain';
@@ -176,6 +177,9 @@ apiRouter.use(semanticSearchRouter);
 
 // Entegrasyon hub durum endpoint'i
 apiRouter.use(integrationsStatusRouter);
+
+// Org-default + tenant-override credential yönetimi
+apiRouter.use(integrationCredentialsRouter);
 
 // WhatsApp Business Cloud API (inbound + test)
 apiRouter.use(whatsappRouter);

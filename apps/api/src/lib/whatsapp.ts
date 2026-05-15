@@ -23,10 +23,45 @@
  */
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { getIntegrationCredentials } from './integration-credentials';
 
 export const isWhatsAppConfigured = Boolean(
   env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID,
 );
+
+export interface WhatsAppCtx {
+  organizationId?: string | null;
+  tenantId?: string | null;
+}
+
+async function resolveWhatsApp(
+  ctx?: WhatsAppCtx,
+): Promise<{ access_token: string; phone_number_id: string } | null> {
+  if (ctx?.organizationId) {
+    const r = await getIntegrationCredentials(
+      {
+        organizationId: ctx.organizationId,
+        tenantId: ctx.tenantId,
+        integrationKey: 'whatsapp',
+      },
+      {
+        access_token: env.WHATSAPP_ACCESS_TOKEN ?? '',
+        phone_number_id: env.WHATSAPP_PHONE_NUMBER_ID ?? '',
+      },
+    );
+    const { access_token, phone_number_id } = r.credentials;
+    if (access_token && phone_number_id) {
+      return { access_token, phone_number_id };
+    }
+  }
+  if (env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID) {
+    return {
+      access_token: env.WHATSAPP_ACCESS_TOKEN,
+      phone_number_id: env.WHATSAPP_PHONE_NUMBER_ID,
+    };
+  }
+  return null;
+}
 
 export interface SendWhatsAppParams {
   /** E164 formatında: +905551234567 → "905551234567" */
@@ -39,6 +74,7 @@ export interface SendWhatsAppParams {
     language_code?: string;
     components?: unknown[];
   };
+  ctx?: WhatsAppCtx;
 }
 
 export interface SendWhatsAppResult {
@@ -52,7 +88,8 @@ const META_API_VERSION = 'v22.0';
 export async function sendWhatsAppMessage(
   params: SendWhatsAppParams,
 ): Promise<SendWhatsAppResult> {
-  if (!isWhatsAppConfigured) {
+  const creds = await resolveWhatsApp(params.ctx);
+  if (!creds) {
     logger.debug({ to: params.to }, 'WhatsApp not configured — skipping');
     return { delivered: 'no_gateway' };
   }
@@ -82,11 +119,11 @@ export async function sendWhatsAppMessage(
 
   try {
     const res = await fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/${META_API_VERSION}/${creds.phone_number_id}/messages`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${creds.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),

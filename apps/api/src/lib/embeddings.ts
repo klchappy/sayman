@@ -11,8 +11,9 @@
  *
  * Maliyet: $0.02 / 1M token (voyage-3-lite). 10000 fatura ≈ $0.001.
  */
-import { env, isConfigured } from '../config/env';
+import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { getCredentialField } from './integration-credentials';
 
 const VOYAGE_MODEL = 'voyage-3-lite';
 const VOYAGE_DIM = 1024;
@@ -23,8 +24,30 @@ export interface EmbedResult {
   tokens: number;
 }
 
-export async function embedText(text: string): Promise<EmbedResult | null> {
-  if (!isConfigured.embeddings) {
+export interface EmbedCtx {
+  organizationId?: string | null;
+  tenantId?: string | null;
+}
+
+async function resolveVoyageKey(ctx?: EmbedCtx): Promise<string | null> {
+  if (ctx?.organizationId) {
+    const r = await getCredentialField(
+      {
+        organizationId: ctx.organizationId,
+        tenantId: ctx.tenantId,
+        integrationKey: 'voyage',
+      },
+      'api_key',
+      env.VOYAGE_API_KEY,
+    );
+    return r.value;
+  }
+  return env.VOYAGE_API_KEY ?? null;
+}
+
+export async function embedText(text: string, ctx?: EmbedCtx): Promise<EmbedResult | null> {
+  const apiKey = await resolveVoyageKey(ctx);
+  if (!apiKey) {
     logger.debug('embed: VOYAGE_API_KEY not set, skipping');
     return null;
   }
@@ -33,7 +56,7 @@ export async function embedText(text: string): Promise<EmbedResult | null> {
     const res = await fetch('https://api.voyageai.com/v1/embeddings', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -69,13 +92,14 @@ export async function embedText(text: string): Promise<EmbedResult | null> {
   }
 }
 
-export async function embedQuery(query: string): Promise<number[] | null> {
-  if (!isConfigured.embeddings) return null;
+export async function embedQuery(query: string, ctx?: EmbedCtx): Promise<number[] | null> {
+  const apiKey = await resolveVoyageKey(ctx);
+  if (!apiKey) return null;
   try {
     const res = await fetch('https://api.voyageai.com/v1/embeddings', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${env.VOYAGE_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

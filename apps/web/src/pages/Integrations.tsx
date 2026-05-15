@@ -277,12 +277,35 @@ function CategoryIcon({ category }: { category: IntegrationStatus['category'] })
   return <Icon className="size-5 text-brand-500" />;
 }
 
+/** Hangi servisler in-app yapılandırılabilir (DB credential modeli destekler) */
+const APP_CONFIGURABLE: Record<string, Array<{ key: string; label: string; hint?: string; placeholder?: string }>> = {
+  claude: [
+    { key: 'api_key', label: 'API Key', placeholder: 'sk-ant-...', hint: 'console.anthropic.com/settings/keys' },
+  ],
+  voyage: [
+    { key: 'api_key', label: 'API Key', placeholder: 'pa-...', hint: 'dash.voyageai.com → API Keys' },
+  ],
+  resend: [
+    { key: 'api_key', label: 'Resend API Key', placeholder: 're_...' },
+    { key: 'email_from', label: 'Gönderen E-posta', placeholder: 'noreply@firma.com', hint: 'Resend\'de doğrulanmış domain' },
+  ],
+  telegram: [
+    { key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC...', hint: '@BotFather → /newbot' },
+  ],
+  whatsapp: [
+    { key: 'access_token', label: 'Access Token', placeholder: 'EAA...' },
+    { key: 'phone_number_id', label: 'Phone Number ID' },
+  ],
+};
+
 function IntegrationCard({ item }: { item: IntegrationStatus }) {
   const Icon = ICONS[item.key] ?? Hexagon;
   const link = LINKS[item.key];
   const docUrl = DOC_URLS[item.key];
   const isTestable = item.key === 'whatsapp' && item.configured;
+  const isAppConfigurable = !!APP_CONFIGURABLE[item.key];
   const [showWaTest, setShowWaTest] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
 
   return (
     <div className="relative bg-white dark:bg-slate-900 rounded-xl border border-brand-100 dark:border-slate-800 overflow-hidden hover:shadow-md transition-shadow">
@@ -356,7 +379,15 @@ function IntegrationCard({ item }: { item: IntegrationStatus }) {
 
         {/* Action row (Etik tarzı 2-buton) */}
         <div className="flex items-center gap-2 flex-wrap pt-1">
-          {link ? (
+          {isAppConfigurable ? (
+            <button
+              onClick={() => setShowConfig(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium bg-brand-900 hover:bg-brand-700 text-white px-3 py-1.5 rounded-lg"
+            >
+              <Settings className="size-3.5" />
+              Yapılandır
+            </button>
+          ) : link ? (
             <Link
               to={link}
               className="inline-flex items-center gap-1.5 text-xs font-medium bg-brand-900 hover:bg-brand-700 text-white px-3 py-1.5 rounded-lg"
@@ -396,6 +427,232 @@ function IntegrationCard({ item }: { item: IntegrationStatus }) {
       </div>
 
       {showWaTest && <WhatsAppTestModal onClose={() => setShowWaTest(false)} />}
+      {showConfig && (
+        <ConfigureIntegrationModal
+          integration={item}
+          onClose={() => setShowConfig(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface ExistingCredential {
+  id: string;
+  scope: 'org' | 'tenant';
+  tenant_id: string | null;
+  credentials_masked: Record<string, string>;
+  credential_keys: string[];
+  is_active: boolean;
+  updated_at: string;
+}
+
+function ConfigureIntegrationModal({
+  integration,
+  onClose,
+}: {
+  integration: IntegrationStatus;
+  onClose: () => void;
+}) {
+  const fields = APP_CONFIGURABLE[integration.key] ?? [];
+  const [scope, setScope] = useState<'org' | 'tenant'>('org');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const existingQ = useQuery({
+    queryKey: ['integration-credentials', integration.key],
+    queryFn: async () => {
+      const res = await api.get<{ data: ExistingCredential[] }>(
+        `/integrations/credentials/${integration.key}`,
+      );
+      return res.data.data;
+    },
+  });
+
+  const orgRow = existingQ.data?.find((r) => r.scope === 'org');
+  const tenantRow = existingQ.data?.find((r) => r.scope === 'tenant');
+  const activeRow = scope === 'org' ? orgRow : tenantRow;
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const filled = Object.fromEntries(
+        Object.entries(values).filter(([, v]) => v && v.trim().length > 0),
+      );
+      if (Object.keys(filled).length === 0) {
+        throw new Error('En az 1 alanı doldurun.');
+      }
+      const res = await api.put<{ message: string }>(
+        `/integrations/credentials/${integration.key}`,
+        { scope, credentials: filled },
+      );
+      return res.data;
+    },
+    onSuccess: (data) => {
+      setResult({ ok: true, msg: data.message });
+      setValues({});
+      existingQ.refetch();
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string } }; message?: string };
+      setResult({ ok: false, msg: err.response?.data?.error ?? err.message ?? 'Hata' });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      await api.delete(`/integrations/credentials/${integration.key}?scope=${scope}`);
+    },
+    onSuccess: () => {
+      setResult({ ok: true, msg: 'Kayıt kaldırıldı.' });
+      existingQ.refetch();
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full max-h-[85vh] overflow-y-auto p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-brand-900 dark:text-slate-100 flex items-center gap-2">
+              <Settings className="size-5 text-brand-700" />
+              {integration.name} — Yapılandır
+            </h3>
+            <p className="text-xs text-brand-500 dark:text-slate-400 mt-1">
+              {integration.description}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-brand-500 hover:text-brand-900">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        {/* Scope toggle */}
+        <div className="mb-4">
+          <p className="text-xs uppercase tracking-wide text-brand-500 dark:text-slate-400 mb-2">
+            Kapsam
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setScope('org')}
+              className={`text-xs px-3 py-2 rounded-lg border ${
+                scope === 'org'
+                  ? 'bg-brand-900 text-white border-brand-900'
+                  : 'border-brand-200 dark:border-slate-700 text-brand-700 dark:text-slate-300 hover:bg-brand-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="font-medium">🏢 Organizasyon</div>
+              <div className="text-[10px] opacity-80">Tüm şirketler kullanır (varsayılan)</div>
+            </button>
+            <button
+              onClick={() => setScope('tenant')}
+              className={`text-xs px-3 py-2 rounded-lg border ${
+                scope === 'tenant'
+                  ? 'bg-brand-900 text-white border-brand-900'
+                  : 'border-brand-200 dark:border-slate-700 text-brand-700 dark:text-slate-300 hover:bg-brand-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="font-medium">🏬 Sadece Aktif Şirket</div>
+              <div className="text-[10px] opacity-80">Bu tenant için özel anahtar</div>
+            </button>
+          </div>
+          <p className="text-[10px] text-brand-400 dark:text-slate-500 mt-2">
+            Tenant-özel kayıt varsa o önceliklidir. Yoksa organizasyon default'u kullanılır.
+          </p>
+        </div>
+
+        {/* Existing row (masked) */}
+        {activeRow && (
+          <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+            <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300 mb-1 flex items-center gap-1">
+              <CheckCircle2 className="size-3" />
+              Mevcut kayıt ({scope === 'org' ? 'Organizasyon' : 'Bu tenant'})
+            </p>
+            <div className="space-y-0.5 text-[11px] font-mono">
+              {Object.entries(activeRow.credentials_masked).map(([k, v]) => (
+                <p key={k} className="text-emerald-700 dark:text-emerald-400">
+                  {k}: {v}
+                </p>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                if (confirm('Bu kayıt silinsin mi?')) remove.mutate();
+              }}
+              className="text-[10px] text-red-600 hover:underline mt-2 inline-flex items-center gap-1"
+            >
+              Kaldır
+            </button>
+          </div>
+        )}
+
+        {/* Form fields */}
+        <div className="space-y-3 mb-4">
+          {fields.map((f) => (
+            <div key={f.key}>
+              <label className="text-xs text-brand-500 dark:text-slate-400 uppercase tracking-wide">
+                {f.label}
+              </label>
+              <input
+                type={f.key.includes('token') || f.key.includes('key') ? 'password' : 'text'}
+                value={values[f.key] ?? ''}
+                onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+                placeholder={f.placeholder ?? ''}
+                autoComplete="off"
+                className="input w-full mt-1 font-mono text-xs"
+              />
+              {f.hint && (
+                <p className="text-[10px] text-brand-400 dark:text-slate-500 mt-1">💡 {f.hint}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Result */}
+        {result && (
+          <div
+            className={`text-sm p-3 rounded mb-3 ${
+              result.ok
+                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
+                : 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300'
+            }`}
+          >
+            {result.msg}
+          </div>
+        )}
+
+        {/* Info */}
+        <div className="text-[10px] text-brand-500 dark:text-slate-400 bg-blue-50 dark:bg-blue-900/20 p-2 rounded mb-3">
+          🔒 Anahtarlar AES-GCM ile şifrelenmiş olarak DB'de saklanır. Değiştirdikten sonra API
+          restart gerekmez — bir sonraki çağrıda yeni anahtar kullanılır.
+        </div>
+
+        {/* Buttons */}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="text-xs text-brand-500 hover:text-brand-900 px-3 py-1.5"
+          >
+            Kapat
+          </button>
+          <button
+            onClick={() => {
+              setResult(null);
+              save.mutate();
+            }}
+            disabled={save.isPending}
+            className="text-xs bg-brand-900 hover:bg-brand-700 disabled:opacity-50 text-white px-3 py-1.5 rounded flex items-center gap-1"
+          >
+            <Settings className="size-3" />
+            {save.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

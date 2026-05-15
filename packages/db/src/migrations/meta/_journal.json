@@ -211,6 +211,13 @@
       "when": 1778789000000,
       "tag": "0029_invoice_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1778790000000,
+      "tag": "0030_integration_credentials",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@
  */
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { getIntegrationCredentials } from './integration-credentials';
 
 export const isEmailConfigured = Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
 
@@ -22,6 +23,8 @@ export interface SendEmailParams {
   html: string;
   text?: string;
   tag?: string;
+  /** Org-default + tenant-override credential lookup için. Yoksa env fallback. */
+  ctx?: { organizationId?: string | null; tenantId?: string | null };
 }
 
 export interface SendEmailResult {
@@ -29,11 +32,34 @@ export interface SendEmailResult {
   message_id?: string;
 }
 
+async function resolveResendCreds(
+  ctx?: SendEmailParams['ctx'],
+): Promise<{ api_key: string; email_from: string } | null> {
+  if (ctx?.organizationId) {
+    const r = await getIntegrationCredentials(
+      {
+        organizationId: ctx.organizationId,
+        tenantId: ctx.tenantId,
+        integrationKey: 'resend',
+      },
+      { api_key: env.RESEND_API_KEY ?? '', email_from: env.EMAIL_FROM ?? '' },
+    );
+    if (r.credentials.api_key && r.credentials.email_from) {
+      return { api_key: r.credentials.api_key, email_from: r.credentials.email_from };
+    }
+  }
+  if (env.RESEND_API_KEY && env.EMAIL_FROM) {
+    return { api_key: env.RESEND_API_KEY, email_from: env.EMAIL_FROM };
+  }
+  return null;
+}
+
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  if (!isEmailConfigured) {
+  const creds = await resolveResendCreds(params.ctx);
+  if (!creds) {
     logger.warn(
       { to: params.to, subject: params.subject, tag: params.tag },
-      'Email gateway not configured (RESEND_API_KEY+EMAIL_FROM) — fallback mode',
+      'Email gateway not configured (resend credentials yok) — fallback mode',
     );
     return { delivered: 'fallback_link' };
   }
@@ -42,11 +68,11 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY!}`,
+        Authorization: `Bearer ${creds.api_key}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: env.EMAIL_FROM,
+        from: creds.email_from,
         to: params.to,
         subject: params.subject,
         html: params.html,

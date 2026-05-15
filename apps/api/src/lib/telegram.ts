@@ -18,14 +18,37 @@
  */
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { getCredentialField } from './integration-credentials';
 
 export const isTelegramConfigured = Boolean(env.TELEGRAM_BOT_TOKEN);
+
+export interface TelegramCtx {
+  organizationId?: string | null;
+  tenantId?: string | null;
+}
+
+async function resolveTelegramToken(ctx?: TelegramCtx): Promise<string | null> {
+  if (ctx?.organizationId) {
+    const r = await getCredentialField(
+      {
+        organizationId: ctx.organizationId,
+        tenantId: ctx.tenantId,
+        integrationKey: 'telegram',
+      },
+      'bot_token',
+      env.TELEGRAM_BOT_TOKEN,
+    );
+    return r.value;
+  }
+  return env.TELEGRAM_BOT_TOKEN ?? null;
+}
 
 export interface SendTelegramParams {
   chatId: string;
   text: string;
   parseMode?: 'Markdown' | 'HTML';
   disableNotification?: boolean;
+  ctx?: TelegramCtx;
 }
 
 export interface SendTelegramResult {
@@ -35,14 +58,15 @@ export interface SendTelegramResult {
 }
 
 export async function sendTelegramMessage(params: SendTelegramParams): Promise<SendTelegramResult> {
-  if (!isTelegramConfigured) {
+  const token = await resolveTelegramToken(params.ctx);
+  if (!token) {
     logger.debug({ chatId: params.chatId }, 'Telegram not configured — skipping');
     return { delivered: 'no_gateway' };
   }
 
   try {
     const res = await fetch(
-      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN!}/sendMessage`,
+      `https://api.telegram.org/bot${token}/sendMessage`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,10 +103,13 @@ export async function sendTelegramMessage(params: SendTelegramParams): Promise<S
 /**
  * Bot bilgilerini al (UI'da bot adını göstermek için).
  */
-export async function getTelegramBotInfo(): Promise<{ username?: string; first_name?: string } | null> {
-  if (!isTelegramConfigured) return null;
+export async function getTelegramBotInfo(
+  ctx?: TelegramCtx,
+): Promise<{ username?: string; first_name?: string } | null> {
+  const token = await resolveTelegramToken(ctx);
+  if (!token) return null;
   try {
-    const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN!}/getMe`);
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
     if (!res.ok) return null;
     const data = (await res.json()) as { ok: boolean; result?: { username?: string; first_name?: string } };
     return data.result ?? null;
