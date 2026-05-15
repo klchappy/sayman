@@ -25,6 +25,9 @@ declare global {
       activeTenantId?: string;
       activeTenantSlug?: string;
       effectiveRole?: string;
+
+      /** requireTenantOrAggregate: tek tenant yerine org-wide read için tenant id listesi */
+      aggregateTenantIds?: string[] | null;
     }
   }
 }

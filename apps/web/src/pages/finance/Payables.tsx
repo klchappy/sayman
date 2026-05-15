@@ -19,10 +19,13 @@ import {
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSubsidiaries } from '../../lib/use-subsidiaries';
+import { AuditHistoryButton } from '../../components/AuditHistoryButton';
+import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import { SavedFilters } from '../../components/SavedFilters';
 
 interface Payable {
   id: string;
+  tenant_id: string;
   title: string;
   invoice_number: string | null;
   period_label: string | null;
@@ -32,6 +35,10 @@ interface Payable {
   currency: string;
   status: PayableStatus;
   erp_push_status: 'pushed' | 'pulled' | 'failed' | null;
+  auto_created_source: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface SemanticHit {
@@ -250,11 +257,12 @@ export function PayablesPage() {
                 <tbody>
                   {q.data.map((p) => (
                     <tr key={p.id} className="border-b border-brand-50 hover:bg-brand-50">
-                      <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2">
+                      <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2 flex-wrap">
                         <Receipt className="size-4 text-brand-400" />
                         <Link to={`/payables/${p.id}`} className="hover:text-brand-700">
                           {p.title}
                         </Link>
+                        <ProvenanceBadge item={p} />
                         {p.erp_push_status === 'pushed' && (
                           <span
                             title="Bu fatura ERP'ye gönderildi"
@@ -279,6 +287,7 @@ export function PayablesPage() {
                             ERP×
                           </span>
                         )}
+                        <AuditHistoryButton targetTable="payable_items" targetId={p.id} />
                       </td>
                       <td className="py-2 px-2 font-mono text-xs text-brand-600">
                         {p.invoice_number ?? '-'}

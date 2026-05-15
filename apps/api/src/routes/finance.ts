@@ -5,7 +5,7 @@
  * Şahıs/Şirket FK'leri public schema'da (share_scope'lu), ama burası
  * tenant-private tablo.
  */
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -23,7 +23,7 @@ import {
   transactionStatusSchema,
 } from '@sayman/shared';
 import { requireAuth } from '../middleware/auth';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
 
 // --- /v1/payables -----------------------------------------------------------
 
@@ -53,27 +53,35 @@ const updatePayableSchema = createPayableSchema.partial();
 
 export const payablesRouter = Router();
 
-payablesRouter.get('/payables', requireAuth, requireTenant, async (req, res, next) => {
-  try {
-    const db = getDb();
-    const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
-    const whereClause = includeReview
-      ? eq(payableItems.tenant_id, req.activeTenantId!)
-      : and(
-          eq(payableItems.tenant_id, req.activeTenantId!),
-          eq(payableItems.needs_review, false),
-        );
-    const rows = await db
-      .select()
-      .from(payableItems)
-      .where(whereClause)
-      .orderBy(desc(payableItems.due_date), desc(payableItems.created_at))
-      .limit(200);
-    res.json({ data: rows, count: rows.length });
-  } catch (err) {
-    next(err);
-  }
-});
+payablesRouter.get(
+  '/payables',
+  requireAuth,
+  requireTenantOrAggregate,
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      const tenantScope = req.aggregateTenantIds
+        ? inArray(payableItems.tenant_id, req.aggregateTenantIds)
+        : eq(payableItems.tenant_id, req.activeTenantId!);
+      const conditions = [tenantScope];
+      if (!includeReview) conditions.push(eq(payableItems.needs_review, false));
+      const rows = await db
+        .select()
+        .from(payableItems)
+        .where(and(...conditions))
+        .orderBy(desc(payableItems.due_date), desc(payableItems.created_at))
+        .limit(500);
+      res.json({
+        data: rows,
+        count: rows.length,
+        aggregate: req.aggregateTenantIds ? { tenant_count: req.aggregateTenantIds.length } : null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 payablesRouter.post('/payables', requireAuth, requireTenant, async (req, res, next) => {
   try {

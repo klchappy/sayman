@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AuditHistoryButton } from '../components/AuditHistoryButton';
+import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { SavedFilters } from '../components/SavedFilters';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -39,6 +41,10 @@ interface SalesInvoice {
   status: 'draft' | 'sent' | 'partial_paid' | 'paid' | 'overdue' | 'cancelled';
   erp_push_status: string | null;
   erp_external_id: string | null;
+  auto_created_source: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface SalesSummary {
@@ -197,17 +203,21 @@ export function SalesInvoicesPage() {
                   className="border-b border-brand-50 dark:border-slate-800/50 hover:bg-brand-50/50 dark:hover:bg-slate-800/30"
                 >
                   <td className="py-2 px-3 font-medium text-brand-900 dark:text-slate-100">
-                    {s.title}
-                    {s.erp_push_status === 'pushed' && (
-                      <span className="ml-2 text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded uppercase">
-                        ERP↑
-                      </span>
-                    )}
-                    {s.erp_push_status === 'pulled' && (
-                      <span className="ml-2 text-[9px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-1.5 py-0.5 rounded uppercase">
-                        ERP↓
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{s.title}</span>
+                      <ProvenanceBadge item={s} />
+                      {s.erp_push_status === 'pushed' && (
+                        <span className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded uppercase">
+                          ERP↑
+                        </span>
+                      )}
+                      {s.erp_push_status === 'pulled' && (
+                        <span className="text-[9px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-1.5 py-0.5 rounded uppercase">
+                          ERP↓
+                        </span>
+                      )}
+                      <AuditHistoryButton targetTable="sales_invoices" targetId={s.id} />
+                    </div>
                   </td>
                   <td className="py-2 px-3 text-brand-700 dark:text-slate-300">
                     {s.customer_name ?? '-'}

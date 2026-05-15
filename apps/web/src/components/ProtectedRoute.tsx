@@ -39,18 +39,21 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     },
   });
 
-  // Admin için tenant otomatik seçimi: tenant seçilmemişse ilk tenant otomatik atanır
+  // Admin için tenant otomatik seçimi: tenant seçilmemiş VE aggregate mode aktif değilse
+  // ilk tenant otomatik atanır. Aggregate mode kullanıcı tarafından açıkça seçilince
+  // tenant null kalmalı.
   useEffect(() => {
     if (
       authed &&
       isAdmin &&
       !active.tenantSlug &&
+      !active.aggregate &&
       tenantsQ.data &&
       tenantsQ.data.length > 0
     ) {
       setActive({ tenantSlug: tenantsQ.data[0]!.slug });
     }
-  }, [authed, isAdmin, active.tenantSlug, tenantsQ.data, setActive]);
+  }, [authed, isAdmin, active.tenantSlug, active.aggregate, tenantsQ.data, setActive]);
 
   if (!initialized) {
     return (
@@ -74,10 +77,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // Admin için tenant otomatik seçim bekleniyor: ekran flicker'ını önle.
+  // Admin için tenant otomatik seçim bekleniyor: aggregate mode aktif değilken sadece
   if (
     isAdmin &&
     !active.tenantSlug &&
+    !active.aggregate &&
     tenantsQ.data &&
     tenantsQ.data.length > 0 &&
     !onOnboardingRoute

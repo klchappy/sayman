@@ -48,6 +48,13 @@ export interface MeData {
 export interface ActiveSelection {
   orgSlug: string | null;
   tenantSlug: string | null;
+  /**
+   * Aggregate mode: admin org-level rolü ile tüm tenant'ların verisini birleşik görür.
+   * - aggregate=true + tenantSlug=null → org-wide read
+   * - Liste/dashboard/raporlar API'ye X-Sayman-Aggregate:1 header'ı ile çağrılır
+   * - Mutation endpoint'leri tenant zorunlu — aggregate mode'da blocked
+   */
+  aggregate: boolean;
 }
 
 interface AuthState {
@@ -81,7 +88,7 @@ export const useAuth = create<AuthState>()(
       session: null,
       localToken: null,
       me: null,
-      active: { orgSlug: null, tenantSlug: null },
+      active: { orgSlug: null, tenantSlug: null, aggregate: false },
       loading: false,
       initialized: false,
 
@@ -114,7 +121,7 @@ export const useAuth = create<AuthState>()(
           supabase.auth.onAuthStateChange((_event, session) => {
             applyToken(session?.access_token ?? null);
             set({ session });
-            if (!session) set({ me: null, active: { orgSlug: null, tenantSlug: null } });
+            if (!session) set({ me: null, active: { orgSlug: null, tenantSlug: null, aggregate: false } });
           });
 
           if (data.session) {
@@ -178,7 +185,7 @@ export const useAuth = create<AuthState>()(
           session: null,
           localToken: null,
           me: null,
-          active: { orgSlug: null, tenantSlug: null },
+          active: { orgSlug: null, tenantSlug: null, aggregate: false },
         });
       },
 
@@ -192,7 +199,7 @@ export const useAuth = create<AuthState>()(
         if (!current.orgSlug && me.organizations.length > 0) {
           const firstOrg = me.organizations[0];
           if (firstOrg) {
-            set({ active: { orgSlug: firstOrg.slug, tenantSlug: null } });
+            set({ active: { orgSlug: firstOrg.slug, tenantSlug: null, aggregate: false } });
           }
         }
       },

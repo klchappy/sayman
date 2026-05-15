@@ -9,7 +9,7 @@
  *   POST   /v1/sales-invoices/:id/push/:connId  → ERP'ye push
  *   GET    /v1/sales-invoices/summary           → toplam alacak + geciken + bu ay tahsil
  */
-import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -22,7 +22,7 @@ import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
 import { getAdapter } from '../lib/erp';
 import { decryptSecret } from '../lib/secret-box';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
@@ -43,28 +43,36 @@ const createSchema = z.object({
   subsidiary_id: z.string().uuid().optional().nullable(),
 });
 
-salesInvoicesRouter.get('/sales-invoices', requireAuth, requireTenant, async (req, res, next) => {
-  try {
-    const db = getDb();
-    const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
-    const conditions = [
-      eq(salesInvoices.tenant_id, req.activeTenantId!),
-      eq(salesInvoices.is_active, true),
-    ];
-    if (!includeReview) {
-      conditions.push(eq(salesInvoices.needs_review, false));
+salesInvoicesRouter.get(
+  '/sales-invoices',
+  requireAuth,
+  requireTenantOrAggregate,
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      const tenantScope = req.aggregateTenantIds
+        ? inArray(salesInvoices.tenant_id, req.aggregateTenantIds)
+        : eq(salesInvoices.tenant_id, req.activeTenantId!);
+      const conditions = [tenantScope, eq(salesInvoices.is_active, true)];
+      if (!includeReview) {
+        conditions.push(eq(salesInvoices.needs_review, false));
+      }
+      const rows = await db
+        .select()
+        .from(salesInvoices)
+        .where(and(...conditions))
+        .orderBy(desc(salesInvoices.due_date), desc(salesInvoices.created_at))
+        .limit(500);
+      res.json({
+        data: rows,
+        aggregate: req.aggregateTenantIds ? { tenant_count: req.aggregateTenantIds.length } : null,
+      });
+    } catch (err) {
+      next(err);
     }
-    const rows = await db
-      .select()
-      .from(salesInvoices)
-      .where(and(...conditions))
-      .orderBy(desc(salesInvoices.due_date), desc(salesInvoices.created_at))
-      .limit(500);
-    res.json({ data: rows });
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
 
 salesInvoicesRouter.get(
   '/sales-invoices/summary',

@@ -29,8 +29,15 @@ api.interceptors.request.use((config) => {
 /**
  * Active org/tenant accessor — auth store'a circular import yapmamak için
  * setter ile inject ediyoruz. App mount'unda useAuth'tan set edilir.
+ *
+ * `aggregate=true` admin'lerin org-wide read modu için. Bu mode'da
+ * tenantSlug null gönderilir + X-Sayman-Aggregate: 1 header eklenir.
  */
-let getActive: () => { orgSlug: string | null; tenantSlug: string | null } = () => ({
+let getActive: () => {
+  orgSlug: string | null;
+  tenantSlug: string | null;
+  aggregate?: boolean;
+} = () => ({
   orgSlug: null,
   tenantSlug: null,
 });
@@ -41,17 +48,22 @@ export function bindActiveAccessor(fn: typeof getActive) {
 
 // Her request öncesi org/tenant header'ları güncelle
 api.interceptors.request.use((config) => {
-  const { orgSlug, tenantSlug } = getActive();
+  const { orgSlug, tenantSlug, aggregate } = getActive();
 
   if (orgSlug) {
     config.headers['X-Sayman-Org'] = orgSlug;
   } else {
     delete config.headers['X-Sayman-Org'];
   }
-  if (tenantSlug) {
+  if (tenantSlug && !aggregate) {
     config.headers['X-Sayman-Tenant'] = tenantSlug;
   } else {
     delete config.headers['X-Sayman-Tenant'];
+  }
+  if (aggregate) {
+    config.headers['X-Sayman-Aggregate'] = '1';
+  } else {
+    delete config.headers['X-Sayman-Aggregate'];
   }
   return config;
 });

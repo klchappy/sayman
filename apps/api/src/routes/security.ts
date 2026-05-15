@@ -207,6 +207,38 @@ securityRouter.post('/security/2fa/recovery-codes/regenerate', requireAuth, asyn
 
 // --- Audit log viewer (admin) -----------------------------------------------
 
+/** Bir kayıt için tüm audit eventleri (kim, ne yaptı, ne değişti) */
+securityRouter.get(
+  '/security/audit/record',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const target_table = String(req.query.target_table ?? '').trim();
+      const target_id = String(req.query.target_id ?? '').trim();
+      if (!target_table || !target_id) {
+        throw new HttpError(400, 'target_table ve target_id zorunlu', 'BAD_REQ');
+      }
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.organization_id, req.activeOrgId!),
+            eq(auditLog.target_table, target_table),
+            eq(auditLog.target_id, target_id),
+          ),
+        )
+        .orderBy(desc(auditLog.created_at))
+        .limit(200);
+      res.json({ data: rows, count: rows.length });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 securityRouter.get('/security/audit', requireAuth, requireOrg, async (req, res, next) => {
   try {
     // Role check: sadece super_admin + yonetici görür
