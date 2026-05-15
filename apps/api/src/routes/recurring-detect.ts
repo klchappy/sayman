@@ -14,7 +14,7 @@
  *   - kayıtlar arasında ortalama 85-95 gün → "quarterly"
  *   - kayıtlar arasında ortalama 350-380 gün → "yearly"
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { getDb, payableItems } from '@sayman/db';
 import { HttpError, requireOrg } from '../lib/helpers';
@@ -92,12 +92,13 @@ recurringDetectRouter.get(
       const maxAmt = amt * 1.1;
 
       // 6 ay içinde aynı supplier + amount ±10%
-      const rows = await db.execute(`
+      // NOT: parameterized sql tag — string interpolation SQL injection riski.
+      const rows = await db.execute(sql`
         SELECT id, title, amount, created_at, due_date
         FROM payable_items
-        WHERE tenant_id = '${tenantId}'::uuid
+        WHERE tenant_id = ${tenantId}::uuid
           AND is_active = true
-          AND supplier_name = '${(p.supplier_name ?? '').replace(/'/g, "''")}'
+          AND supplier_name = ${p.supplier_name}
           AND amount::numeric BETWEEN ${minAmt} AND ${maxAmt}
           AND created_at > NOW() - INTERVAL '6 months'
         ORDER BY created_at ASC

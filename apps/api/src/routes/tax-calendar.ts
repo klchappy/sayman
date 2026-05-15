@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { getDb, taxCalendarEvents } from '@sayman/db';
 import { runGenerateTaxCalendar } from '../jobs/generate-tax-calendar';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const taxCalendarRouter = Router();
@@ -29,13 +30,15 @@ taxCalendarRouter.get('/tax-calendar', requireAuth, requireTenant, async (req, r
       const today = new Date().toISOString().slice(0, 10);
       conditions.push(gte(taxCalendarEvents.due_date, today));
     }
+    const where = and(...conditions);
     const rows = await db
       .select()
       .from(taxCalendarEvents)
-      .where(and(...conditions))
+      .where(where)
       .orderBy(asc(taxCalendarEvents.due_date))
-      .limit(200);
-    res.json({ data: rows });
+      .limit(LIST_LIMITS.medium);
+    const total = await countTotal(taxCalendarEvents, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.medium) });
   } catch (err) {
     next(err);
   }

@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, stockItems } from '@sayman/db';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const stockRouter = Router();
@@ -27,14 +28,15 @@ stockRouter.get('/stock', requireAuth, requireTenant, async (req, res, next) => 
       conditions.push(sql`${stockItems.quantity}::numeric <= ${stockItems.critical_threshold}::numeric`);
     }
 
+    const where = and(...conditions);
     const rows = await db
       .select()
       .from(stockItems)
-      .where(and(...conditions))
+      .where(where)
       .orderBy(asc(stockItems.name))
-      .limit(1000);
-
-    res.json({ data: rows });
+      .limit(LIST_LIMITS.xl);
+    const total = await countTotal(stockItems, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.xl) });
   } catch (err) {
     next(err);
   }

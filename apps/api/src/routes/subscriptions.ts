@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, subscriptions } from '@sayman/db';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 const createSchema = z.object({
@@ -34,13 +35,18 @@ export const subscriptionsRouter = Router();
 subscriptionsRouter.get('/subscriptions', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
+    const where = and(
+      eq(subscriptions.tenant_id, req.activeTenantId!),
+      eq(subscriptions.is_active, true),
+    );
     const rows = await db
       .select()
       .from(subscriptions)
-      .where(and(eq(subscriptions.tenant_id, req.activeTenantId!), eq(subscriptions.is_active, true)))
+      .where(where)
       .orderBy(desc(subscriptions.commitment_end_date), desc(subscriptions.created_at))
-      .limit(200);
-    res.json({ data: rows, count: rows.length });
+      .limit(LIST_LIMITS.medium);
+    const total = await countTotal(subscriptions, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.medium) });
   } catch (err) {
     next(err);
   }

@@ -21,6 +21,7 @@ import {
 import { calculatePayroll } from '../lib/payroll-calc';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const payrollRouter = Router();
@@ -28,13 +29,15 @@ export const payrollRouter = Router();
 payrollRouter.get('/payroll/runs', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
+    const where = eq(payrollRuns.tenant_id, req.activeTenantId!);
     const rows = await db
       .select()
       .from(payrollRuns)
-      .where(eq(payrollRuns.tenant_id, req.activeTenantId!))
+      .where(where)
       .orderBy(desc(payrollRuns.period))
-      .limit(100);
-    res.json({ data: rows });
+      .limit(LIST_LIMITS.small);
+    const total = await countTotal(payrollRuns, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.small) });
   } catch (err) {
     next(err);
   }

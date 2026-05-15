@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { employees, getDb } from '@sayman/db';
 import { calculatePayroll } from '../lib/payroll-calc';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const employeesRouter = Router();
@@ -26,14 +27,16 @@ employeesRouter.get('/employees', requireAuth, requireTenantOrAggregate, async (
       eq(employees.is_active, true),
     ];
     if (req.query.status) conditions.push(eq(employees.status, String(req.query.status)));
+    const where = and(...conditions);
 
     const rows = await db
       .select()
       .from(employees)
-      .where(and(...conditions))
+      .where(where)
       .orderBy(asc(employees.full_name))
-      .limit(500);
-    res.json({ data: rows });
+      .limit(LIST_LIMITS.large);
+    const total = await countTotal(employees, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.large) });
   } catch (err) {
     next(err);
   }

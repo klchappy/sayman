@@ -15,6 +15,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { checksAndNotes, getDb } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const checksRouter = Router();
@@ -99,14 +100,15 @@ checksRouter.get('/checks', requireAuth, requireTenantOrAggregate, async (req, r
       conditions.push(lte(checksAndNotes.due_date, future.toISOString().slice(0, 10)));
     }
 
+    const where = and(...conditions);
     const rows = await db
       .select()
       .from(checksAndNotes)
-      .where(and(...conditions))
+      .where(where)
       .orderBy(asc(checksAndNotes.due_date), desc(checksAndNotes.created_at))
-      .limit(500);
-
-    res.json({ data: rows });
+      .limit(LIST_LIMITS.large);
+    const total = await countTotal(checksAndNotes, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.large) });
   } catch (err) {
     next(err);
   }

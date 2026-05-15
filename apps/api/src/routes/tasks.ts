@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { getDb, tasks } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 const priorityEnum = z.enum(['low', 'normal', 'high', 'urgent']);
@@ -41,13 +42,15 @@ tasksRouter.get('/tasks', requireAuth, requireTenant, async (req, res, next) => 
     if (status) conditions.push(eq(tasks.status, status as never));
     if (assignedToMe) conditions.push(eq(tasks.assigned_to, req.authUserId!));
 
+    const where = and(...conditions);
     const rows = await db
       .select()
       .from(tasks)
-      .where(and(...conditions))
+      .where(where)
       .orderBy(asc(tasks.due_date), desc(tasks.created_at))
-      .limit(200);
-    res.json({ data: rows, count: rows.length });
+      .limit(LIST_LIMITS.medium);
+    const total = await countTotal(tasks, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.medium) });
   } catch (err) {
     next(err);
   }

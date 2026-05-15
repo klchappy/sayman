@@ -20,6 +20,7 @@ import {
 } from '@sayman/db';
 import { buildSchedule, calculateMonthlyDepreciation } from '../lib/depreciation';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const fixedAssetsRouter = Router();
@@ -94,12 +95,13 @@ fixedAssetsRouter.get('/fixed-assets', requireAuth, requireTenantOrAggregate, as
     if (req.query.category) conditions.push(eq(fixedAssets.category, String(req.query.category)));
     if (req.query.status) conditions.push(eq(fixedAssets.status, String(req.query.status)));
 
+    const where = and(...conditions);
     const rows = await db
       .select()
       .from(fixedAssets)
-      .where(and(...conditions))
+      .where(where)
       .orderBy(desc(fixedAssets.purchase_date))
-      .limit(500);
+      .limit(LIST_LIMITS.large);
 
     // Net defter değeri ekle
     const enriched = rows.map((a) => ({
@@ -107,7 +109,8 @@ fixedAssetsRouter.get('/fixed-assets', requireAuth, requireTenantOrAggregate, as
       net_book_value: Number(a.purchase_cost) - Number(a.accumulated_depreciation),
     }));
 
-    res.json({ data: enriched });
+    const total = await countTotal(fixedAssets, where);
+    res.json({ data: enriched, ...listMeta(enriched, total, LIST_LIMITS.large) });
   } catch (err) {
     next(err);
   }

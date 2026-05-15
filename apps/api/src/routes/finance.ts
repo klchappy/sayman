@@ -24,6 +24,7 @@ import {
 } from '@sayman/shared';
 import { requireAuth } from '../middleware/auth';
 import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 
 // --- /v1/payables -----------------------------------------------------------
 
@@ -247,18 +248,18 @@ export const paymentsRouter = Router();
 paymentsRouter.get('/payments', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
+    const where = and(
+      eq(paymentTransactions.tenant_id, req.activeTenantId!),
+      eq(paymentTransactions.is_active, true),
+    );
     const rows = await db
       .select()
       .from(paymentTransactions)
-      .where(
-        and(
-          eq(paymentTransactions.tenant_id, req.activeTenantId!),
-          eq(paymentTransactions.is_active, true),
-        ),
-      )
+      .where(where)
       .orderBy(desc(paymentTransactions.paid_at))
-      .limit(200);
-    res.json({ data: rows, count: rows.length });
+      .limit(LIST_LIMITS.medium);
+    const total = await countTotal(paymentTransactions, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.medium) });
   } catch (err) {
     next(err);
   }

@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, guaranteeCommissionPeriods, guarantees } from '@sayman/db';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 const createSchema = z.object({
@@ -32,13 +33,18 @@ export const guaranteesRouter = Router();
 guaranteesRouter.get('/guarantees', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
+    const where = and(
+      eq(guarantees.tenant_id, req.activeTenantId!),
+      eq(guarantees.is_active, true),
+    );
     const rows = await db
       .select()
       .from(guarantees)
-      .where(and(eq(guarantees.tenant_id, req.activeTenantId!), eq(guarantees.is_active, true)))
+      .where(where)
       .orderBy(desc(guarantees.expiry_date), desc(guarantees.created_at))
-      .limit(200);
-    res.json({ data: rows, count: rows.length });
+      .limit(LIST_LIMITS.medium);
+    const total = await countTotal(guarantees, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.medium) });
   } catch (err) {
     next(err);
   }

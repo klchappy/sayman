@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, officialPaymentPeriods, officialPaymentProfiles } from '@sayman/db';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 const createSchema = z.object({
@@ -26,18 +27,18 @@ export const officialPaymentsRouter = Router();
 officialPaymentsRouter.get('/official-payments', requireAuth, requireTenant, async (req, res, next) => {
   try {
     const db = getDb();
+    const where = and(
+      eq(officialPaymentProfiles.tenant_id, req.activeTenantId!),
+      eq(officialPaymentProfiles.is_active, true),
+    );
     const rows = await db
       .select()
       .from(officialPaymentProfiles)
-      .where(
-        and(
-          eq(officialPaymentProfiles.tenant_id, req.activeTenantId!),
-          eq(officialPaymentProfiles.is_active, true),
-        ),
-      )
+      .where(where)
       .orderBy(desc(officialPaymentProfiles.created_at))
-      .limit(200);
-    res.json({ data: rows, count: rows.length });
+      .limit(LIST_LIMITS.medium);
+    const total = await countTotal(officialPaymentProfiles, where);
+    res.json({ data: rows, ...listMeta(rows, total, LIST_LIMITS.medium) });
   } catch (err) {
     next(err);
   }
