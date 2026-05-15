@@ -45,6 +45,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { MODULE_DESCRIPTIONS, type Module } from '@sayman/shared';
 import { api, bindActiveAccessor } from '../lib/api';
+import { prefetchCommonRoutes } from '../lib/route-prefetch';
 import { useAuth } from '../lib/auth';
 import { CommandPalette } from './CommandPalette';
 import { ShortcutsHelp } from './ShortcutsHelp';
@@ -216,9 +217,10 @@ export function AppShell() {
   const active = useAuth((s) => s.active);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Axios accessor'ı auth store'a bağla
+  // Axios accessor'ı auth store'a bağla + idle'da yaygın sayfaları prefetch et
   useEffect(() => {
     bindActiveAccessor(() => useAuth.getState().active);
+    prefetchCommonRoutes();
   }, []);
 
   // Route değiştiğinde mobile nav'i kapat

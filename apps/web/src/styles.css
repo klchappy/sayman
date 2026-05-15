@@ -157,6 +157,13 @@
 .animate-scale-in { animation: scale-in 0.4s ease-out; }
 .animate-pulse-slow { animation: pulse-slow 2.5s ease-in-out infinite; }
 
+/* Route lazy-load top bar */
+@keyframes route-loading {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.animate-route-loading { animation: route-loading 1.2s ease-in-out infinite; }
+
 @layer utilities {
   /* Custom scrollbar */
   ::-webkit-scrollbar {

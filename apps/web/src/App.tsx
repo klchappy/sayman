@@ -153,12 +153,13 @@ const SubscriptionsPage = lazy(() =>
   import('./pages/finance/Subscriptions').then((m) => ({ default: m.SubscriptionsPage })),
 );
 
+// İlk navigation'da kısa süre görünür. Prefetch (lib/route-prefetch) ile
+// sonraki gezilerde anında render olur. Ağır spinner yerine üst tarafta hafif progress bar.
 function PageFallback() {
   return (
-    <div className="min-h-[40vh] grid place-items-center text-brand-500 dark:text-slate-400 text-sm">
-      <div className="text-center">
-        <div className="size-8 mx-auto mb-2 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-        Sayfa yükleniyor…
+    <div className="min-h-[20vh] relative">
+      <div className="absolute top-0 inset-x-0 h-0.5 bg-brand-100 dark:bg-slate-800 overflow-hidden">
+        <div className="h-full w-1/3 bg-brand-500 dark:bg-brand-300 animate-route-loading" />
       </div>
     </div>
   );
