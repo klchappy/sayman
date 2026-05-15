@@ -35,7 +35,7 @@ guaranteesRouter.get('/guarantees', requireAuth, requireTenant, async (req, res,
     const rows = await db
       .select()
       .from(guarantees)
-      .where(eq(guarantees.tenant_id, req.activeTenantId!))
+      .where(and(eq(guarantees.tenant_id, req.activeTenantId!), eq(guarantees.is_active, true)))
       .orderBy(desc(guarantees.expiry_date), desc(guarantees.created_at))
       .limit(200);
     res.json({ data: rows, count: rows.length });

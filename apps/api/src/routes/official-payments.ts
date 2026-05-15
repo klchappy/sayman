@@ -29,7 +29,12 @@ officialPaymentsRouter.get('/official-payments', requireAuth, requireTenant, asy
     const rows = await db
       .select()
       .from(officialPaymentProfiles)
-      .where(eq(officialPaymentProfiles.tenant_id, req.activeTenantId!))
+      .where(
+        and(
+          eq(officialPaymentProfiles.tenant_id, req.activeTenantId!),
+          eq(officialPaymentProfiles.is_active, true),
+        ),
+      )
       .orderBy(desc(officialPaymentProfiles.created_at))
       .limit(200);
     res.json({ data: rows, count: rows.length });

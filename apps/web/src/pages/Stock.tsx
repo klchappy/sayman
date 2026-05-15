@@ -103,12 +103,37 @@ export function StockPage() {
       {q.data && q.data.length === 0 && (
         <div className="card text-center py-12">
           <Boxes className="size-12 mx-auto text-brand-300 mb-2" />
-          <p className="text-brand-700 dark:text-slate-300 font-medium">
-            Stok kaydı bulunamadı.
-          </p>
-          <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
-            Bir ERP bağlantısı kur ve sync et; ürünler buraya gelir.
-          </p>
+          {(search || lowOnly) ? (
+            <>
+              <p className="text-brand-700 dark:text-slate-300 font-medium">
+                Eşleşen ürün bulunamadı
+              </p>
+              <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
+                {search && <>"<strong>{search}</strong>" araması</>}
+                {search && lowOnly && ' ve '}
+                {lowOnly && <>"Sadece kritik" filtresi</>}
+                {' '}aktif.
+              </p>
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setLowOnly(false);
+                }}
+                className="text-sm text-brand-700 dark:text-slate-300 underline hover:no-underline mt-2"
+              >
+                Filtreyi temizle ↻
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-brand-700 dark:text-slate-300 font-medium">
+                Stok kaydı bulunamadı.
+              </p>
+              <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
+                Bir ERP bağlantısı kur ve sync et; ürünler buraya gelir.
+              </p>
+            </>
+          )}
         </div>
       )}
 

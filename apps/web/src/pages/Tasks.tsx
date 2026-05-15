@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Circle, Clock, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { EmptyState } from '../components/EmptyState';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -101,7 +102,7 @@ export function TasksPage() {
         </button>
       </header>
 
-      <div className="flex gap-2 mb-4 text-sm">
+      <div className="flex gap-2 mb-4 text-sm items-center flex-wrap">
         {(['open', 'mine', 'all'] as const).map((f) => (
           <button
             key={f}
@@ -115,6 +116,11 @@ export function TasksPage() {
             {f === 'open' ? 'Açık' : f === 'mine' ? 'Bana Atananlar' : 'Tümü'}
           </button>
         ))}
+        {filter === 'open' && (
+          <span className="text-xs text-brand-500 dark:text-slate-400 ml-2">
+            (tamamlanan ve iptal edilen görevler gizli)
+          </span>
+        )}
       </div>
 
       {showForm && <TaskForm onClose={() => setShowForm(false)} />}
@@ -122,7 +128,16 @@ export function TasksPage() {
       <div className="card">
         {q.isLoading && <p className="text-brand-500 text-sm">Yükleniyor…</p>}
         {q.data?.length === 0 && (
-          <p className="text-brand-500 text-sm py-6 text-center">Görev yok.</p>
+          <EmptyState
+            entityLabel="görev"
+            hasActiveFilter={filter !== 'all'}
+            filterDescription={
+              filter === 'open'
+                ? "Açık görev yok. Tamamlanan/iptal edilenleri görmek için 'Tümü' filtresine geç."
+                : 'Sana atanmış görev yok.'
+            }
+            onClearFilter={() => setFilter('all')}
+          />
         )}
         <ul className="divide-y divide-brand-100">
           {q.data?.map((t) => (

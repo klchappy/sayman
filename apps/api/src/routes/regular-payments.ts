@@ -41,7 +41,12 @@ regularPaymentsRouter.get('/regular-payments', requireAuth, requireTenant, async
     const rows = await db
       .select()
       .from(regularPaymentProfiles)
-      .where(eq(regularPaymentProfiles.tenant_id, req.activeTenantId!))
+      .where(
+        and(
+          eq(regularPaymentProfiles.tenant_id, req.activeTenantId!),
+          eq(regularPaymentProfiles.is_active, true),
+        ),
+      )
       .orderBy(desc(regularPaymentProfiles.created_at))
       .limit(200);
     res.json({ data: rows, count: rows.length });

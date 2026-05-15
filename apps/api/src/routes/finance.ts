@@ -250,7 +250,12 @@ paymentsRouter.get('/payments', requireAuth, requireTenant, async (req, res, nex
     const rows = await db
       .select()
       .from(paymentTransactions)
-      .where(eq(paymentTransactions.tenant_id, req.activeTenantId!))
+      .where(
+        and(
+          eq(paymentTransactions.tenant_id, req.activeTenantId!),
+          eq(paymentTransactions.is_active, true),
+        ),
+      )
       .orderBy(desc(paymentTransactions.paid_at))
       .limit(200);
     res.json({ data: rows, count: rows.length });

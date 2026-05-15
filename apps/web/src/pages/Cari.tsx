@@ -161,10 +161,35 @@ export function CariListPage() {
       {q.data && q.data.length === 0 && (
         <div className="card text-center py-12">
           <Building2 className="size-12 mx-auto text-brand-300 mb-3" />
-          <p className="text-brand-700 dark:text-slate-300 font-medium">Cari bulunamadı.</p>
-          <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
-            Önce <Link to="/erp" className="text-brand-700 underline">ERP bağlantısı</Link> kur ve sync et.
-          </p>
+          {(search || type !== 'all') ? (
+            <>
+              <p className="text-brand-700 dark:text-slate-300 font-medium">
+                Eşleşen cari bulunamadı
+              </p>
+              <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
+                {search && <>"<strong>{search}</strong>" araması</>}
+                {search && type !== 'all' && ' ve '}
+                {type !== 'all' && <>{type === 'customer' ? 'Müşteri' : 'Tedarikçi'} filtresi</>}
+                {' '}aktif.
+              </p>
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setType('all');
+                }}
+                className="text-sm text-brand-700 dark:text-slate-300 underline hover:no-underline mt-2"
+              >
+                Filtreyi temizle ↻
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-brand-700 dark:text-slate-300 font-medium">Cari bulunamadı.</p>
+              <p className="text-sm text-brand-500 dark:text-slate-400 mt-1">
+                Önce <Link to="/erp" className="text-brand-700 underline">ERP bağlantısı</Link> kur ve sync et.
+              </p>
+            </>
+          )}
         </div>
       )}
 

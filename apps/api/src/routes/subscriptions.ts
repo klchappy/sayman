@@ -37,7 +37,7 @@ subscriptionsRouter.get('/subscriptions', requireAuth, requireTenant, async (req
     const rows = await db
       .select()
       .from(subscriptions)
-      .where(eq(subscriptions.tenant_id, req.activeTenantId!))
+      .where(and(eq(subscriptions.tenant_id, req.activeTenantId!), eq(subscriptions.is_active, true)))
       .orderBy(desc(subscriptions.commitment_end_date), desc(subscriptions.created_at))
       .limit(200);
     res.json({ data: rows, count: rows.length });
