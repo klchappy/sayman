@@ -1,7 +1,0 @@
-{# Chat widget — Faz 11 aktif (DB-backed; WebSocket YOK). #}
-{% load chat_tags %}
-{% chat_unread_count as chat_unread %}
-<a href="{% url 'chat:center' %}" class="chat-widget" title="Mesaj Merkezi" aria-label="Chat aç">
-  💬
-  {% if chat_unread %}<span class="chat-badge">{{ chat_unread }}</span>{% endif %}
-</a>

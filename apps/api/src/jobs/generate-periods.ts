@@ -61,59 +61,60 @@ async function generateRegularPayments(): Promise<number> {
 
   for (const p of profiles) {
     // Profil iterasyonu: today'den endDate'e kadar her ay
+    // Tek profilin tüm period'ları atomik — kısmen oluşmuş tutarsız durum kalmaz
     const cursorStart = p.start_date ? new Date(p.start_date) : today;
     const profileEnd = p.end_date ? new Date(p.end_date) : null;
 
-    let cursor = new Date(
-      Math.max(
-        new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).getTime(),
-        new Date(Date.UTC(cursorStart.getUTCFullYear(), cursorStart.getUTCMonth(), 1)).getTime(),
-      ),
-    );
-
-    while (cursor <= endDate) {
-      if (profileEnd && cursor > profileEnd) break;
-
-      const periodLabel = dateToYM(cursor);
-      const dueDate = new Date(
-        Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), p.payment_day ?? 1),
+    await db.transaction(async (tx) => {
+      let cursor = new Date(
+        Math.max(
+          new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).getTime(),
+          new Date(Date.UTC(cursorStart.getUTCFullYear(), cursorStart.getUTCMonth(), 1)).getTime(),
+        ),
       );
 
-      // Eksik mi?
-      const [existing] = await db
-        .select({ id: regularPaymentPeriods.id })
-        .from(regularPaymentPeriods)
-        .where(
-          and(
-            eq(regularPaymentPeriods.profile_id, p.id),
-            eq(regularPaymentPeriods.period_label, periodLabel),
-          ),
+      while (cursor <= endDate) {
+        if (profileEnd && cursor > profileEnd) break;
+
+        const periodLabel = dateToYM(cursor);
+        const dueDate = new Date(
+          Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), p.payment_day ?? 1),
         );
 
-      if (!existing) {
-        let amount = p.monthly_amount ?? '0';
-        // Annual increase uygula (next_increase_date geçtiyse)
-        if (p.next_increase_date && p.annual_increase_rate) {
-          const niDate = new Date(p.next_increase_date);
-          if (cursor >= niDate) {
-            const rate = Number(p.annual_increase_rate);
-            amount = (Number(amount) * (1 + rate / 100)).toFixed(2);
+        const [existing] = await tx
+          .select({ id: regularPaymentPeriods.id })
+          .from(regularPaymentPeriods)
+          .where(
+            and(
+              eq(regularPaymentPeriods.profile_id, p.id),
+              eq(regularPaymentPeriods.period_label, periodLabel),
+            ),
+          );
+
+        if (!existing) {
+          let amount = p.monthly_amount ?? '0';
+          if (p.next_increase_date && p.annual_increase_rate) {
+            const niDate = new Date(p.next_increase_date);
+            if (cursor >= niDate) {
+              const rate = Number(p.annual_increase_rate);
+              amount = (Number(amount) * (1 + rate / 100)).toFixed(2);
+            }
           }
+
+          await tx.insert(regularPaymentPeriods).values({
+            tenant_id: p.tenant_id,
+            profile_id: p.id,
+            period_label: periodLabel,
+            due_date: dueDate.toISOString().slice(0, 10),
+            amount,
+            status: 'pending',
+          });
+          created++;
         }
 
-        await db.insert(regularPaymentPeriods).values({
-          tenant_id: p.tenant_id,
-          profile_id: p.id,
-          period_label: periodLabel,
-          due_date: dueDate.toISOString().slice(0, 10),
-          amount,
-          status: 'pending',
-        });
-        created++;
+        cursor = addMonths(cursor, 1);
       }
-
-      cursor = addMonths(cursor, 1);
-    }
+    });
   }
 
   return created;

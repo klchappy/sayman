@@ -38,6 +38,15 @@ export interface SyncResult {
   duration_ms: number;
 }
 
+// Connection UUID'sini stabil int32'ye çevir (advisory lock için)
+function connectionLockId(connectionId: string): number {
+  let hash = 0;
+  for (let i = 0; i < connectionId.length; i++) {
+    hash = ((hash << 5) - hash + connectionId.charCodeAt(i)) | 0;
+  }
+  return hash;
+}
+
 export async function runFullSync(
   connectionId: string,
   trigger: 'manual' | 'cron' = 'manual',
@@ -51,6 +60,16 @@ export async function runFullSync(
   let salesPulled = 0;
   let stockPulled = 0;
 
+  // Aynı connection için concurrent sync engelle — non-blocking try-lock
+  const lockId = connectionLockId(connectionId);
+  const lockResult = await db.execute(sql`SELECT pg_try_advisory_lock(${lockId}) AS locked`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const locked = (lockResult as any).rows?.[0]?.locked ?? (lockResult as any)[0]?.locked;
+  if (!locked) {
+    throw new Error('Bu bağlantı için zaten bir sync çalışıyor');
+  }
+
+  try {
   // Connection oku + decrypt config
   const [conn] = await db
     .select()
@@ -540,5 +559,9 @@ export async function runFullSync(
       .where(eq(erpConnections.id, connectionId));
 
     throw err;
+  }
+  } finally {
+    // Advisory lock release — sync başarılı ya da hatalı, lock'u bırak
+    await db.execute(sql`SELECT pg_advisory_unlock(${lockId})`).catch(() => null);
   }
 }

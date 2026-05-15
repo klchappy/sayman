@@ -17,6 +17,7 @@ import {
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireTenant } from '../lib/helpers';
+import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
 export const customerPortalRouter = Router();
@@ -162,6 +163,10 @@ customerPortalRouter.post(
 
 customerPortalRouter.get('/portal/:token', async (req, res, next) => {
   try {
+    // Brute-force koruması — IP başına dakikada 20 deneme
+    const ipForLimit = (req.ip ?? req.socket.remoteAddress ?? 'unknown').slice(0, 64);
+    await consumeRateLimit({ identifier: `portal:${ipForLimit}`, limit: 20, window_seconds: 60 });
+
     const token = String(req.params.token ?? '');
     if (token.length < 20) throw new HttpError(401, 'Geçersiz token');
 

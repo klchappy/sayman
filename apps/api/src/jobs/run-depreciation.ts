@@ -92,24 +92,26 @@ export async function runDepreciation(): Promise<DepreciationRunResult> {
       const newAccumulated = Number(a.accumulated_depreciation) + monthly;
       const bookValue = Number(a.purchase_cost) - newAccumulated;
 
-      // Entry yarat
-      await db.insert(depreciationEntries).values({
-        tenant_id: a.tenant_id,
-        asset_id: a.id,
-        period,
-        depreciation_amount: String(monthly.toFixed(2)),
-        accumulated_depreciation: String(newAccumulated.toFixed(2)),
-        book_value_after: String(bookValue.toFixed(2)),
-      });
-
-      // Asset üzerinde accumulated güncelle
-      await db
-        .update(fixedAssets)
-        .set({
+      // Entry + asset update atomik — concurrent depreciation job çalışırsa
+      // accumulated_depreciation tutarsızlaşmasın
+      await db.transaction(async (tx) => {
+        await tx.insert(depreciationEntries).values({
+          tenant_id: a.tenant_id,
+          asset_id: a.id,
+          period,
+          depreciation_amount: String(monthly.toFixed(2)),
           accumulated_depreciation: String(newAccumulated.toFixed(2)),
-          updated_at: new Date(),
-        })
-        .where(eq(fixedAssets.id, a.id));
+          book_value_after: String(bookValue.toFixed(2)),
+        });
+
+        await tx
+          .update(fixedAssets)
+          .set({
+            accumulated_depreciation: String(newAccumulated.toFixed(2)),
+            updated_at: new Date(),
+          })
+          .where(eq(fixedAssets.id, a.id));
+      });
 
       result.entries_created++;
       result.total_depreciation += monthly;
