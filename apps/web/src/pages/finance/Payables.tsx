@@ -98,6 +98,17 @@ export function PayablesPage() {
     },
   });
 
+  // Onay bekleyen fatura sayısı (review queue summary)
+  const reviewQ = useQuery({
+    queryKey: ['review-queue-summary', active.tenantSlug],
+    enabled: !!active.tenantSlug,
+    queryFn: async () => {
+      const res = await api.get<{ data: { payables: number; sales_invoices: number; companies: number; persons: number; total: number } }>('/review-queue/summary');
+      return res.data.data;
+    },
+    refetchInterval: 30000,
+  });
+
   const semanticQ = useQuery<SemanticHit[] | { error: string }>({
     queryKey: ['payables-semantic', active.tenantSlug, semanticQuery],
     enabled: !!active.tenantSlug && !!semanticQuery,
@@ -180,6 +191,34 @@ export function PayablesPage() {
       </header>
 
       {showForm && <PayableForm onClose={() => setShowForm(false)} />}
+
+      {/* Onay Bekleyenler banner — kullanıcının kaçırmaması için */}
+      {reviewQ.data && reviewQ.data.payables > 0 && (
+        <Link
+          to="/review-queue"
+          className="block mb-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-200 dark:border-blue-700 hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="size-10 grid place-items-center rounded-lg bg-blue-100 dark:bg-blue-900/50">
+                <span className="text-xl">📋</span>
+              </div>
+              <div>
+                <p className="font-semibold text-blue-900 dark:text-blue-200">
+                  {reviewQ.data.payables} fatura onay bekliyor
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Yüklediğin faturalar otomatik yaratıldı — onaylanmadıkları için bu listede görünmüyor.
+                  Tıkla, tek tek onayla veya reddet.
+                </p>
+              </div>
+            </div>
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              Onay Bekleyenler'e Git →
+            </span>
+          </div>
+        </Link>
+      )}
 
       {/* Semantic search bar */}
       <div className="card mb-4">

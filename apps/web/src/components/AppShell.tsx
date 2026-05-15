@@ -242,6 +242,18 @@ export function AppShell() {
   const activeTenant = tenantsQuery.data?.find((t) => t.slug === active.tenantSlug);
   const activeModules = new Set(activeTenant?.effective_modules ?? []);
 
+  // Onay bekleyen sayısı — sol menüde badge için
+  const reviewSummary = useQuery({
+    queryKey: ['review-queue-summary-shell', active.tenantSlug, active.orgSlug],
+    enabled: !!active.orgSlug,
+    queryFn: async () => {
+      const res = await api.get<{ data: { total: number; payables: number; sales_invoices: number; companies: number; persons: number } }>('/review-queue/summary');
+      return res.data.data;
+    },
+    refetchInterval: 30000,
+  });
+  const reviewBadge = reviewSummary.data?.total ?? 0;
+
   /**
    * Item görünür mü?
    *   - requires yok → her zaman göster
@@ -309,7 +321,11 @@ export function AppShell() {
           {grouped['__top__'] && (
             <div className="space-y-0.5">
               {grouped['__top__'].map((item) => (
-                <NavLinkItem key={item.to} item={item} />
+                <NavLinkItem
+                  key={item.to}
+                  item={item}
+                  badge={item.to === '/review-queue' ? reviewBadge : 0}
+                />
               ))}
             </div>
           )}
@@ -323,7 +339,11 @@ export function AppShell() {
                   {groupName}
                 </p>
                 {items.map((item) => (
-                  <NavLinkItem key={item.to} item={item} />
+                  <NavLinkItem
+                    key={item.to}
+                    item={item}
+                    badge={item.to === '/review-queue' ? reviewBadge : 0}
+                  />
                 ))}
               </div>
             ))}
@@ -404,7 +424,7 @@ function SearchTrigger() {
   );
 }
 
-function NavLinkItem({ item }: { item: NavItem }) {
+function NavLinkItem({ item, badge = 0 }: { item: NavItem; badge?: number }) {
   const tooltip = item.requires ? MODULE_DESCRIPTIONS[item.requires] : undefined;
   return (
     <NavLink
@@ -420,7 +440,12 @@ function NavLinkItem({ item }: { item: NavItem }) {
       }
     >
       <item.icon className="size-4" />
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {badge > 0 && (
+        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-semibold bg-red-500 text-white rounded-full">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </NavLink>
   );
 }
