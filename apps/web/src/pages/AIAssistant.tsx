@@ -38,6 +38,13 @@ export function AIAssistantPage() {
     queryFn: async () => (await api.get<{ data: { configured: boolean } }>('/ai/status')).data.data,
   });
 
+  // Chat provider seçimi — Claude değilse asistan yine Claude'a düşer (tool-use)
+  const provider = useQuery({
+    queryKey: ['ai-chat-provider'],
+    queryFn: async () =>
+      (await api.get<{ data: { provider: string } }>('/integrations/ai-chat-provider')).data.data,
+  });
+
   const ask = useMutation({
     mutationFn: async () => {
       const res = await api.post<{ data: AskResponse }>('/ai/ask', { query });
@@ -71,13 +78,19 @@ export function AIAssistantPage() {
             AI Asistan henüz aktif değil
           </h2>
           <p className="text-sm text-amber-800">
-            <code className="font-mono bg-white px-1.5 py-0.5 rounded">ANTHROPIC_API_KEY</code> env
-            yapılandırılmadı. Coolify'da set et + API'yi yeniden başlat.
+            Claude (Anthropic) API key yapılandırılmadı. <strong>Entegrasyonlar → Claude</strong>
+            sekmesinden API key ekleyin (veya .env'de <code className="font-mono bg-white px-1.5 py-0.5 rounded">ANTHROPIC_API_KEY</code>).
+            AI Asistan tool-use özelliği şu anda yalnızca Claude'a özel — başka provider seçilmiş
+            olsa bile bu sayfa Claude'u kullanır.
           </p>
         </div>
       </div>
     );
   }
+
+  // Provider Claude değilse bilgi banner'ı
+  const showProviderHint =
+    provider.data?.provider && provider.data.provider !== 'claude';
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -91,6 +104,18 @@ export function AIAssistantPage() {
           Doğal dilde sor — fatura, teminat, abonelik verilerin üzerinde Claude AI çalışır.
         </p>
       </header>
+
+      {showProviderHint && (
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 p-3 text-sm text-blue-800 dark:text-blue-200">
+          <strong>Bilgi:</strong> Entegrasyonlar'da chat sağlayıcısı{' '}
+          <code className="font-mono text-xs bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded">
+            {provider.data!.provider}
+          </code>{' '}
+          seçilmiş, ama AI Asistan (tool-use) şu anda yalnızca <strong>Claude</strong>'a özel.
+          Diğer özellikler (fatura açıklama, bütçe önerisi, günlük özet, risk skoru) seçtiğiniz
+          sağlayıcıyı kullanır.
+        </div>
+      )}
 
       {/* Input */}
       <div className="card mb-4">

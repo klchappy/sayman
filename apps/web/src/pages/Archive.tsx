@@ -20,7 +20,7 @@ import {
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { fmtTRY } from '../lib/formatting';
+import { fmtDate, fmtTRY } from '../lib/formatting';
 import { useConfirmBool } from '../components/ConfirmDialog';
 
 type EntityKey = 'payable' | 'sales_invoice' | 'employee' | 'check' | 'fixed_asset' | 'company' | 'person';
@@ -107,9 +107,10 @@ export function ArchivePage() {
       await api.post(`/${path}/${row.id}/restore`);
     },
     onSuccess: () => {
+      // Arşiv + summary
       qc.invalidateQueries({ queryKey: ['archive'] });
       qc.invalidateQueries({ queryKey: ['archive-summary'] });
-      // İlgili list cache'lerini de invalidate et
+      // Ana list'ler
       qc.invalidateQueries({ queryKey: ['payables'] });
       qc.invalidateQueries({ queryKey: ['sales-invoices'] });
       qc.invalidateQueries({ queryKey: ['employees'] });
@@ -117,6 +118,17 @@ export function ArchivePage() {
       qc.invalidateQueries({ queryKey: ['fixed-assets'] });
       qc.invalidateQueries({ queryKey: ['companies'] });
       qc.invalidateQueries({ queryKey: ['persons'] });
+      // Summary endpoint'leri (geri yüklenen kayıt KPI'lara dahil olmalı)
+      qc.invalidateQueries({ queryKey: ['payable-summary'] });
+      qc.invalidateQueries({ queryKey: ['sales-invoices-summary'] });
+      qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      qc.invalidateQueries({ queryKey: ['checks-summary'] });
+      qc.invalidateQueries({ queryKey: ['fixed-assets-summary'] });
+      // Dashboard + Inbox + Konsolide rapor (revenue/expense yeniden hesaplansın)
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['inbox'] });
+      qc.invalidateQueries({ queryKey: ['consolidated-pnl'] });
+      qc.invalidateQueries({ queryKey: ['consolidated-balance'] });
     },
     onError: (e) => {
       const err = e as { response?: { data?: { error?: string; message?: string } } };
@@ -151,6 +163,14 @@ export function ArchivePage() {
           kayıtlar yeniden ana listede görünür. Sadece admin/yönetici erişebilir.
         </p>
       </header>
+
+      {/* Aggregate mode'da geri yükleme yasak — uyarı banner */}
+      {active.aggregate && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 p-3 text-amber-800 dark:text-amber-200 text-sm">
+          <strong>"Tüm Şirketler" modu</strong> — silinmiş kayıtları görüntüleyebilirsin ama
+          geri yükleme için sağ üstten tek bir şirket seçmelisin.
+        </div>
+      )}
 
       {/* Entity seçici — sayı rozetleriyle */}
       <div className="card mb-4">
@@ -232,13 +252,15 @@ export function ArchivePage() {
                       {row.status ?? '-'}
                     </td>
                     <td className="py-2 px-2 text-xs text-brand-500">
-                      {row.updated_at
-                        ? new Date(row.updated_at).toLocaleDateString('tr-TR')
-                        : '-'}
+                      {row.updated_at ? fmtDate(row.updated_at) : '-'}
                     </td>
                     <td className="py-2 px-2 text-right">
                       <button
                         onClick={async () => {
+                          if (active.aggregate) {
+                            alert('Geri yükleme için sağ üstten tek bir şirket seçmelisin.');
+                            return;
+                          }
                           if (
                             await confirmBool({
                               title: 'Geri Yükle',
@@ -249,8 +271,9 @@ export function ArchivePage() {
                           )
                             restore.mutate(row);
                         }}
-                        disabled={restore.isPending}
-                        className="inline-flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded disabled:opacity-60"
+                        disabled={restore.isPending || active.aggregate}
+                        title={active.aggregate ? 'Aggregate modda geri yükleme yapılamaz' : undefined}
+                        className="inline-flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {restore.isPending ? (
                           <RefreshCw className="size-3 animate-spin" />

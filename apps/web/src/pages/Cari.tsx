@@ -83,7 +83,7 @@ const TYPE_BADGE: Record<string, string> = {
   both: 'bg-brand-100 text-brand-700 dark:bg-slate-800 dark:text-slate-300',
 };
 
-import { fmtTRY } from '../lib/formatting';
+import { fmtMoney } from '../lib/formatting';
 
 export function CariListPage() {
   const [search, setSearch] = useState('');
@@ -239,7 +239,7 @@ export function CariListPage() {
                             : 'text-brand-500'
                       }
                     >
-                      {fmtTRY(c.balance)}
+                      {fmtMoney(c.balance, c.currency)}
                     </span>
                   </td>
                 </tr>
@@ -365,7 +365,7 @@ export function CariDetailPage() {
       <div className="grid sm:grid-cols-4 gap-3 mb-6">
         <Kpi
           label="Güncel Bakiye"
-          value={fmtTRY(c.balance)}
+          value={fmtMoney(c.balance, c.currency)}
           highlight={
             Number(c.balance) > 0 ? 'emerald' : Number(c.balance) < 0 ? 'red' : undefined
           }
@@ -373,12 +373,12 @@ export function CariDetailPage() {
         />
         <Kpi
           label="Toplam Borç"
-          value={fmtTRY(q.data.stats.total_debit)}
+          value={fmtMoney(q.data.stats.total_debit, c.currency)}
           icon={<TrendingUp className="size-4 text-emerald-500" />}
         />
         <Kpi
           label="Toplam Alacak"
-          value={fmtTRY(q.data.stats.total_credit)}
+          value={fmtMoney(q.data.stats.total_credit, c.currency)}
           icon={<TrendingDown className="size-4 text-red-500" />}
         />
         <Kpi
@@ -461,13 +461,13 @@ export function CariDetailPage() {
                       {m.description ?? '-'}
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400">
-                      {Number(m.debit) > 0 ? fmtTRY(m.debit) : '-'}
+                      {Number(m.debit) > 0 ? fmtMoney(m.debit, m.currency) : '-'}
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-red-700 dark:text-red-400">
-                      {Number(m.credit) > 0 ? fmtTRY(m.credit) : '-'}
+                      {Number(m.credit) > 0 ? fmtMoney(m.credit, m.currency) : '-'}
                     </td>
                     <td className="py-2 px-3 text-right font-mono font-medium text-brand-900 dark:text-slate-100">
-                      {fmtTRY(m.running)}
+                      {fmtMoney(m.running, m.currency)}
                     </td>
                   </tr>
                 ))}

@@ -35,10 +35,7 @@ const STATUS_BADGE: Record<Guarantee['status'], string> = {
   cancelled: 'bg-brand-100 text-brand-500',
 };
 
-function fmt(v: string | null) {
-  if (!v) return '-';
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v));
-}
+import { fmtTRY as fmt } from '../../lib/formatting';
 
 export function GuaranteesPage() {
   const active = useAuth((s) => s.active);

@@ -45,6 +45,17 @@ reportsConsolidatedRouter.get(
       if (!from || !to) {
         throw new HttpError(400, 'from + to query zorunlu (YYYY-MM-DD)');
       }
+      // YYYY-MM-DD format + sıra kontrolü
+      const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRe.test(from) || !dateRe.test(to)) {
+        throw new HttpError(400, 'from/to YYYY-MM-DD format olmalı', 'BAD_DATE');
+      }
+      if (from > to) {
+        throw new HttpError(400, 'from tarihi to tarihinden sonra olamaz', 'BAD_RANGE');
+      }
+      // YYYY-MM prefix'i — depreciation_entries.period TEXT('YYYY-MM') ile karşılaştırma için
+      const fromYm = from.slice(0, 7);
+      const toYm = to.slice(0, 7);
 
       const db = getDb();
       // Aggregate ise tüm tenant'lar, tek tenant ise sadece o
@@ -80,12 +91,13 @@ reportsConsolidatedRouter.get(
             AND issue_date BETWEEN ${from} AND ${to}
         ) exp ON true
         LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM(amount::numeric), 0) AS total
+          SELECT COALESCE(SUM(depreciation_amount::numeric), 0) AS total
           FROM depreciation_entries
           WHERE tenant_id = t.id
-            AND period BETWEEN ${from} AND ${to}
+            AND period BETWEEN ${fromYm} AND ${toYm}
         ) dep ON true
         WHERE t.id = ANY(${tenantIds}::uuid[])
+          AND t.is_active = true
         ORDER BY t.name ASC
       `);
 
@@ -219,6 +231,10 @@ reportsConsolidatedRouter.get(
         throw new HttpError(403, 'Konsolide rapor yetkisi yok', 'FORBIDDEN');
       }
       const asOf = String(req.query.as_of ?? new Date().toISOString().slice(0, 10));
+      const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRe.test(asOf)) {
+        throw new HttpError(400, 'as_of YYYY-MM-DD format olmalı', 'BAD_DATE');
+      }
 
       const db = getDb();
       const tenantIds = req.aggregateTenantIds ?? [req.activeTenantId!];
@@ -258,6 +274,7 @@ reportsConsolidatedRouter.get(
             AND (issue_date IS NULL OR issue_date <= ${asOf})
         ) ap ON true
         WHERE t.id = ANY(${tenantIds}::uuid[])
+          AND t.is_active = true
         ORDER BY t.name ASC
       `);
 

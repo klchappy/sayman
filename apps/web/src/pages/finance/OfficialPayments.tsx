@@ -57,10 +57,7 @@ const FREQ_LABEL: Record<OfficialProfile['frequency'], string> = {
   occasional: 'Sıra Dışı',
 };
 
-function fmt(v: string | null) {
-  if (!v) return '-';
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v));
-}
+import { fmtTRY as fmt } from '../../lib/formatting';
 
 export function OfficialPaymentsPage() {
   const active = useAuth((s) => s.active);

@@ -37,10 +37,7 @@ const KIND_BADGE: Record<RegularPayment['kind'], string> = {
   other: 'bg-brand-100 text-brand-600',
 };
 
-function fmt(v: string | null) {
-  if (!v) return '-';
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v));
-}
+import { fmtTRY as fmt } from '../../lib/formatting';
 
 export function RegularPaymentsPage() {
   const active = useAuth((s) => s.active);
