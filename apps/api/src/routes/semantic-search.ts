@@ -18,7 +18,6 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, payableItems } from '@sayman/db';
-import { isConfigured } from '../config/env';
 import { embedQuery, embedText, toPgVector } from '../lib/embeddings';
 import { HttpError, requireOrg } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
@@ -33,13 +32,6 @@ const querySchema = z.object({
 
 semanticSearchRouter.get('/search/semantic', requireAuth, requireOrg, async (req, res, next) => {
   try {
-    if (!isConfigured.embeddings) {
-      throw new HttpError(
-        503,
-        'Semantic search yapılandırılmamış (OPENAI_API_KEY gerekli)',
-        'NO_EMBEDDINGS',
-      );
-    }
     const tenantId = req.saymanContext?.tenantId;
     if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
 
@@ -51,8 +43,18 @@ semanticSearchRouter.get('/search/semantic', requireAuth, requireOrg, async (req
     });
 
     const { q, limit } = querySchema.parse(req.query);
-    const vec = await embedQuery(q);
-    if (!vec) throw new HttpError(500, 'Embedding üretilemedi', 'EMBED_FAIL');
+    // Runtime: API key env'de YA DA DB'de var mı kontrol et (embedQuery null dönerse 503)
+    const vec = await embedQuery(q, {
+      organizationId: req.activeOrgId ?? null,
+      tenantId,
+    });
+    if (!vec) {
+      throw new HttpError(
+        503,
+        'Semantic search yapılandırılmamış — Entegrasyonlar → OpenAI sekmesinden API key ekleyin',
+        'NO_EMBEDDINGS',
+      );
+    }
     const vecLit = toPgVector(vec);
 
     const rows = await getDb().execute(sql`
@@ -82,9 +84,6 @@ semanticSearchRouter.post(
       if (!['super_admin', 'organization_admin'].includes(req.effectiveRole ?? '')) {
         throw new HttpError(403, 'Yetki yok', 'FORBIDDEN');
       }
-      if (!isConfigured.embeddings) {
-        throw new HttpError(503, 'OPENAI_API_KEY yapılandırılmamış', 'NO_EMBEDDINGS');
-      }
       const tenantId = req.saymanContext?.tenantId;
       if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
 
@@ -113,6 +112,7 @@ semanticSearchRouter.post(
 
       let success = 0;
       let failed = 0;
+      const ctx = { organizationId: req.activeOrgId ?? null, tenantId };
       for (const row of list) {
         const text = [
           row.title,
@@ -123,7 +123,7 @@ semanticSearchRouter.post(
         ]
           .filter(Boolean)
           .join(' | ');
-        const r = await embedText(text);
+        const r = await embedText(text, ctx);
         if (!r) {
           failed++;
           continue;

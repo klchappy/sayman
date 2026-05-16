@@ -13,7 +13,6 @@
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@sayman/db';
-import { isConfigured } from '../config/env';
 import { logger } from '../config/logger';
 import { embedText, toPgVector } from '../lib/embeddings';
 
@@ -27,14 +26,13 @@ export interface EmbedResult {
 const BATCH_LIMIT = 100;
 
 export async function runEmbedPayables(): Promise<EmbedResult> {
-  if (!isConfigured.embeddings) {
-    return { attempted: 0, success: 0, failed: 0, skipped_no_key: 1 };
-  }
-
+  // env yoksa bile DB'de UI-saved key olabilir — embedText her satır için runtime'da
+  // org-level lookup yapacak; başarısız olursa skip.
   const db = getDb();
   const pending = await db.execute(sql`
-    SELECT pi.id, pi.tenant_id, pi.title, pi.supplier_name, pi.invoice_number, pi.notes, pi.category
+    SELECT pi.id, pi.tenant_id, t.organization_id, pi.title, pi.supplier_name, pi.invoice_number, pi.notes, pi.category
     FROM payable_items pi
+    JOIN tenants t ON t.id = pi.tenant_id
     LEFT JOIN payable_embeddings pe ON pe.payable_id = pi.id
     WHERE pi.is_active = true
       AND pe.payable_id IS NULL
@@ -44,6 +42,7 @@ export async function runEmbedPayables(): Promise<EmbedResult> {
   const list = (pending.rows ?? pending) as Array<{
     id: string;
     tenant_id: string;
+    organization_id: string;
     title: string;
     supplier_name?: string;
     invoice_number?: string;
@@ -62,7 +61,10 @@ export async function runEmbedPayables(): Promise<EmbedResult> {
     const text = [row.title, row.supplier_name, row.invoice_number, row.notes, row.category]
       .filter(Boolean)
       .join(' | ');
-    const r = await embedText(text);
+    const r = await embedText(text, {
+      organizationId: row.organization_id,
+      tenantId: row.tenant_id,
+    });
     if (!r) {
       result.failed++;
       continue;

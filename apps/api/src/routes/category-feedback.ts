@@ -85,7 +85,7 @@ categoryFeedbackRouter.post(
       if (!['super_admin', 'organization_admin'].includes(req.effectiveRole ?? '')) {
         throw new HttpError(403, 'Yetki yok', 'FORBIDDEN');
       }
-      const useAi = Boolean(req.body?.use_ai) && isConfigured.ai;
+      const useAi = Boolean(req.body?.use_ai);
       const dryRun = Boolean(req.body?.dry_run);
       const limit = Math.min(Number(req.body?.limit ?? 100), 500);
       const db = getDb();

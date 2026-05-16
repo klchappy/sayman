@@ -17,7 +17,6 @@ import {
   payableItems,
   tenants,
 } from '@sayman/db';
-import { isConfigured } from '../config/env';
 import { logger } from '../config/logger';
 import { generateText } from '../lib/ai-providers';
 import { sendTelegramMessage } from '../lib/telegram';
@@ -112,29 +111,27 @@ async function fetchSnapshot(tenantId: string, tenantSlug: string): Promise<Tena
   };
 }
 
-async function generateSummaryText(snapshot: TenantSnapshot): Promise<string> {
-  const anyAi =
-    isConfigured.ai ||
-    isConfigured.openai ||
-    isConfigured.deepseek ||
-    isConfigured.grok ||
-    isConfigured.gemini;
-  if (!anyAi) {
-    return buildFallbackText(snapshot);
-  }
-
+async function generateSummaryText(
+  snapshot: TenantSnapshot,
+  organizationId: string,
+  tenantId: string,
+): Promise<string> {
   try {
-    // Cron'da org/tenant context yok — env'deki provider seçimi kullanılır.
-    const r = await generateText({
-      system:
-        'Sen Sayman muhasebe SaaS gunluk ozet asistanisin. Verilen JSON snapshot uzerinden ' +
-        'KISA (en fazla 4-5 cumle) ve EYLEM ODAKLI bir Turkce gunluk ozet yaz. Sayilar TL formatla ' +
-        '(1.234,56 TL). Madde isaretleri kullanma, akici paragraf yaz. ' +
-        'Eger oncelikli sorun yoksa "bugun acil bir durum yok" diye sakin bir ton kullan.',
-      prompt: `Tenant: ${snapshot.tenant_slug}\nVeri:\n${JSON.stringify(snapshot, null, 2)}\n\nGunluk ozet yaz.`,
-      maxTokens: 400,
-      timeoutMs: 30_000,
-    });
+    // Org-level credentials veya env fallback — `generateText` ikisini de okur.
+    // Yapılandırma yoksa AI_NOT_CONFIGURED throw eder, catch fallback'e düşer.
+    const r = await generateText(
+      {
+        system:
+          'Sen Sayman muhasebe SaaS gunluk ozet asistanisin. Verilen JSON snapshot uzerinden ' +
+          'KISA (en fazla 4-5 cumle) ve EYLEM ODAKLI bir Turkce gunluk ozet yaz. Sayilar TL formatla ' +
+          '(1.234,56 TL). Madde isaretleri kullanma, akici paragraf yaz. ' +
+          'Eger oncelikli sorun yoksa "bugun acil bir durum yok" diye sakin bir ton kullan.',
+        prompt: `Tenant: ${snapshot.tenant_slug}\nVeri:\n${JSON.stringify(snapshot, null, 2)}\n\nGunluk ozet yaz.`,
+        maxTokens: 400,
+        timeoutMs: 30_000,
+      },
+      { organizationId, tenantId },
+    );
     return r.text.trim() || buildFallbackText(snapshot);
   } catch (err) {
     logger.warn({ err }, 'AI summary: provider call failed, using fallback');
@@ -203,7 +200,7 @@ export async function runGenerateAiSummary(opts: RunOpts = {}): Promise<AiSummar
 
       const t0 = Date.now();
       const snapshot = await fetchSnapshot(t.id, t.slug);
-      const text = await generateSummaryText(snapshot);
+      const text = await generateSummaryText(snapshot, t.organization_id, t.id);
       const dur = Date.now() - t0;
 
       await db.insert(aiSummaries).values({

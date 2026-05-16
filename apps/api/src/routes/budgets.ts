@@ -368,13 +368,7 @@ budgetsRouter.post('/budgets/ai-suggest', requireAuth, requireTenant, async (req
       }));
     }
 
-    const anyAi =
-      isConfigured.ai ||
-      isConfigured.openai ||
-      isConfigured.deepseek ||
-      isConfigured.grok ||
-      isConfigured.gemini;
-    if (!anyAi || stats.length === 0) {
+    if (stats.length === 0) {
       res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });
       return;
     }

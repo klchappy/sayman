@@ -17,6 +17,7 @@ import { getDb, integrationCredentials } from '@sayman/db';
 import { env, isConfigured } from '../config/env';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireOrg } from '../lib/helpers';
+import { getOrgConfiguredMap } from '../lib/integration-credentials';
 import { requireAuth } from '../middleware/auth';
 
 export const integrationsStatusRouter = Router();
@@ -36,14 +37,33 @@ integrationsStatusRouter.get(
   '/integrations/status',
   requireAuth,
   requireOrg,
-  async (_req, res, next) => {
+  async (req, res, next) => {
     try {
+    // Env-bazlı configured + DB integration_credentials birleştir.
+    // Kullanıcı UI'dan key girince env restart gerekmeden status güncellenir.
+    const envMap: Record<string, boolean> = {
+      resend: isConfigured.email,
+      telegram: isConfigured.telegram,
+      whatsapp: isConfigured.whatsapp,
+      claude: isConfigured.ai,
+      openai: isConfigured.openai,
+      deepseek: isConfigured.deepseek,
+      grok: isConfigured.grok,
+      gemini: isConfigured.gemini,
+      sentry: isConfigured.sentry,
+      supabase: isConfigured.supabase,
+    };
+    const merged = await getOrgConfiguredMap(
+      req.activeOrgId!,
+      Object.keys(envMap),
+      envMap,
+    );
     const integrations: IntegrationStatus[] = [
       {
         key: 'resend',
         name: 'Resend (E-posta)',
         category: 'communication',
-        configured: isConfigured.email,
+        configured: merged.resend ?? isConfigured.email,
         description:
           'Bildirim, fatura hatırlatma ve davet e-postaları için kullanılır. Verify edilmiş alan adı zorunludur.',
         env_keys: ['RESEND_API_KEY', 'EMAIL_FROM'],
@@ -54,7 +74,7 @@ integrationsStatusRouter.get(
         key: 'telegram',
         name: 'Telegram Bot',
         category: 'communication',
-        configured: isConfigured.telegram,
+        configured: merged.telegram ?? isConfigured.telegram,
         description:
           'Bireysel kullanıcılara push gibi anında bildirim. /security sayfasından chat_id eşlenir.',
         env_keys: ['TELEGRAM_BOT_TOKEN'],
@@ -64,7 +84,7 @@ integrationsStatusRouter.get(
         key: 'whatsapp',
         name: 'WhatsApp Business',
         category: 'communication',
-        configured: isConfigured.whatsapp,
+        configured: merged.whatsapp ?? isConfigured.whatsapp,
         description:
           'Müşteri/tedarikçi mesajlaşması ve fatura hatırlatma. Meta Cloud API kullanır.',
         env_keys: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID'],
@@ -75,7 +95,7 @@ integrationsStatusRouter.get(
         key: 'claude',
         name: 'Claude (Anthropic) — Chat',
         category: 'ai',
-        configured: isConfigured.ai,
+        configured: merged.claude ?? isConfigured.ai,
         description:
           'Doğal dil sorgu (/ai asistan), günlük özet, anomali açıklama. claude-haiku-4-5-20251001 default. Tool-use destekli (Sayman AI asistanı bu provider üzerinden çalışır).',
         env_keys: ['ANTHROPIC_API_KEY'],
@@ -85,7 +105,7 @@ integrationsStatusRouter.get(
         key: 'openai',
         name: 'OpenAI — Chat + Embeddings',
         category: 'ai',
-        configured: isConfigured.openai,
+        configured: merged.openai ?? isConfigured.openai,
         description:
           'Hem embeddings (anlamsal arama, text-embedding-3-small 1024d) hem chat (gpt-4o-mini default). Embeddings için ZORUNLU, chat için isteğe bağlı (provider seçimi UI\'dan).',
         env_keys: ['OPENAI_API_KEY'],
@@ -95,7 +115,7 @@ integrationsStatusRouter.get(
         key: 'deepseek',
         name: 'DeepSeek — Chat',
         category: 'ai',
-        configured: isConfigured.deepseek,
+        configured: merged.deepseek ?? isConfigured.deepseek,
         description:
           'Açık kaynak alternatifi düşük maliyet. deepseek-chat ve deepseek-reasoner modelleri. OpenAI-uyumlu API. Chat provider olarak seçilirse kullanılır.',
         env_keys: ['DEEPSEEK_API_KEY'],
@@ -105,7 +125,7 @@ integrationsStatusRouter.get(
         key: 'grok',
         name: 'Grok (xAI) — Chat',
         category: 'ai',
-        configured: isConfigured.grok,
+        configured: merged.grok ?? isConfigured.grok,
         description:
           'xAI grok-2-1212 ve grok-2-mini. OpenAI-uyumlu API. Chat provider olarak seçilirse kullanılır.',
         env_keys: ['GROK_API_KEY'],
@@ -115,7 +135,7 @@ integrationsStatusRouter.get(
         key: 'gemini',
         name: 'Google Gemini — Chat',
         category: 'ai',
-        configured: isConfigured.gemini,
+        configured: merged.gemini ?? isConfigured.gemini,
         description:
           'gemini-2.0-flash ve gemini-1.5-pro. Multimodal (gelecekte resim/PDF input için kullanılacak). Chat provider olarak seçilirse kullanılır.',
         env_keys: ['GEMINI_API_KEY'],
@@ -125,7 +145,7 @@ integrationsStatusRouter.get(
         key: 'sentry',
         name: 'Sentry (Hata Takibi)',
         category: 'observability',
-        configured: isConfigured.sentry,
+        configured: merged.sentry ?? isConfigured.sentry,
         description: 'Production hatalarını ve performans regresyonlarını yakalar.',
         env_keys: ['SENTRY_DSN'],
         setup_hint: 'sentry.io → Settings → Projects → Client Keys (DSN)',
@@ -134,7 +154,7 @@ integrationsStatusRouter.get(
         key: 'supabase',
         name: 'Supabase Auth + Storage',
         category: 'infra',
-        configured: isConfigured.supabase,
+        configured: merged.supabase ?? isConfigured.supabase,
         description:
           'SSO/OAuth login, dosya saklama (faturalara ek). Olmadan local password ile çalışır ama OAuth devre dışı kalır.',
         env_keys: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],

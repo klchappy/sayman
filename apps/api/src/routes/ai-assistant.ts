@@ -19,9 +19,10 @@ import {
   guarantees,
   payableItems,
 } from '@sayman/db';
-import { env, isConfigured } from '../config/env';
+import { env } from '../config/env';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireOrg } from '../lib/helpers';
+import { getCredentialField } from '../lib/integration-credentials';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
@@ -82,8 +83,23 @@ interface ClaudeMessage {
   >;
 }
 
-async function callClaude(messages: ClaudeMessage[]): Promise<ClaudeMessage> {
-  if (!isConfigured.ai) throw new HttpError(503, 'AI asistan yapılandırılmamış', 'NO_AI');
+async function callClaude(
+  messages: ClaudeMessage[],
+  ctx: { organizationId: string; tenantId: string | null },
+): Promise<ClaudeMessage> {
+  // UI'dan girilen org-level API key öncelikli, env fallback.
+  const cred = await getCredentialField(
+    { organizationId: ctx.organizationId, tenantId: ctx.tenantId, integrationKey: 'claude' },
+    'api_key',
+    env.ANTHROPIC_API_KEY,
+  );
+  if (!cred.value) {
+    throw new HttpError(
+      503,
+      'AI asistan yapılandırılmamış — Entegrasyonlar → Claude sekmesinden API key ekleyin',
+      'NO_AI',
+    );
+  }
 
   // 45s timeout: LLM hung olursa request sürekli açık kalmasın.
   const controller = new AbortController();
@@ -93,7 +109,7 @@ async function callClaude(messages: ClaudeMessage[]): Promise<ClaudeMessage> {
       method: 'POST',
       signal: controller.signal,
       headers: {
-        'x-api-key': env.ANTHROPIC_API_KEY!,
+        'x-api-key': cred.value,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
@@ -240,9 +256,6 @@ const askSchema = z.object({
 
 aiAssistantRouter.post('/ai/ask', requireAuth, requireOrg, async (req, res, next) => {
   try {
-    if (!isConfigured.ai) {
-      throw new HttpError(503, 'AI asistan yapılandırılmamış (ANTHROPIC_API_KEY)', 'NO_AI');
-    }
     const tenantId = req.saymanContext?.tenantId;
     if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
 
@@ -253,6 +266,7 @@ aiAssistantRouter.post('/ai/ask', requireAuth, requireOrg, async (req, res, next
       window_seconds: 3600,
     });
 
+    const aiCtx = { organizationId: req.activeOrgId!, tenantId };
     const messages: ClaudeMessage[] = [
       { role: 'user', content: [{ type: 'text', text: body.query }] },
     ];
@@ -263,7 +277,7 @@ aiAssistantRouter.post('/ai/ask', requireAuth, requireOrg, async (req, res, next
     const toolCalls: Array<{ name: string; input: any; result?: any }> = [];
     while (iter < 5) {
       iter++;
-      const reply = await callClaude(messages);
+      const reply = await callClaude(messages, aiCtx);
       messages.push(reply);
 
       // Text + tool_use'ları parçala
@@ -317,9 +331,19 @@ aiAssistantRouter.post('/ai/ask', requireAuth, requireOrg, async (req, res, next
   }
 });
 
-aiAssistantRouter.get('/ai/status', requireAuth, async (_req, res, next) => {
+aiAssistantRouter.get('/ai/status', requireAuth, async (req, res, next) => {
   try {
-    res.json({ data: { configured: isConfigured.ai } });
+    // env veya org-level DB credential → configured
+    let configured = Boolean(env.ANTHROPIC_API_KEY);
+    const orgId = req.saymanContext?.organizationId;
+    if (!configured && orgId) {
+      const cred = await getCredentialField(
+        { organizationId: orgId, tenantId: null, integrationKey: 'claude' },
+        'api_key',
+      );
+      configured = Boolean(cred.value);
+    }
+    res.json({ data: { configured } });
   } catch (err) {
     next(err);
   }

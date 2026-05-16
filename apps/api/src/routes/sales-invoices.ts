@@ -515,23 +515,7 @@ salesInvoicesRouter.post(
           }));
       }
 
-      const anyAi =
-        isConfigured.ai ||
-        isConfigured.openai ||
-        isConfigured.deepseek ||
-        isConfigured.grok ||
-        isConfigured.gemini;
-      if (!anyAi) {
-        res.json({
-          data: {
-            method: 'rule_based',
-            suggestions: ruleBased(),
-            summary: `${overdueList.length} geciken fatura — tutar × gecikme skoruna göre öncelik.`,
-          },
-        });
-        return;
-      }
-
+      // AI key yapılandırılmamışsa generateText 503 throw eder → catch fallback'e düşer.
       try {
         const r = await generateText(
           {

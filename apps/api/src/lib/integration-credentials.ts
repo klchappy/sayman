@@ -139,3 +139,58 @@ export async function getCredentialField(
   const res = await getIntegrationCredentials(lookup, envFallback ? { [field]: envFallback } : undefined);
   return { value: res.credentials[field] ?? null, source: res.source };
 }
+
+/**
+ * Org-level configured durumu — env VEYA DB'de credential varsa true.
+ * Kullanıcı UI'dan kayıt yapınca env restart gerekmeden status güncellenir.
+ */
+export async function hasOrgCredentials(
+  organizationId: string,
+  integrationKey: string,
+  envIsSet: boolean,
+): Promise<boolean> {
+  if (envIsSet) return true;
+  const db = getDb();
+  const [row] = await db
+    .select({ id: integrationCredentials.id })
+    .from(integrationCredentials)
+    .where(
+      and(
+        eq(integrationCredentials.organization_id, organizationId),
+        eq(integrationCredentials.integration_key, integrationKey),
+        eq(integrationCredentials.is_active, true),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+/**
+ * Birden fazla integration_key için tek sorguda configured map'i döner.
+ * Performans için tercih edilir — N+1 önler.
+ */
+export async function getOrgConfiguredMap(
+  organizationId: string,
+  keys: string[],
+  envMap: Record<string, boolean>,
+): Promise<Record<string, boolean>> {
+  const out: Record<string, boolean> = {};
+  for (const k of keys) out[k] = envMap[k] ?? false;
+  if (keys.length === 0) return out;
+  const db = getDb();
+  const rows = await db
+    .select({ integration_key: integrationCredentials.integration_key })
+    .from(integrationCredentials)
+    .where(
+      and(
+        eq(integrationCredentials.organization_id, organizationId),
+        eq(integrationCredentials.is_active, true),
+      ),
+    );
+  for (const r of rows) {
+    if (out[r.integration_key] !== undefined) {
+      out[r.integration_key] = true;
+    }
+  }
+  return out;
+}

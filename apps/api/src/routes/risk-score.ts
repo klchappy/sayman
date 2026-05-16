@@ -126,17 +126,7 @@ riskScoreRouter.post(
         };
       }
 
-      // Hiç provider yapılandırılmamışsa direkt rule-based fallback
-      const anyAi =
-        isConfigured.ai ||
-        isConfigured.openai ||
-        isConfigured.deepseek ||
-        isConfigured.grok ||
-        isConfigured.gemini;
-      if (!anyAi) {
-        res.json({ data: ruleBased() });
-        return;
-      }
+      // AI provider yoksa generateText 503 throw eder → catch fallback ruleBased'e düşer.
 
       // AI provider (claude/openai/deepseek/grok/gemini)
       try {
