@@ -22,11 +22,15 @@ import { users } from './users';
  *   3) env fallback (geriye uyumluluk)
  *
  * `credentials` JSONB her servis için kendi şemasını taşır:
- *   claude    → { api_key }
- *   voyage    → { api_key }
- *   resend    → { api_key, email_from }
- *   telegram  → { bot_token }
- *   whatsapp  → { access_token, phone_number_id, verify_token }
+ *   claude            → { api_key }
+ *   openai            → { api_key }  // hem chat hem embeddings
+ *   deepseek          → { api_key }
+ *   grok              → { api_key }
+ *   gemini            → { api_key }
+ *   ai_chat_provider  → { provider: 'claude'|'openai'|'deepseek'|'grok'|'gemini' }
+ *   resend            → { api_key, email_from }
+ *   telegram          → { bot_token }
+ *   whatsapp          → { access_token, phone_number_id, verify_token }
  */
 export const integrationCredentials = pgTable(
   'integration_credentials',

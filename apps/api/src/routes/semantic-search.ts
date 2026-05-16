@@ -1,16 +1,18 @@
 /**
- * /v1/search/semantic — Voyage embeddings + pgvector cosine similarity.
+ * /v1/search/semantic — OpenAI embeddings (text-embedding-3-small 1024d) + pgvector cosine similarity.
  *
- * NOT: Bu özellik VOYAGE_API_KEY env yapılandırıldığında aktif olur. Yoksa 503.
+ * NOT: Bu özellik OPENAI_API_KEY env yapılandırıldığında aktif olur. Yoksa 503.
+ * Önceden Voyage AI kullanılıyordu; provider değişikliği sonrası eski vektörler
+ * (model LIKE 'voyage%') artık karşılaştırılamaz, re-embed gerekir.
  *
  *   GET /v1/search/semantic?q=...&limit=10
  *     → fatura listesi (en yakın anlam)
  *
  *   POST /v1/search/embed-pending
- *     → henüz embedding'i olmayan tüm fatura için Voyage'a istek + DB'ye yaz
+ *     → henüz embedding'i olmayan tüm fatura için OpenAI'ye istek + DB'ye yaz
  *     (admin only)
  *
- * Maliyet uyarısı: 10K fatura ≈ $0.001 (voyage-3-lite). Yine de admin tetiklesin.
+ * Maliyet uyarısı: 10K fatura ≈ $0.001 (text-embedding-3-small). Yine de admin tetiklesin.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Router } from 'express';
@@ -34,14 +36,14 @@ semanticSearchRouter.get('/search/semantic', requireAuth, requireOrg, async (req
     if (!isConfigured.embeddings) {
       throw new HttpError(
         503,
-        'Semantic search yapılandırılmamış (VOYAGE_API_KEY)',
+        'Semantic search yapılandırılmamış (OPENAI_API_KEY gerekli)',
         'NO_EMBEDDINGS',
       );
     }
     const tenantId = req.saymanContext?.tenantId;
     if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
 
-    // Rate limit — Voyage API ücretli, kullanıcı başına dakikada 30 sorgu
+    // Rate limit — OpenAI API ücretli, kullanıcı başına dakikada 30 sorgu
     await consumeRateLimit({
       identifier: `semantic:${req.authUser?.id ?? 'anon'}`,
       limit: 30,
@@ -81,7 +83,7 @@ semanticSearchRouter.post(
         throw new HttpError(403, 'Yetki yok', 'FORBIDDEN');
       }
       if (!isConfigured.embeddings) {
-        throw new HttpError(503, 'VOYAGE_API_KEY yapılandırılmamış', 'NO_EMBEDDINGS');
+        throw new HttpError(503, 'OPENAI_API_KEY yapılandırılmamış', 'NO_EMBEDDINGS');
       }
       const tenantId = req.saymanContext?.tenantId;
       if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');

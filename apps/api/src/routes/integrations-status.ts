@@ -4,11 +4,19 @@
  * Frontend bu endpoint'i çağırır + her servisin "configured/healthy/unconfigured"
  * durumunu kullanıcıya gösterir. Test/edit aksiyonları diğer endpoint'lerden gider.
  *
+ * Ayrıca:
+ *   GET  /v1/integrations/ai-chat-provider  → org'un chat provider seçimi
+ *   PUT  /v1/integrations/ai-chat-provider  → seçimi güncelle (admin)
+ *
  * Auth: requireOrg (admin değil — herkes görebilir, ama edit etmek için admin gerekli).
  */
+import { eq, and, sql } from 'drizzle-orm';
 import { Router } from 'express';
+import { z } from 'zod';
+import { getDb, integrationCredentials } from '@sayman/db';
 import { env, isConfigured } from '../config/env';
-import { requireOrg } from '../lib/helpers';
+import { auditFromRequest } from '../lib/audit';
+import { HttpError, requireOrg } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const integrationsStatusRouter = Router();
@@ -65,23 +73,53 @@ integrationsStatusRouter.get(
       },
       {
         key: 'claude',
-        name: 'Claude AI (Anthropic)',
+        name: 'Claude (Anthropic) — Chat',
         category: 'ai',
         configured: isConfigured.ai,
         description:
-          'Doğal dil sorgu (/ai), günlük özet, anomali açıklama. claude-haiku-4-5-20251001 modeli kullanılır.',
+          'Doğal dil sorgu (/ai asistan), günlük özet, anomali açıklama. claude-haiku-4-5-20251001 default. Tool-use destekli (Sayman AI asistanı bu provider üzerinden çalışır).',
         env_keys: ['ANTHROPIC_API_KEY'],
         setup_hint: 'console.anthropic.com/keys → API Keys → Create',
       },
       {
-        key: 'voyage',
-        name: 'Voyage AI (Embeddings)',
+        key: 'openai',
+        name: 'OpenAI — Chat + Embeddings',
         category: 'ai',
-        configured: isConfigured.embeddings,
+        configured: isConfigured.openai,
         description:
-          'Anlamsal arama için fatura içeriklerini vektörlere çevirir. pgvector ile birlikte çalışır.',
-        env_keys: ['VOYAGE_API_KEY'],
-        setup_hint: 'dash.voyageai.com → API Keys (voyage-3-lite önerilir, 1024 boyut)',
+          'Hem embeddings (anlamsal arama, text-embedding-3-small 1024d) hem chat (gpt-4o-mini default). Embeddings için ZORUNLU, chat için isteğe bağlı (provider seçimi UI\'dan).',
+        env_keys: ['OPENAI_API_KEY'],
+        setup_hint: 'platform.openai.com/api-keys → Create new secret key',
+      },
+      {
+        key: 'deepseek',
+        name: 'DeepSeek — Chat',
+        category: 'ai',
+        configured: isConfigured.deepseek,
+        description:
+          'Açık kaynak alternatifi düşük maliyet. deepseek-chat ve deepseek-reasoner modelleri. OpenAI-uyumlu API. Chat provider olarak seçilirse kullanılır.',
+        env_keys: ['DEEPSEEK_API_KEY'],
+        setup_hint: 'platform.deepseek.com/api_keys → Create API Key',
+      },
+      {
+        key: 'grok',
+        name: 'Grok (xAI) — Chat',
+        category: 'ai',
+        configured: isConfigured.grok,
+        description:
+          'xAI grok-2-1212 ve grok-2-mini. OpenAI-uyumlu API. Chat provider olarak seçilirse kullanılır.',
+        env_keys: ['GROK_API_KEY'],
+        setup_hint: 'console.x.ai → API Keys → Create',
+      },
+      {
+        key: 'gemini',
+        name: 'Google Gemini — Chat',
+        category: 'ai',
+        configured: isConfigured.gemini,
+        description:
+          'gemini-2.0-flash ve gemini-1.5-pro. Multimodal (gelecekte resim/PDF input için kullanılacak). Chat provider olarak seçilirse kullanılır.',
+        env_keys: ['GEMINI_API_KEY'],
+        setup_hint: 'aistudio.google.com/apikey → Create API Key',
       },
       {
         key: 'sentry',
@@ -149,6 +187,108 @@ integrationsStatusRouter.get(
     ];
 
     res.json({ data: integrations, meta: { env_has_db: Boolean(env.DATABASE_URL) } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * GET /v1/integrations/ai-chat-provider — Org'un seçili chat provider'ını döner.
+ * Lookup: org integration_credentials → env.AI_CHAT_PROVIDER → 'claude'.
+ */
+integrationsStatusRouter.get(
+  '/integrations/ai-chat-provider',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      const [row] = await db
+        .select()
+        .from(integrationCredentials)
+        .where(
+          and(
+            eq(integrationCredentials.organization_id, req.activeOrgId!),
+            eq(integrationCredentials.integration_key, 'ai_chat_provider'),
+            sql`${integrationCredentials.tenant_id} IS NULL`,
+            eq(integrationCredentials.is_active, true),
+          ),
+        );
+      const creds = (row?.credentials ?? {}) as { provider?: string };
+      const provider =
+        (creds.provider && ['claude', 'openai', 'deepseek', 'grok', 'gemini'].includes(creds.provider)
+          ? creds.provider
+          : env.AI_CHAT_PROVIDER) ?? 'claude';
+      res.json({ data: { provider } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+const setProviderSchema = z.object({
+  provider: z.enum(['claude', 'openai', 'deepseek', 'grok', 'gemini']),
+});
+
+/**
+ * PUT /v1/integrations/ai-chat-provider — Org'un chat provider seçimini günceller.
+ * Sadece admin'ler değiştirebilir.
+ */
+integrationsStatusRouter.put(
+  '/integrations/ai-chat-provider',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      if (!['super_admin', 'organization_admin', 'yonetici'].includes(req.effectiveRole ?? '')) {
+        throw new HttpError(403, 'AI provider değiştirmek için yönetici yetkisi gerekli', 'FORBIDDEN');
+      }
+      const { provider } = setProviderSchema.parse(req.body);
+      const db = getDb();
+
+      // Upsert org-level credential
+      const [existing] = await db
+        .select({ id: integrationCredentials.id })
+        .from(integrationCredentials)
+        .where(
+          and(
+            eq(integrationCredentials.organization_id, req.activeOrgId!),
+            eq(integrationCredentials.integration_key, 'ai_chat_provider'),
+            sql`${integrationCredentials.tenant_id} IS NULL`,
+          ),
+        );
+
+      if (existing) {
+        await db
+          .update(integrationCredentials)
+          .set({
+            credentials: { provider },
+            is_active: true,
+            updated_at: new Date(),
+          })
+          .where(eq(integrationCredentials.id, existing.id));
+      } else {
+        await db.insert(integrationCredentials).values({
+          organization_id: req.activeOrgId!,
+          tenant_id: null,
+          integration_key: 'ai_chat_provider',
+          credentials: { provider },
+          created_by: req.authUser?.id ?? null,
+        });
+      }
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'integration.ai_chat_provider.set',
+        target_type: 'integration_credentials',
+        target_id: null,
+        details: { provider },
+      });
+
+      res.json({ data: { provider, ok: true } });
     } catch (err) {
       next(err);
     }

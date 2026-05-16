@@ -1,22 +1,29 @@
 /**
- * Embeddings wrapper — Voyage AI (Anthropic's recommended embedding provider).
+ * Embeddings wrapper — OpenAI text-embedding-3-small (dim=1024).
  *
- * Env yoksa (VOYAGE_API_KEY): no-op, kullanıcı dostu hata
- * Env varsa: voyage-3-lite (1024 boyut) ile metin → vektör
+ * Env yoksa (OPENAI_API_KEY): no-op, kullanıcı dostu hata
+ * Env varsa: text-embedding-3-small `dimensions=1024` ile metin → vektör
  *
- * Voyage AI:
- *   - https://docs.voyageai.com
- *   - Sign up: https://dash.voyageai.com
- *   - voyage-3-lite: 1024d, multilingual (Türkçe destekli), 200 RPM free tier
+ * OpenAI:
+ *   - https://platform.openai.com/docs/guides/embeddings
+ *   - text-embedding-3-small: 1536d native, ?dimensions=1024 ile küçültülür
+ *   - Türkçe destekli (multilingual)
  *
- * Maliyet: $0.02 / 1M token (voyage-3-lite). 10000 fatura ≈ $0.001.
+ * Maliyet: $0.02 / 1M token (text-embedding-3-small). 10000 fatura ≈ $0.001.
+ *
+ * NOT: Önceden Voyage AI (voyage-3-lite) kullanılıyordu. DB pgvector kolonu
+ * vector(1024) — aynı boyut korunur. Provider değiştiği için eski Voyage
+ * embeddings (model='voyage-3-lite') karşılaştırılamaz, temizlenip yeniden
+ * embed edilmeli. payable_embeddings tablosunda model='voyage-3-lite' olanlar
+ * cron tarafından (jobs/embed-payables.ts) re-embed edilmeli VEYA elle:
+ *   DELETE FROM payable_embeddings WHERE model LIKE 'voyage%';
  */
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { getCredentialField } from './integration-credentials';
 
-const VOYAGE_MODEL = 'voyage-3-lite';
-const VOYAGE_DIM = 1024;
+const OPENAI_EMBED_MODEL = 'text-embedding-3-small';
+const OPENAI_EMBED_DIM = 1024;
 
 export interface EmbedResult {
   embedding: number[];
@@ -29,46 +36,46 @@ export interface EmbedCtx {
   tenantId?: string | null;
 }
 
-async function resolveVoyageKey(ctx?: EmbedCtx): Promise<string | null> {
+async function resolveOpenAIKey(ctx?: EmbedCtx): Promise<string | null> {
   if (ctx?.organizationId) {
     const r = await getCredentialField(
       {
         organizationId: ctx.organizationId,
         tenantId: ctx.tenantId,
-        integrationKey: 'voyage',
+        integrationKey: 'openai',
       },
       'api_key',
-      env.VOYAGE_API_KEY,
+      env.OPENAI_API_KEY,
     );
     return r.value;
   }
-  return env.VOYAGE_API_KEY ?? null;
+  return env.OPENAI_API_KEY ?? null;
 }
 
 export async function embedText(text: string, ctx?: EmbedCtx): Promise<EmbedResult | null> {
-  const apiKey = await resolveVoyageKey(ctx);
+  const apiKey = await resolveOpenAIKey(ctx);
   if (!apiKey) {
-    logger.debug('embed: VOYAGE_API_KEY not set, skipping');
+    logger.debug('embed: OPENAI_API_KEY not set, skipping');
     return null;
   }
 
   try {
-    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+    const res = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: VOYAGE_MODEL,
+        model: OPENAI_EMBED_MODEL,
         input: text.slice(0, 8000),
-        input_type: 'document',
+        dimensions: OPENAI_EMBED_DIM,
       }),
     });
 
     if (!res.ok) {
       const errTxt = await res.text();
-      logger.warn({ status: res.status, errTxt: errTxt.slice(0, 200) }, 'voyage embed error');
+      logger.warn({ status: res.status, errTxt: errTxt.slice(0, 200) }, 'openai embed error');
       return null;
     }
 
@@ -77,35 +84,36 @@ export async function embedText(text: string, ctx?: EmbedCtx): Promise<EmbedResu
       usage?: { total_tokens?: number };
     };
     const embedding = data.data?.[0]?.embedding;
-    if (!embedding || embedding.length !== VOYAGE_DIM) {
-      logger.warn({ dim: embedding?.length }, 'voyage: unexpected dim');
+    if (!embedding || embedding.length !== OPENAI_EMBED_DIM) {
+      logger.warn({ dim: embedding?.length }, 'openai: unexpected embedding dim');
       return null;
     }
+
     return {
       embedding,
-      model: VOYAGE_MODEL,
+      model: OPENAI_EMBED_MODEL,
       tokens: data.usage?.total_tokens ?? 0,
     };
   } catch (err) {
-    logger.error({ err }, 'voyage embed failed');
+    logger.error({ err }, 'openai embed failed');
     return null;
   }
 }
 
 export async function embedQuery(query: string, ctx?: EmbedCtx): Promise<number[] | null> {
-  const apiKey = await resolveVoyageKey(ctx);
+  const apiKey = await resolveOpenAIKey(ctx);
   if (!apiKey) return null;
   try {
-    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+    const res = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: VOYAGE_MODEL,
+        model: OPENAI_EMBED_MODEL,
         input: query.slice(0, 8000),
-        input_type: 'query',
+        dimensions: OPENAI_EMBED_DIM,
       }),
     });
     if (!res.ok) return null;

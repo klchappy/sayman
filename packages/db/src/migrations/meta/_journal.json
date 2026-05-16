@@ -232,6 +232,13 @@
       "when": 1778792000000,
       "tag": "0032_support_tickets",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1778793000000,
+      "tag": "0033_voyage_to_openai_embeddings",
+      "breakpoints": true
     }
   ]
 }

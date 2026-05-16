@@ -15,9 +15,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { budgets, getDb, payableItems } from '@sayman/db';
 import { CATEGORY_LABELS, PAYABLE_CATEGORIES, type PayableCategory } from '@sayman/shared';
-import { env, isConfigured } from '../config/env';
+import { isConfigured } from '../config/env';
 import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
+import { generateText } from '../lib/ai-providers';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
@@ -367,23 +368,21 @@ budgetsRouter.post('/budgets/ai-suggest', requireAuth, requireTenant, async (req
       }));
     }
 
-    if (!isConfigured.ai || stats.length === 0) {
+    const anyAi =
+      isConfigured.ai ||
+      isConfigured.openai ||
+      isConfigured.deepseek ||
+      isConfigured.grok ||
+      isConfigured.gemini;
+    if (!anyAi || stats.length === 0) {
       res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });
       return;
     }
 
-    // Claude'a sor
+    // Configured AI provider'a sor (claude/openai/deepseek/grok/gemini)
     try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': env.ANTHROPIC_API_KEY!,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 1500,
+      const r = await generateText(
+        {
           system:
             'Sen Sayman muhasebe asistanisin. Verilen son 6 ay kategori istatistiklerine gore ' +
             'ONUMUZDEKI AY icin makul aylik butce onerisi yap. Mevsimsellik, trend, max degerleri ' +
@@ -391,27 +390,16 @@ budgetsRouter.post('/budgets/ai-suggest', requireAuth, requireTenant, async (req
             '{"suggestions":[{"category":"<kategori>","suggested_monthly":<TL>,"reasoning":"<1-2 cumle Turkce>","confidence":<0-1>}]} ' +
             'Mevcut kategoriler: ' +
             PAYABLE_CATEGORIES.join(', '),
-          messages: [
-            {
-              role: 'user',
-              content: `Veri: ${JSON.stringify(stats, null, 2)}\n\nHer kategori icin onerini ver. JSON'da kategori kodu (etiket degil) kullan.`,
-            },
-          ],
-        }),
-      });
-
-      if (!resp.ok) {
-        const errTxt = await resp.text();
-        logger.warn({ status: resp.status, errTxt: errTxt.slice(0, 200) }, 'AI budget suggest fallback');
-        res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });
-        return;
-      }
-      const data = (await resp.json()) as { content: Array<{ type: string; text?: string }> };
-      const text = data.content
-        .filter((c) => c.type === 'text')
-        .map((c) => c.text ?? '')
-        .join('\n')
-        .trim();
+          prompt: `Veri: ${JSON.stringify(stats, null, 2)}\n\nHer kategori icin onerini ver. JSON'da kategori kodu (etiket degil) kullan.`,
+          maxTokens: 1500,
+          timeoutMs: 45_000,
+        },
+        {
+          organizationId: req.activeOrgId ?? undefined,
+          tenantId: req.activeTenantId ?? undefined,
+        },
+      );
+      const text = r.text.trim();
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         res.json({ data: { suggestions: ruleBasedSuggest(), method: 'rule_based' } });

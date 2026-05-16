@@ -242,12 +242,12 @@ export function PayablesPage() {
         </div>
         {semanticQuery && Array.isArray(semanticQ.data) && (
           <p className="text-[10px] text-brand-400 mt-2">
-            "{semanticQuery}" için {semanticQ.data.length} eşleşme · Voyage AI embeddings
+            "{semanticQuery}" için {semanticQ.data.length} eşleşme · OpenAI text-embedding-3-small
           </p>
         )}
         {semanticQuery && semanticQ.data && !Array.isArray(semanticQ.data) && (
           <p className="text-xs text-amber-700 mt-2 bg-amber-50 p-2 rounded">
-            ⚠️ {semanticQ.data.error} — VOYAGE_API_KEY .env'e eklenip API restart edilince aktif olur.
+            ⚠️ {semanticQ.data.error} — OPENAI_API_KEY .env'e eklenip API restart edilince aktif olur.
           </p>
         )}
       </div>
@@ -822,7 +822,7 @@ function EmbedPendingButton() {
         onClick={() => run.mutate()}
         disabled={run.isPending}
         className="text-xs text-purple-700 hover:text-purple-900 hover:bg-purple-50 dark:hover:bg-purple-900/20 px-2 py-1.5 rounded flex items-center gap-1 disabled:opacity-50"
-        title="Henüz embedding'i olmayan tüm fatura için Voyage AI'a istek gönder"
+        title="Henüz embedding'i olmayan tüm fatura için OpenAI'a istek gönder (text-embedding-3-small, 1024d)"
       >
         <Sparkles className="size-3" />
         {run.isPending ? 'İşleniyor…' : 'Embedding Üret'}

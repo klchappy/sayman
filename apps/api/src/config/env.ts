@@ -88,11 +88,37 @@ const envSchema = z.object({
     z.string().min(5).optional(),
   ),
 
-  /** Voyage AI embeddings (semantic search için) — voyage-3-lite 1024d */
-  VOYAGE_API_KEY: z.preprocess(
+  /** OpenAI — embeddings (text-embedding-3-small, dim=1024) + chat (gpt-4o-mini default) */
+  OPENAI_API_KEY: z.preprocess(
     (v) => (v === '' ? undefined : v),
     z.string().min(20).optional(),
   ),
+
+  /** DeepSeek chat (deepseek-chat, deepseek-reasoner) — OpenAI-uyumlu API */
+  DEEPSEEK_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(20).optional(),
+  ),
+
+  /** Grok (xAI) chat (grok-2, grok-2-mini) — OpenAI-uyumlu API */
+  GROK_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(20).optional(),
+  ),
+
+  /** Google Gemini (gemini-1.5-flash, gemini-2.0-flash, gemini-1.5-pro) */
+  GEMINI_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(20).optional(),
+  ),
+
+  /**
+   * AI provider seçimi (chat için). Embeddings her zaman OpenAI.
+   * Default: 'claude'. UI'dan değiştirilebilir.
+   */
+  AI_CHAT_PROVIDER: z
+    .enum(['claude', 'openai', 'deepseek', 'grok', 'gemini'])
+    .default('claude'),
 
   /** WhatsApp webhook doğrulama token (Meta sets, biz match ederiz) */
   WHATSAPP_VERIFY_TOKEN: z.preprocess(
@@ -129,7 +155,12 @@ export const isConfigured = {
   telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
   sentry: Boolean(env.SENTRY_DSN),
   ai: Boolean(env.ANTHROPIC_API_KEY),
+  openai: Boolean(env.OPENAI_API_KEY),
+  deepseek: Boolean(env.DEEPSEEK_API_KEY),
+  grok: Boolean(env.GROK_API_KEY),
+  gemini: Boolean(env.GEMINI_API_KEY),
   whatsapp: Boolean(env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID),
-  embeddings: Boolean(env.VOYAGE_API_KEY),
+  // Embeddings: OpenAI tabanlı (text-embedding-3-small, dim=1024)
+  embeddings: Boolean(env.OPENAI_API_KEY),
   upstashRedis: Boolean(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN),
 };

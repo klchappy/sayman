@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Bot,
   Brain,
+  Check,
   CheckCircle2,
   Cloud,
   Database,
@@ -34,6 +35,7 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface IntegrationStatus {
   key: string;
@@ -91,7 +93,10 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   telegram: Send,
   whatsapp: MessageCircle,
   claude: Sparkles,
-  voyage: Brain,
+  openai: Brain,
+  deepseek: Brain,
+  grok: Brain,
+  gemini: Brain,
   sentry: Shield,
   supabase: Cloud,
   webhooks_outbound: Webhook,
@@ -108,6 +113,10 @@ const LINKS: Record<string, string> = {
   webhooks_inbound: '/integrations/inbound-webhooks',
   api_tokens: '/security',
   claude: '/ai',
+  openai: '/ai',
+  deepseek: '/ai',
+  grok: '/ai',
+  gemini: '/ai',
   erp_integration: '/erp',
 };
 
@@ -116,7 +125,10 @@ const DOC_URLS: Record<string, string> = {
   telegram: 'https://core.telegram.org/bots/api',
   whatsapp: 'https://developers.facebook.com/docs/whatsapp',
   claude: 'https://docs.anthropic.com',
-  voyage: 'https://docs.voyageai.com',
+  openai: 'https://platform.openai.com/docs',
+  deepseek: 'https://api-docs.deepseek.com',
+  grok: 'https://docs.x.ai',
+  gemini: 'https://ai.google.dev/gemini-api/docs',
   sentry: 'https://docs.sentry.io',
   supabase: 'https://supabase.com/docs',
   webhooks_outbound: 'https://sayman.deploi.net/integrations',
@@ -175,6 +187,8 @@ export function IntegrationsPage() {
 
       {q.data && (
         <>
+          <AiChatProviderSelector statuses={q.data} />
+
           {/* KPI Bar (Etik tarzı) */}
           <div className="grid sm:grid-cols-3 gap-4 mb-8">
             <KpiCard
@@ -282,8 +296,17 @@ const APP_CONFIGURABLE: Record<string, Array<{ key: string; label: string; hint?
   claude: [
     { key: 'api_key', label: 'API Key', placeholder: 'sk-ant-...', hint: 'console.anthropic.com/settings/keys' },
   ],
-  voyage: [
-    { key: 'api_key', label: 'API Key', placeholder: 'pa-...', hint: 'dash.voyageai.com → API Keys' },
+  openai: [
+    { key: 'api_key', label: 'API Key', placeholder: 'sk-...', hint: 'platform.openai.com/api-keys (hem chat hem embeddings)' },
+  ],
+  deepseek: [
+    { key: 'api_key', label: 'API Key', placeholder: 'sk-...', hint: 'platform.deepseek.com/api_keys' },
+  ],
+  grok: [
+    { key: 'api_key', label: 'API Key', placeholder: 'xai-...', hint: 'console.x.ai → API Keys' },
+  ],
+  gemini: [
+    { key: 'api_key', label: 'API Key', placeholder: 'AIza...', hint: 'aistudio.google.com/apikey' },
   ],
   resend: [
     { key: 'api_key', label: 'Resend API Key', placeholder: 're_...' },
@@ -749,5 +772,95 @@ function WhatsAppTestModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI Chat Provider Selector
+// ---------------------------------------------------------------------------
+
+type ChatProvider = 'claude' | 'openai' | 'deepseek' | 'grok' | 'gemini';
+
+const CHAT_PROVIDER_LABELS: Record<ChatProvider, string> = {
+  claude: 'Claude (Anthropic)',
+  openai: 'OpenAI GPT',
+  deepseek: 'DeepSeek',
+  grok: 'Grok (xAI)',
+  gemini: 'Google Gemini',
+};
+
+function AiChatProviderSelector({ statuses }: { statuses: IntegrationStatus[] }) {
+  const qc = useQueryClient();
+  const cur = useQuery({
+    queryKey: ['ai-chat-provider'],
+    queryFn: async () => {
+      const r = await api.get<{ data: { provider: ChatProvider } }>(
+        '/integrations/ai-chat-provider',
+      );
+      return r.data.data.provider;
+    },
+  });
+
+  const setProvider = useMutation({
+    mutationFn: async (provider: ChatProvider) =>
+      api.put('/integrations/ai-chat-provider', { provider }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-chat-provider'] });
+      qc.invalidateQueries({ queryKey: ['integrations-status'] });
+    },
+  });
+
+  const providerStatus = (p: ChatProvider): boolean =>
+    statuses.find((s) => s.key === p)?.configured ?? false;
+
+  return (
+    <section className="mb-8 rounded-xl border border-brand-200 dark:border-slate-700 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 p-5">
+      <div className="flex items-start gap-3 mb-4">
+        <Sparkles className="size-6 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+        <div>
+          <h2 className="font-semibold text-brand-900 dark:text-slate-100">
+            Chat AI Sağlayıcısı
+          </h2>
+          <p className="text-xs text-brand-600 dark:text-slate-400 mt-0.5 max-w-2xl">
+            Hangi sağlayıcı kullanılsın? AI asistan, fatura açıklama, bütçe önerisi, risk skoru,
+            günlük özet — hepsi bu sağlayıcıya gider. <strong>Embeddings (anlamsal arama)</strong>{' '}
+            her zaman OpenAI kullanır (text-embedding-3-small).
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {(['claude', 'openai', 'deepseek', 'grok', 'gemini'] as ChatProvider[]).map((p) => {
+          const isActive = cur.data === p;
+          const isConfigured = providerStatus(p);
+          return (
+            <button
+              key={p}
+              onClick={() => setProvider.mutate(p)}
+              disabled={setProvider.isPending}
+              className={`px-3 py-2 rounded-lg text-xs font-medium border transition relative ${
+                isActive
+                  ? 'border-purple-500 bg-purple-100 dark:bg-purple-900/30 text-purple-900 dark:text-purple-200'
+                  : isConfigured
+                    ? 'border-brand-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-brand-700 dark:text-slate-300 hover:border-purple-300'
+                    : 'border-brand-100 dark:border-slate-800 bg-brand-50/50 dark:bg-slate-900/50 text-brand-400 dark:text-slate-500'
+              }`}
+              title={isConfigured ? 'API key var' : 'API key eksik — aşağıdan yapılandır'}
+            >
+              <div className="flex items-center justify-center gap-1">
+                {CHAT_PROVIDER_LABELS[p]}
+                {!isConfigured && <span className="text-[10px]">⚠️</span>}
+                {isActive && <Check className="size-3" />}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {cur.data && !providerStatus(cur.data) && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 mt-3 bg-amber-50 dark:bg-amber-900/20 p-2 rounded">
+          ⚠️ Seçili sağlayıcı (<strong>{CHAT_PROVIDER_LABELS[cur.data]}</strong>) için API key
+          yapılandırılmamış. Aşağıdaki "AI" kategorisinden anahtarı ekleyin.
+        </p>
+      )}
+    </section>
   );
 }

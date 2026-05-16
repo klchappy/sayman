@@ -169,7 +169,7 @@ apiRouter.use(aiSummaryRouter);
 // Forecasting (lineer regresyon nakit projeksiyon)
 apiRouter.use(forecastRouter);
 
-// Semantic search (Voyage embeddings + pgvector)
+// Semantic search (OpenAI embeddings + pgvector)
 apiRouter.use(semanticSearchRouter);
 
 // Entegrasyon hub durum endpoint'i

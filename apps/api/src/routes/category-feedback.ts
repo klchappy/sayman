@@ -17,9 +17,10 @@ import {
   suggestCategory,
   type PayableCategory,
 } from '@sayman/shared';
-import { env, isConfigured } from '../config/env';
+import { isConfigured } from '../config/env';
 import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
+import { generateText } from '../lib/ai-providers';
 import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
@@ -144,42 +145,24 @@ categoryFeedbackRouter.post(
             notes: p.notes,
           }));
           try {
-            const res = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: {
-                'x-api-key': env.ANTHROPIC_API_KEY!,
-                'anthropic-version': '2023-06-01',
-                'content-type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
-                max_tokens: 512,
+            const r = await generateText(
+              {
                 system:
                   'Sen Sayman muhasebe asistanisin. Verilen JSON listedeki her fatura icin ' +
                   'asagidaki kategorilerden BIRINI sec: ' +
                   PAYABLE_CATEGORIES.join(', ') +
                   '. Yanit SADECE asagidaki JSON formatinda olsun, baska metin EKLEME: ' +
                   '{"results":[{"idx":<idx>,"category":"<kategori>","confidence":<0-1 arasi>}]}',
-                messages: [
-                  {
-                    role: 'user',
-                    content: JSON.stringify(items),
-                  },
-                ],
-              }),
-            });
-            if (!res.ok) {
-              logger.warn({ status: res.status }, 'bulk ai categorize: non-200');
-              continue;
-            }
-            const data = (await res.json()) as {
-              content: Array<{ type: string; text?: string }>;
-            };
-            const text = data.content
-              .filter((c) => c.type === 'text')
-              .map((c) => c.text ?? '')
-              .join('\n')
-              .trim();
+                prompt: JSON.stringify(items),
+                maxTokens: 512,
+                timeoutMs: 30_000,
+              },
+              {
+                organizationId: req.activeOrgId ?? undefined,
+                tenantId: req.activeTenantId ?? undefined,
+              },
+            );
+            const text = r.text.trim();
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (!jsonMatch) continue;
             const parsed = JSON.parse(jsonMatch[0]) as {

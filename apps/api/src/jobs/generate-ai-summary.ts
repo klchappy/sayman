@@ -17,8 +17,9 @@ import {
   payableItems,
   tenants,
 } from '@sayman/db';
-import { env, isConfigured } from '../config/env';
+import { isConfigured } from '../config/env';
 import { logger } from '../config/logger';
+import { generateText } from '../lib/ai-providers';
 import { sendTelegramMessage } from '../lib/telegram';
 import { getOrgAdmins, todayISO } from './helpers';
 
@@ -112,52 +113,31 @@ async function fetchSnapshot(tenantId: string, tenantSlug: string): Promise<Tena
 }
 
 async function generateSummaryText(snapshot: TenantSnapshot): Promise<string> {
-  if (!isConfigured.ai) {
+  const anyAi =
+    isConfigured.ai ||
+    isConfigured.openai ||
+    isConfigured.deepseek ||
+    isConfigured.grok ||
+    isConfigured.gemini;
+  if (!anyAi) {
     return buildFallbackText(snapshot);
   }
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
-        system:
-          'Sen Sayman muhasebe SaaS gunluk ozet asistanisin. Verilen JSON snapshot uzerinden ' +
-          'KISA (en fazla 4-5 cumle) ve EYLEM ODAKLI bir Turkce gunluk ozet yaz. Sayilar TL formatla ' +
-          '(1.234,56 TL). Madde isaretleri kullanma, akici paragraf yaz. ' +
-          'Eger oncelikli sorun yoksa "bugun acil bir durum yok" diye sakin bir ton kullan.',
-        messages: [
-          {
-            role: 'user',
-            content: `Tenant: ${snapshot.tenant_slug}\nVeri:\n${JSON.stringify(snapshot, null, 2)}\n\nGunluk ozet yaz.`,
-          },
-        ],
-      }),
+    // Cron'da org/tenant context yok — env'deki provider seçimi kullanılır.
+    const r = await generateText({
+      system:
+        'Sen Sayman muhasebe SaaS gunluk ozet asistanisin. Verilen JSON snapshot uzerinden ' +
+        'KISA (en fazla 4-5 cumle) ve EYLEM ODAKLI bir Turkce gunluk ozet yaz. Sayilar TL formatla ' +
+        '(1.234,56 TL). Madde isaretleri kullanma, akici paragraf yaz. ' +
+        'Eger oncelikli sorun yoksa "bugun acil bir durum yok" diye sakin bir ton kullan.',
+      prompt: `Tenant: ${snapshot.tenant_slug}\nVeri:\n${JSON.stringify(snapshot, null, 2)}\n\nGunluk ozet yaz.`,
+      maxTokens: 400,
+      timeoutMs: 30_000,
     });
-
-    if (!res.ok) {
-      logger.warn({ status: res.status }, 'AI summary: Claude API non-200');
-      return buildFallbackText(snapshot);
-    }
-
-    const data = (await res.json()) as {
-      content: Array<{ type: string; text?: string }>;
-    };
-    const text = data.content
-      .filter((c) => c.type === 'text')
-      .map((c) => c.text ?? '')
-      .join('\n')
-      .trim();
-
-    return text || buildFallbackText(snapshot);
+    return r.text.trim() || buildFallbackText(snapshot);
   } catch (err) {
-    logger.warn({ err }, 'AI summary: Claude API call failed, using fallback');
+    logger.warn({ err }, 'AI summary: provider call failed, using fallback');
     return buildFallbackText(snapshot);
   }
 }

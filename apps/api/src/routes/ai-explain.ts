@@ -1,17 +1,20 @@
 /**
- * /v1/ai/explain/payable/:id — Claude API ile fatura "anormal mi?" açıklaması.
+ * /v1/ai/explain/payable/:id — Configured AI provider ile fatura "anormal mi?" açıklaması.
  *
  * Endpoint payable + supplier geçmişi + son N benzer faturayı topluyor,
- * Claude'a "bu kayıt niye dikkat çekici?" diye soruyor. Anomaly cron'unun
+ * AI'ye "bu kayıt niye dikkat çekici?" diye soruyor. Anomaly cron'unun
  * "öyle deniyor" çıktısını gerçekten okunabilir hale getirir.
+ *
+ * Provider: org/tenant integration'da seçili olan (claude/openai/deepseek/grok/gemini).
+ * Default: claude. Hiçbiri yapılandırılmamışsa rule-based fallback devreye girer.
  *
  * Rate-limit: 20/saat/user — pahalı sorgu.
  */
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { getDb, payableItems } from '@sayman/db';
-import { env, isConfigured } from '../config/env';
 import { logger } from '../config/logger';
+import { generateText } from '../lib/ai-providers';
 import { HttpError, requireOrg } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
@@ -24,9 +27,6 @@ aiExplainRouter.get(
   requireOrg,
   async (req, res, next) => {
     try {
-      if (!isConfigured.ai) {
-        throw new HttpError(503, 'AI yapılandırılmamış', 'NO_AI');
-      }
       const tenantId = req.saymanContext?.tenantId;
       if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
 
@@ -96,46 +96,26 @@ aiExplainRouter.get(
       };
 
       let answer = '';
-      // 30s timeout — explain endpoint kısa olmalı
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 30_000);
       try {
-        const resp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            'x-api-key': env.ANTHROPIC_API_KEY!,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 400,
+        const r = await generateText(
+          {
             system:
               'Sen Sayman muhasebe asistanisin. Verilen fatura JSONu ve tedarikci 6 ay gecmisini incele. ' +
               'Bu kayit NEDEN dikkat cekici veya OLAGAN? Kisaca (3-4 cumle, Turkce, eylem odakli) acikla. ' +
               'Eger her sey normalse bunu sakince soyle. Sayilari TL formatla. Olcek: ' +
               '1) tutarin gecmise gore farki, 2) vade riski, 3) tedarikci pattern, 4) tavsiyen.',
-            messages: [
-              {
-                role: 'user',
-                content: JSON.stringify(promptData, null, 2),
-              },
-            ],
-          }),
-        });
-        if (!resp.ok) {
-          const errTxt = await resp.text();
-          throw new Error(`Claude API: ${resp.status} ${errTxt.slice(0, 100)}`);
-        }
-        const data = (await resp.json()) as { content: Array<{ type: string; text?: string }> };
-        answer = data.content
-          .filter((c) => c.type === 'text')
-          .map((c) => c.text ?? '')
-          .join('\n')
-          .trim();
+            prompt: JSON.stringify(promptData, null, 2),
+            maxTokens: 400,
+            timeoutMs: 30_000,
+          },
+          {
+            organizationId: req.activeOrgId ?? undefined,
+            tenantId,
+          },
+        );
+        answer = r.text.trim();
       } catch (err) {
-        logger.warn({ err, payableId: p.id }, 'ai-explain Claude call failed');
+        logger.warn({ err, payableId: p.id }, 'ai-explain AI call failed, falling back to rule-based');
         // Graceful fallback — rule-based açıklama (timeout/network/Claude downsa devam)
         if (ratio > 2 && history.length >= 3) {
           answer = `Bu fatura ${current.toLocaleString('tr-TR')} TL ile, "${p.supplier_name}" için son 6 ay ortalaması ${mean.toLocaleString('tr-TR')} TL olan tutarın ${ratio.toFixed(1)}× üstünde. Olağandışı yüksek. Faturayı tekrar doğrulamak iyi olabilir.`;
@@ -144,8 +124,6 @@ aiExplainRouter.get(
         } else {
           answer = `Tutar (${current.toLocaleString('tr-TR')} TL) tedarikçi geçmişiyle uyumlu görünüyor (ortalama ${mean.toLocaleString('tr-TR')} TL). Vade: ${p.due_date ?? '-'}.`;
         }
-      } finally {
-        clearTimeout(timer);
       }
 
       res.json({

@@ -21,6 +21,7 @@ import {
 import { env, isConfigured } from '../config/env';
 import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
+import { generateText } from '../lib/ai-providers';
 import { getAdapter } from '../lib/erp';
 import { decryptSecret } from '../lib/secret-box';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope as tenantScopeHelper } from '../lib/helpers';
@@ -514,7 +515,13 @@ salesInvoicesRouter.post(
           }));
       }
 
-      if (!isConfigured.ai) {
+      const anyAi =
+        isConfigured.ai ||
+        isConfigured.openai ||
+        isConfigured.deepseek ||
+        isConfigured.grok ||
+        isConfigured.gemini;
+      if (!anyAi) {
         res.json({
           data: {
             method: 'rule_based',
@@ -526,41 +533,23 @@ salesInvoicesRouter.post(
       }
 
       try {
-        const resp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'x-api-key': env.ANTHROPIC_API_KEY!,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 2000,
+        const r = await generateText(
+          {
             system:
               'Sen Sayman tahsilat danismanisin. Geciken faturalari incele. Hangi alacaklilari ONCE ' +
               'takip etmeli, hangi kanali kullanmali? Yanit SADECE JSON: {"summary":"<2-3 cumle>",' +
               '"suggestions":[{"invoice_id":"<id>","priority":"high|medium|low",' +
               '"recommended_channel":"phone|whatsapp|email|legal","reasoning":"<1-2 cumle Turkce>"}]}',
-            messages: [
-              {
-                role: 'user',
-                content: `Geciken faturalar: ${JSON.stringify(overdueList.slice(0, 20), null, 2)}\n\nStratejik oncelik listesi ver.`,
-              },
-            ],
-          }),
-        });
-        if (!resp.ok) {
-          res.json({
-            data: { method: 'rule_based', suggestions: ruleBased(), summary: `${overdueList.length} geciken fatura.` },
-          });
-          return;
-        }
-        const data = (await resp.json()) as { content: Array<{ type: string; text?: string }> };
-        const text = data.content
-          .filter((c) => c.type === 'text')
-          .map((c) => c.text ?? '')
-          .join('\n')
-          .trim();
+            prompt: `Geciken faturalar: ${JSON.stringify(overdueList.slice(0, 20), null, 2)}\n\nStratejik oncelik listesi ver.`,
+            maxTokens: 2000,
+            timeoutMs: 45_000,
+          },
+          {
+            organizationId: req.activeOrgId ?? undefined,
+            tenantId: req.activeTenantId ?? undefined,
+          },
+        );
+        const text = r.text.trim();
         const m = text.match(/\{[\s\S]*\}/);
         if (!m) {
           res.json({
