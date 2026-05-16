@@ -33,7 +33,11 @@ COPY apps/api ./apps/api
 
 EXPOSE 4300
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+# Healthcheck — migration'ın bitmesini beklemek için start_period uzun
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
   CMD curl -fsS http://localhost:4300/v1/health/healthz >/dev/null || exit 1
 
-CMD ["pnpm", "--filter", "@sayman/api", "exec", "tsx", "src/index.ts"]
+# Container start: önce pending migration'ları uygula, sonra API başlat.
+# Drizzle journal idempotent — zaten uygulanmış migration'lar atlanır.
+# Migration fail ederse container crash eder (deploy fail bildirir).
+CMD sh -c "pnpm --filter @sayman/db exec tsx src/migrate.ts && pnpm --filter @sayman/api exec tsx src/index.ts"
