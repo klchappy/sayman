@@ -40,6 +40,10 @@ healthRouter.get('/health', async (_req, res) => {
  * /v1/health/healthz — Coolify healthcheck için ultra-light endpoint.
  * DB'ye bakmaz; sadece process ayakta mı bilgisi.
  */
-healthRouter.get('/health/healthz', (_req, res) => {
-  res.type('text/plain').send('ok\n');
+healthRouter.get('/health/healthz', (_req, res, next) => {
+  try {
+    res.type('text/plain').send('ok\n');
+  } catch (err) {
+    next(err);
+  }
 });

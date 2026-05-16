@@ -21,7 +21,6 @@ import { guaranteesRouter } from './guarantees';
 import { usersRouter } from './users';
 import { jobsRouter } from './jobs';
 import { dashboardRouter } from './dashboard';
-import { importRouter } from './import';
 import { subsidiariesRouter } from './subsidiaries';
 import { searchRouter } from './search';
 import { pdfRouter } from './pdf';
@@ -114,9 +113,6 @@ apiRouter.use(jobsRouter);
 
 // Dashboard KPI aggregation (tenant-scope)
 apiRouter.use(dashboardRouter);
-
-// Import Center — CSV/JSON bulk insert
-apiRouter.use(importRouter);
 
 // Subsidiaries (Faz M) — Tenant içinde yan şirket / şube
 apiRouter.use(subsidiariesRouter);

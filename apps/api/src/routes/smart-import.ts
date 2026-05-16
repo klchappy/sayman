@@ -29,7 +29,20 @@ import { logger } from '../config/logger';
 import { HttpError, requireTenant } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 import { IMPORT_HANDLERS, type ImportConfig } from '../lib/import-handlers';
+import {
+  cachePreview,
+  getCachedPreview,
+  hashBuffer,
+  invalidatePreview,
+} from '../lib/preview-cache';
 import { parseUblXml, type ParsedInvoice } from './efatura-helpers';
+
+/** Smart Import preview→commit cache'lenen dosya verisi */
+interface CachedFile {
+  buffer: Buffer;
+  filename: string;
+  mimetype: string;
+}
 
 /**
  * Recipient tax_number → org içindeki tenant'a route et.
@@ -83,8 +96,92 @@ const HEADER_HINTS: Array<{ resource: string; required: string[]; score: number 
   { resource: 'regular-payments', required: ['kind', 'monthly_amount'], score: 90 },
 ];
 
+/**
+ * Türkçe header → kanonik İngilizce isim eşlemesi.
+ * Header_HINTS sadece İngilizce sütun isimlerini bilir; kullanıcı Excel'inde
+ * "Ad, Tutar, Vergi No" yazdıysa otomatik tespit çalışmaz. Bu map ile
+ * önce header'ları normalize ediyoruz, sonra HEADER_HINTS'e bakıyoruz.
+ *
+ * Hem normalize ediyoruz hem orijinal Türkçe versiyonu set'e koruyoruz —
+ * row-level zod validation'da kullanıcı hem 'ad' hem 'name' yazsa zod
+ * 'name' bekliyor; bu yüzden detection'da normalize, ama insert'te
+ * canonicalize edilmiş row gönderilmeli. Detection için yeter.
+ */
+const TR_HEADER_ALIASES: Record<string, string> = {
+  // ortak
+  'ad': 'name',
+  'isim': 'name',
+  'adi': 'name',
+  'ad_soyad': 'full_name',
+  'adsoyad': 'full_name',
+  'tam_ad': 'full_name',
+  'unvan': 'name',
+  'vergi_no': 'tax_number',
+  'vkn': 'tax_number',
+  'tckn': 'national_id',
+  'tc_kimlik': 'national_id',
+  'tc_no': 'national_id',
+  'kimlik_no': 'national_id',
+  'tutar': 'amount',
+  'tutari': 'amount',
+  'miktar': 'amount',
+  'fiyat': 'amount',
+  'aciklama': 'title',
+  'baslik': 'title',
+  'fatura_no': 'invoice_number',
+  'fatura_numarasi': 'invoice_number',
+  'son_odeme': 'due_date',
+  'son_odeme_tarihi': 'due_date',
+  'vade': 'due_date',
+  'vade_tarihi': 'due_date',
+  'duzenleme_tarihi': 'issue_date',
+  'kategori': 'category',
+  'tedarikci': 'supplier_name',
+  'tedarikci_adi': 'supplier_name',
+  'telefon': 'phone',
+  'gsm': 'phone',
+  'cep': 'phone',
+  'kisa_ad': 'short_name',
+  'sicil_no': 'registry_number',
+  'tapu_no': 'registry_number',
+  'mulk_tipi': 'property_type',
+  'gayrimenkul_tipi': 'property_type',
+  'belediye': 'municipality',
+  'paket_adi': 'package_name',
+  'abone_no': 'subscription_no',
+  'aylik_tutar': 'monthly_amount',
+  'baslangic': 'start_date',
+  'baslangic_tarihi': 'start_date',
+  'bitis': 'end_date',
+  'bitis_tarihi': 'end_date',
+  'tip': 'kind',
+  'tur': 'kind',
+  'lehdar': 'beneficiary_name',
+  'lehdar_adi': 'beneficiary_name',
+  'teminat_no': 'letter_no',
+  'mektup_no': 'letter_no',
+  'odeme_gunu': 'payment_day',
+  'aile_grubu': 'family_group',
+};
+
+function normalizeHeader(h: string): string {
+  // Lowercase + Türkçe karakterleri ASCII'ye çevir + boşluk/tire → underscore
+  const lower = h
+    .toLowerCase()
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+  return TR_HEADER_ALIASES[lower] ?? lower;
+}
+
 function detectResource(headers: string[]): string | null {
-  const headerSet = new Set(headers.map((h) => h.toLowerCase()));
+  const normalized = headers.map(normalizeHeader);
+  const headerSet = new Set(normalized);
   let best: { resource: string; score: number } | null = null;
   for (const hint of HEADER_HINTS) {
     if (hint.required.every((h) => headerSet.has(h))) {
@@ -96,6 +193,15 @@ function detectResource(headers: string[]): string | null {
   return best?.resource ?? null;
 }
 
+/** Header bazlı row'u kanonik isimlere normalize et (zod validation için). */
+function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[normalizeHeader(k)] = v;
+  }
+  return out;
+}
+
 export const smartImportRouter = Router();
 
 smartImportRouter.post(
@@ -105,12 +211,54 @@ smartImportRouter.post(
   upload.single('file'),
   async (req, res, next) => {
     try {
-      if (!req.file) throw new HttpError(400, 'Dosya gerekli (field: file)', 'NO_FILE');
-      const f = req.file;
-      const name = f.originalname.toLowerCase();
       const commit = req.query.commit === 'true' || req.body?.commit === 'true';
       const tenantId = req.activeTenantId!;
       const orgId = req.activeOrgId!;
+      const userId = req.authUser?.id ?? '';
+
+      // İki giriş yolu:
+      //   1. req.file → multer'dan gelen yeni dosya (preview veya direkt commit)
+      //   2. req.body.cache_key → preview yapılmış dosyanın hash'i (commit-only)
+      //      Bu sayede 30 MB ZIP'i commit'te tekrar upload etmeye gerek yok.
+      let f: CachedFile;
+      let fileHash: string;
+      const cacheKey =
+        typeof req.body?.cache_key === 'string' ? req.body.cache_key : undefined;
+
+      if (cacheKey) {
+        const cached = getCachedPreview<CachedFile>(cacheKey, tenantId, userId);
+        if (!cached) {
+          throw new HttpError(
+            410,
+            'Önizleme süresi doldu veya bulunamadı. Lütfen dosyayı tekrar yükleyin.',
+            'CACHE_EXPIRED',
+          );
+        }
+        f = cached;
+        fileHash = cacheKey;
+      } else if (req.file) {
+        f = {
+          buffer: req.file.buffer,
+          filename: req.file.originalname,
+          mimetype: req.file.mimetype,
+        };
+        fileHash = hashBuffer(f.buffer);
+      } else {
+        throw new HttpError(400, 'Dosya gerekli (field: file) veya cache_key', 'NO_FILE');
+      }
+      const name = f.filename.toLowerCase();
+
+      // Preview → cache'e koy, response'a cache_key ekle.
+      // Yardımcı: response'u dön (cache_key dahil) ve cache'i invalidate et (commit ise).
+      const wrapPreviewResponse = (data: Record<string, unknown>) => {
+        // Sadece preview'de cache yaz. Commit'te zaten insert oldu → invalidate.
+        if (!commit) {
+          cachePreview<CachedFile>(fileHash, tenantId, userId, f);
+          return { ...data, cache_key: fileHash };
+        }
+        invalidatePreview(fileHash);
+        return data;
+      };
 
       // ===== XML — UBL e-Fatura =====
       if (name.endsWith('.xml')) {
@@ -124,13 +272,13 @@ smartImportRouter.post(
 
         if (!commit) {
           res.json({
-            data: {
+            data: wrapPreviewResponse({
               type: 'efatura_xml',
               action: 'preview',
               parsed,
-              filename: f.originalname,
+              filename: f.filename,
               hint: 'Önizleme. "İçeriye Aktar" butonu ile gerçek import başlatılır.',
-            },
+            }),
           });
           return;
         }
@@ -179,7 +327,7 @@ smartImportRouter.post(
             data: {
               type: 'efatura_xml',
               action: 'skipped_duplicate',
-              filename: f.originalname,
+              filename: f.filename,
               parsed,
               payable_id: existing.id,
               supplier_resolution: supplierResolution,
@@ -211,7 +359,7 @@ smartImportRouter.post(
               notes: parsed.notes,
               metadata: {
                 source: 'smart_import',
-                filename: f.originalname,
+                filename: f.filename,
                 supplier_tax_number: parsed.supplier_tax_number,
                 recipient_tax_number: parsed.recipient_tax_number,
                 recipient_name: parsed.recipient_name,
@@ -246,7 +394,7 @@ smartImportRouter.post(
                 data: {
                   type: 'efatura_xml',
                   action: 'skipped_duplicate',
-                  filename: f.originalname,
+                  filename: f.filename,
                   parsed,
                   payable_id: dup.id,
                   supplier_resolution: supplierResolution,
@@ -267,7 +415,7 @@ smartImportRouter.post(
           target_type: 'payable_items',
           target_id: created?.id,
           details: {
-            filename: f.originalname,
+            filename: f.filename,
             invoice_number: parsed.invoice_number,
             target_tenant_id: targetTenantId,
             tenant_auto_matched: route.isAutoMatched,
@@ -287,7 +435,7 @@ smartImportRouter.post(
           data: {
             type: 'efatura_xml',
             action: 'imported',
-            filename: f.originalname,
+            filename: f.filename,
             parsed,
             payable: created,
             supplier_resolution: supplierResolution,
@@ -360,18 +508,25 @@ smartImportRouter.post(
           }
         }
 
+        const ZIP_BATCH_LIMIT = 100;
+        const willTruncate = xmlFiles.length > ZIP_BATCH_LIMIT;
+
         if (!commit) {
           res.json({
-            data: {
+            data: wrapPreviewResponse({
               type: archiveType,
               action: 'preview',
-              filename: f.originalname,
+              filename: f.filename,
               xml_count: xmlFiles.length,
               other_count: otherFiles.length,
+              batch_limit: ZIP_BATCH_LIMIT,
+              will_truncate: willTruncate,
               xml_files: xmlFiles.slice(0, 50).map((x) => ({ name: x.name })),
               other_files: otherFiles.slice(0, 50),
-              hint: `${xmlFiles.length} adet e-Fatura XML bulundu. "İçeriye Aktar" ile hepsi yüklenecek.`,
-            },
+              hint: willTruncate
+                ? `${xmlFiles.length} XML bulundu ancak tek seferde en fazla ${ZIP_BATCH_LIMIT} fatura işlenir. İlk ${ZIP_BATCH_LIMIT} aktarılacak, geri kalan ${xmlFiles.length - ZIP_BATCH_LIMIT} XML için yeni bir ZIP yükle.`
+                : `${xmlFiles.length} adet e-Fatura XML bulundu. "İçeriye Aktar" ile hepsi yüklenecek.`,
+            }),
           });
           return;
         }
@@ -387,7 +542,7 @@ smartImportRouter.post(
           error?: string;
         }> = [];
 
-        for (const xf of xmlFiles.slice(0, 100)) {
+        for (const xf of xmlFiles.slice(0, ZIP_BATCH_LIMIT)) {
           try {
             const parsed: ParsedInvoice = parseUblXml(xf.content);
             if (!parsed.invoice_number) {
@@ -452,7 +607,7 @@ smartImportRouter.post(
                   notes: parsed.notes,
                   metadata: {
                     source: `smart_import_${archiveType}`,
-                    archive_filename: f.originalname,
+                    archive_filename: f.filename,
                     xml_filename: xf.name,
                     recipient_tax_number: parsed.recipient_tax_number,
                     recipient_name: parsed.recipient_name,
@@ -505,7 +660,7 @@ smartImportRouter.post(
           actor_email: req.authUser?.email,
           action: `smart_import.${archiveType}`,
           details: {
-            filename: f.originalname,
+            filename: f.filename,
             total: xmlFiles.length,
             success,
             duplicates,
@@ -514,18 +669,24 @@ smartImportRouter.post(
           },
         });
 
+        const truncatedCount = Math.max(0, xmlFiles.length - ZIP_BATCH_LIMIT);
         res.json({
           data: {
             type: archiveType,
             action: 'imported',
-            filename: f.originalname,
+            filename: f.filename,
             xml_count: xmlFiles.length,
+            processed: Math.min(xmlFiles.length, ZIP_BATCH_LIMIT),
+            truncated: truncatedCount > 0,
+            truncated_count: truncatedCount,
             success,
             duplicates,
             failed,
             new_suppliers: newSuppliers,
             results: results.slice(0, 200),
-            message: `${success} fatura içeriye aktarıldı, ${duplicates} mükerrer atlandı, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi oluşturuldu` : ''}.`,
+            message: truncatedCount > 0
+              ? `${success} fatura aktarıldı, ${duplicates} mükerrer, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi` : ''}. UYARI: ${truncatedCount} XML işlenmedi (batch limiti ${ZIP_BATCH_LIMIT}). Geri kalanlar için yeni bir ZIP yükle.`
+              : `${success} fatura aktarıldı, ${duplicates} mükerrer atlandı, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi oluşturuldu` : ''}.`,
           },
         });
         return;
@@ -567,21 +728,24 @@ smartImportRouter.post(
           }
         }
 
+        // Türkçe header desteği: row'ları kanonik (İngilizce) isimlerle normalize et
+        rows = rows.map((r) => normalizeRow(r));
+
         const detected = detectResource(headers);
 
         if (!detected) {
           res.json({
-            data: {
+            data: wrapPreviewResponse({
               type: 'tabular',
               action: 'preview',
-              filename: f.originalname,
+              filename: f.filename,
               format: name.endsWith('.csv') ? 'csv' : 'xlsx',
               row_count: rows.length,
               headers,
               detected_resource: null,
               preview_rows: rows.slice(0, 5),
-              hint: 'Tip otomatik tespit edilemedi. "CSV / XLSX Toplu" sekmesinden resource elle seç.',
-            },
+              hint: 'Tip otomatik tespit edilemedi. Header satırına en az 2 tanınan kolon ekleyin (ör. title+amount veya ad+vergi_no).',
+            }),
           });
           return;
         }
@@ -606,10 +770,10 @@ smartImportRouter.post(
 
         if (!commit) {
           res.json({
-            data: {
+            data: wrapPreviewResponse({
               type: 'tabular',
               action: 'preview',
-              filename: f.originalname,
+              filename: f.filename,
               format: name.endsWith('.csv') ? 'csv' : 'xlsx',
               row_count: rows.length,
               headers,
@@ -619,7 +783,7 @@ smartImportRouter.post(
               preview_rows: validatedRows.slice(0, 5),
               errors: errors.slice(0, 20),
               hint: `${detected} olarak tespit edildi. ${validatedRows.length} satır geçerli. "İçeriye Aktar" tıkla.`,
-            },
+            }),
           });
           return;
         }
@@ -629,32 +793,37 @@ smartImportRouter.post(
           throw new HttpError(400, 'Geçerli satır yok, import yapılamaz', 'NO_VALID');
         }
 
-        // Sadece payables resource için auto-create supplier
+        // Auto-supplier + bulk insert artık tek transaction'da — kısmi
+        // başarı (örn. yarıda supplier yaratıldı ama insert'e geçemedi)
+        // olamaz, hep ya tamam ya hiç.
+        const db = getDb();
         let newSuppliers = 0;
-        if (detected === 'payables') {
-          for (const row of validatedRows) {
-            const r = row as Record<string, unknown>;
-            const supplierName = r.supplier_name as string | null;
-            if (supplierName && typeof supplierName === 'string') {
-              try {
-                const sup = await resolveOrCreateCompany(orgId, {
-                  name: supplierName,
-                  tax_number: null,
-                  source: 'csv_import',
-                });
-                if (sup.is_new) newSuppliers++;
-                (row as any).company_id = sup.id;
-              } catch (err) {
-                logger.warn({ err }, 'csv import auto-supplier failed');
+        const insertedIds = await db.transaction(async (tx) => {
+          if (detected === 'payables') {
+            for (const row of validatedRows) {
+              const r = row as Record<string, unknown>;
+              const supplierName = r.supplier_name as string | null;
+              if (supplierName && typeof supplierName === 'string') {
+                try {
+                  const sup = await resolveOrCreateCompany(
+                    orgId,
+                    { name: supplierName, tax_number: null, source: 'csv_import' },
+                    tx,
+                  );
+                  if (sup.is_new) newSuppliers++;
+                  (row as Record<string, unknown>).company_id = sup.id;
+                } catch (err) {
+                  logger.warn({ err }, 'csv import auto-supplier failed');
+                }
               }
             }
           }
-        }
 
-        // Insert
-        const insertedIds = await handler.insert(validatedRows, {
-          orgId,
-          tenantId: handler.scope === 'tenant' ? tenantId : undefined,
+          return handler.insert(validatedRows, {
+            orgId,
+            tenantId: handler.scope === 'tenant' ? tenantId : undefined,
+            db: tx,
+          });
         });
 
         await auditFromRequest(req, {
@@ -663,7 +832,7 @@ smartImportRouter.post(
           actor_email: req.authUser?.email,
           action: 'smart_import.tabular',
           details: {
-            filename: f.originalname,
+            filename: f.filename,
             resource: detected,
             inserted: insertedIds.length,
             new_suppliers: newSuppliers,
@@ -674,7 +843,7 @@ smartImportRouter.post(
           data: {
             type: 'tabular',
             action: 'imported',
-            filename: f.originalname,
+            filename: f.filename,
             resource: detected,
             row_count: rows.length,
             valid_count: validatedRows.length,
@@ -697,13 +866,14 @@ smartImportRouter.post(
         name.endsWith('.png') ||
         name.endsWith('.webp')
       ) {
+        // PDF/IMG için commit yolu yok — sadece bilgi dönüyoruz. Cache de yazmıyoruz.
         res.json({
           data: {
             type: 'document',
             action: 'preview',
-            filename: f.originalname,
+            filename: f.filename,
             mime: f.mimetype,
-            size_bytes: f.size,
+            size_bytes: f.buffer.length,
             hint:
               'PDF/görsel dosyalar fatura/teminat gibi bir kayda eklenmeli. ' +
               'Önce ilgili fatura/teminat kaydını oluştur, sonra detayında "Ek dosya" alanından yükle. ' +

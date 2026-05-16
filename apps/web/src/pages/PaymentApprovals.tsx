@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useConfirmBool } from '../components/ConfirmDialog';
 
 interface ApprovalRow {
   id: string;
@@ -58,6 +59,7 @@ function fmtTRY(v: string | number) {
 export function PaymentApprovalsPage() {
   const me = useAuth((s) => s.me);
   const qc = useQueryClient();
+  const confirmBool = useConfirmBool();
   const [tab, setTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [rejectModal, setRejectModal] = useState<string | null>(null);
   const [reason, setReason] = useState('');
@@ -191,8 +193,16 @@ export function PaymentApprovalsPage() {
                           Kendi başlattığın için onaylayamazsın. Bir başka yöneticinin onayını bekle.
                         </span>
                         <button
-                          onClick={() => {
-                            if (confirm('Bu öneriyi iptal et?')) cancel.mutate(a.id);
+                          onClick={async () => {
+                            if (
+                              await confirmBool({
+                                title: 'Öneriyi İptal Et',
+                                message: 'Bu öneriyi iptal et?',
+                                variant: 'danger',
+                                confirmLabel: 'İptal Et',
+                              })
+                            )
+                              cancel.mutate(a.id);
                           }}
                           className="text-xs text-brand-600 hover:bg-brand-100 dark:hover:bg-slate-800 px-3 py-1.5 rounded"
                         >

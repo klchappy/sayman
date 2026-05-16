@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bookmark, BookmarkPlus, ChevronDown, Pin, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
+import { useConfirmBool } from './ConfirmDialog';
 
 interface SavedSearch {
   id: string;
@@ -27,6 +28,7 @@ export function SavedFilters({
   onApply: (filters: Record<string, unknown>) => void;
 }) {
   const qc = useQueryClient();
+  const confirmBool = useConfirmBool();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -154,8 +156,10 @@ export function SavedFilters({
                     {s.name}
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm(`"${s.name}" silinsin mi?`)) remove.mutate(s.id);
+                    onClick={async () => {
+                      if (await confirmBool({ title: 'Filtreyi sil', message: `"${s.name}" silinsin mi?`, variant: 'danger', confirmLabel: 'Sil' })) {
+                        remove.mutate(s.id);
+                      }
                     }}
                     className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded opacity-0 group-hover:opacity-100 transition"
                   >

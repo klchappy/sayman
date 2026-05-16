@@ -223,11 +223,16 @@ export const openApiSpec = {
 
 export const openApiRouter = Router();
 
-openApiRouter.get('/openapi.json', (_req, res) => {
-  res.json(openApiSpec);
+openApiRouter.get('/openapi.json', (_req, res, next) => {
+  try {
+    res.json(openApiSpec);
+  } catch (err) {
+    next(err);
+  }
 });
 
-openApiRouter.get('/docs', (_req, res) => {
+openApiRouter.get('/docs', (_req, res, next) => {
+  try {
   res.type('html').send(`<!DOCTYPE html>
 <html>
 <head>
@@ -249,4 +254,7 @@ window.onload = () => {
 </script>
 </body>
 </html>`);
+  } catch (err) {
+    next(err);
+  }
 });

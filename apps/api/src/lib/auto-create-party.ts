@@ -29,8 +29,10 @@ export interface ResolvedParty {
 export async function resolveOrCreateCompany(
   organizationId: string,
   hint: PartyHint,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dbOrTx?: any,
 ): Promise<ResolvedParty> {
-  const db = getDb();
+  const db = dbOrTx ?? getDb();
   const name = hint.name.trim();
   if (name.length < 2) {
     throw new Error('Şirket adı en az 2 karakter');

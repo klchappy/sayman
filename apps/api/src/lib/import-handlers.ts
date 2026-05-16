@@ -200,12 +200,22 @@ async function matchBankByName(orgId: string, name: string): Promise<string | nu
 
 export type ImportScope = 'org' | 'tenant';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbOrTx = any;
+
+export interface ImportContext {
+  orgId: string;
+  tenantId?: string;
+  /** Opsiyonel transaction handle — varsa insert bu tx içinde yapılır. */
+  db?: DbOrTx;
+}
+
 export interface ImportConfig {
   scope: ImportScope;
   schema: z.ZodType;
   description: string;
-  /** dry_run=false → bu fonksiyon insert eder */
-  insert: (rows: any[], ctx: { orgId: string; tenantId?: string }) => Promise<string[]>;
+  /** dry_run=false → bu fonksiyon insert eder. Opsiyonel ctx.db ile transaction'a sarılabilir. */
+  insert: (rows: any[], ctx: ImportContext) => Promise<string[]>;
 }
 
 export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
@@ -213,8 +223,8 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'org',
     schema: personsRowSchema,
     description: 'Şahıs master data (org-scope, share_scope ile tenant filtrelenir)',
-    insert: async (rows, { orgId }) => {
-      const db = getDb();
+    insert: async (rows, { orgId, db: dbOrTx }) => {
+      const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       const inserted = await db
         .insert(persons)
         .values(rows.map((r) => ({ organization_id: orgId, ...r })))
@@ -226,8 +236,8 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'org',
     schema: companiesRowSchema,
     description: 'Şirket master data (org-scope)',
-    insert: async (rows, { orgId }) => {
-      const db = getDb();
+    insert: async (rows, { orgId, db: dbOrTx }) => {
+      const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       const inserted = await db
         .insert(companies)
         .values(rows.map((r) => ({ organization_id: orgId, ...r })))
@@ -239,8 +249,8 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'org',
     schema: propertiesRowSchema,
     description: 'Mülk master data (org-scope)',
-    insert: async (rows, { orgId }) => {
-      const db = getDb();
+    insert: async (rows, { orgId, db: dbOrTx }) => {
+      const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       const inserted = await db
         .insert(properties)
         .values(rows.map((r) => ({ organization_id: orgId, ...r })))
@@ -252,8 +262,8 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'tenant',
     schema: payablesRowSchema,
     description: 'Fatura/borç kayıtları (tenant-scope) — supplier_name otomatik şirketle eşleşir',
-    insert: async (rows, { orgId, tenantId }) => {
-      const db = getDb();
+    insert: async (rows, { orgId, tenantId, db: dbOrTx }) => {
+      const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
       // Auto-match: supplier_name → company_id + auto-categorize
       const matched = await Promise.all(
@@ -282,8 +292,8 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'tenant',
     schema: subscriptionsRowSchema,
     description: 'Abonelik & taahhüt (tenant-scope) — institution/company otomatik eşleşir',
-    insert: async (rows, { orgId, tenantId }) => {
-      const db = getDb();
+    insert: async (rows, { orgId, tenantId, db: dbOrTx }) => {
+      const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
       // Auto-match: package_name içerebileceği institution adı (TT, CK, vb.)
       const matched = await Promise.all(
@@ -313,8 +323,8 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'tenant',
     schema: regularPaymentsRowSchema,
     description: 'Kira/leasing/bakım sözleşmeleri (tenant-scope)',
-    insert: async (rows, { tenantId }) => {
-      const db = getDb();
+    insert: async (rows, { tenantId, db: dbOrTx }) => {
+      const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
       const inserted = await db
         .insert(regularPaymentProfiles)
@@ -327,8 +337,8 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'tenant',
     schema: guaranteesRowSchema,
     description: 'Teminat mektupları (tenant-scope) — beneficiary/bank otomatik eşleşir',
-    insert: async (rows, { orgId, tenantId }) => {
-      const db = getDb();
+    insert: async (rows, { orgId, tenantId, db: dbOrTx }) => {
+      const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
       const matched = await Promise.all(
         rows.map(async (r) => {

@@ -10,7 +10,7 @@
  * Gerçekleşen tutar: payable_items.amount toplamı, period ve kategoriye göre.
  * "Bu ay elektrik 5000 planladı, 4200 harcadı, %84 kullanım" gibi.
  */
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { budgets, getDb, payableItems } from '@sayman/db';
@@ -98,23 +98,65 @@ budgetsRouter.get('/budgets', requireAuth, requireTenantOrAggregate, async (req,
       .where(and(...conditions))
       .orderBy(desc(budgets.period), budgets.category);
 
-    // Her bütçe için gerçekleşen tutarı hesapla
-    const enriched = [];
+    // N+1 fix — aynı tarih aralığını paylaşan bütçeler için tek GROUP BY sorgusu.
+    // 10 bütçenin hepsi 2026-05 aralığındaysa 10 sorgu yerine 1 sorgu.
+    const tenantId = req.activeTenantId!;
+    const actuals = new Map<string, number>(); // budgetId → actual
+
+    // Range bazlı gruplama
+    type RangeBucket = { from: string; to: string; budgets: Array<{ id: string; category: string }> };
+    const buckets = new Map<string, RangeBucket>();
     for (const b of rows) {
       const range = periodToRange(b.period, b.period_kind);
-      const actual = range
-        ? await computeActual(db, req.activeTenantId!, b.category, range.from, range.to)
-        : 0;
+      if (!range) {
+        actuals.set(b.id, 0);
+        continue;
+      }
+      const key = `${range.from}|${range.to}`;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { from: range.from, to: range.to, budgets: [] };
+        buckets.set(key, bucket);
+      }
+      bucket.budgets.push({ id: b.id, category: b.category });
+    }
+
+    await Promise.all(
+      Array.from(buckets.values()).map(async (bucket) => {
+        const categories = [...new Set(bucket.budgets.map((b) => b.category))];
+        const totals = await db
+          .select({
+            category: payableItems.category,
+            total: sql<string>`COALESCE(SUM(${payableItems.amount}::numeric), 0)`,
+          })
+          .from(payableItems)
+          .where(
+            and(
+              eq(payableItems.tenant_id, tenantId),
+              eq(payableItems.is_active, true),
+              inArray(payableItems.category, categories),
+              gte(payableItems.issue_date, bucket.from),
+              lte(payableItems.issue_date, bucket.to),
+            ),
+          )
+          .groupBy(payableItems.category);
+        const byCategory = new Map(totals.map((t) => [t.category, Number(t.total)]));
+        for (const b of bucket.budgets) actuals.set(b.id, byCategory.get(b.category) ?? 0);
+      }),
+    );
+
+    const enriched = rows.map((b) => {
+      const actual = actuals.get(b.id) ?? 0;
       const planned = Number(b.planned_amount);
       const usagePct = planned > 0 ? (actual / planned) * 100 : 0;
-      enriched.push({
+      return {
         ...b,
         actual_amount: actual,
         usage_pct: Math.round(usagePct * 10) / 10,
         over_budget: actual > planned,
         category_label: CATEGORY_LABELS[b.category as PayableCategory] ?? b.category,
-      });
-    }
+      };
+    });
 
     res.json({ data: enriched });
   } catch (err) {
@@ -382,27 +424,54 @@ budgetsRouter.get(
           ),
         );
 
-      const result = [];
-      for (const b of rows) {
-        const range = periodToRange(b.period, b.period_kind);
-        if (!range) continue;
-        const actual = await computeActual(
-          db,
-          req.activeTenantId!,
-          b.category,
-          range.from,
-          range.to,
-        );
-        const planned = Number(b.planned_amount);
-        result.push({
-          id: b.id,
-          category: b.category,
-          category_label: CATEGORY_LABELS[b.category as PayableCategory] ?? b.category,
-          planned,
-          actual,
-          usage_pct: planned > 0 ? Math.round((actual / planned) * 1000) / 10 : 0,
-          over_budget: actual > planned,
-        });
+      // N+1 fix — bu endpoint'te tüm bütçeler aynı period'da (currentPeriod),
+      // dolayısıyla tüm category'lerin actual'ı tek GROUP BY ile çekilebilir.
+      const result: Array<{
+        id: string;
+        category: string;
+        category_label: string;
+        planned: number;
+        actual: number;
+        usage_pct: number;
+        over_budget: boolean;
+      }> = [];
+
+      if (rows.length > 0) {
+        const range = periodToRange(rows[0]!.period, rows[0]!.period_kind);
+        if (range) {
+          const categories = [...new Set(rows.map((r) => r.category))];
+          const totals = await db
+            .select({
+              category: payableItems.category,
+              total: sql<string>`COALESCE(SUM(${payableItems.amount}::numeric), 0)`,
+            })
+            .from(payableItems)
+            .where(
+              and(
+                eq(payableItems.tenant_id, req.activeTenantId!),
+                eq(payableItems.is_active, true),
+                inArray(payableItems.category, categories),
+                gte(payableItems.issue_date, range.from),
+                lte(payableItems.issue_date, range.to),
+              ),
+            )
+            .groupBy(payableItems.category);
+          const byCategory = new Map(totals.map((t) => [t.category, Number(t.total)]));
+
+          for (const b of rows) {
+            const actual = byCategory.get(b.category) ?? 0;
+            const planned = Number(b.planned_amount);
+            result.push({
+              id: b.id,
+              category: b.category,
+              category_label: CATEGORY_LABELS[b.category as PayableCategory] ?? b.category,
+              planned,
+              actual,
+              usage_pct: planned > 0 ? Math.round((actual / planned) * 1000) / 10 : 0,
+              over_budget: actual > planned,
+            });
+          }
+        }
       }
 
       result.sort((a, b) => b.usage_pct - a.usage_pct);

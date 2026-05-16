@@ -11,15 +11,20 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return; // double-click guard
+    setSubmitting(true);
     setError(null);
     try {
       await signIn(email, password);
       navigate('/', { replace: true });
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -69,11 +74,11 @@ export function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || submitting}
             className="w-full bg-brand-900 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60"
           >
             <LogIn className="size-4" />
-            {loading ? 'Giriş yapılıyor…' : 'Giriş yap'}
+            {loading || submitting ? 'Giriş yapılıyor…' : 'Giriş yap'}
           </button>
         </form>
 

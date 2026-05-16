@@ -69,10 +69,38 @@ inboundWebhooksRouter.post('/inbound/:slug', async (req, res, next) => {
       return;
     }
 
+    // Idempotency: caller X-Idempotency-Key gönderirse duplicate delivery DB seviyesinde yakalanır
+    const idempotencyKey = String(req.headers['x-idempotency-key'] ?? '').slice(0, 128) || null;
+    if (idempotencyKey) {
+      const [existing] = await db
+        .select({ id: inboundWebhookEvents.id, created_record_id: inboundWebhookEvents.created_record_id })
+        .from(inboundWebhookEvents)
+        .where(
+          and(
+            eq(inboundWebhookEvents.endpoint_id, ep.id),
+            eq(inboundWebhookEvents.idempotency_key, idempotencyKey),
+          ),
+        );
+      if (existing) {
+        res.status(200).json({
+          ok: true,
+          idempotent_replay: true,
+          event_id: existing.id,
+          record_id: existing.created_record_id,
+        });
+        return;
+      }
+    }
+
     // Event kaydı (önce log, sonra process)
     const [evt] = await db
       .insert(inboundWebhookEvents)
-      .values({ endpoint_id: ep.id, payload: req.body, status: 'received' })
+      .values({
+        endpoint_id: ep.id,
+        payload: req.body,
+        status: 'received',
+        idempotency_key: idempotencyKey,
+      })
       .returning();
     if (!evt) throw new HttpError(500, 'event log failed');
 

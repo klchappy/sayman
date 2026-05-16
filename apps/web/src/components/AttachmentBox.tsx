@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { File, FileText, ImageIcon, Paperclip, Trash2, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { useConfirmBool } from './ConfirmDialog';
 
 interface Attachment {
   id: string;
@@ -33,6 +34,7 @@ function fmtSize(bytes: number) {
 
 export function AttachmentBox({ relatedTable, relatedId, readOnly }: Props) {
   const qc = useQueryClient();
+  const confirmBool = useConfirmBool();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,8 +150,16 @@ export function AttachmentBox({ relatedTable, relatedId, readOnly }: Props) {
               <span className="text-xs text-brand-400">{fmtSize(att.size_bytes)}</span>
               {!readOnly && (
                 <button
-                  onClick={() => {
-                    if (confirm(`"${att.file_name}" silinsin mi?`)) del.mutate(att.id);
+                  onClick={async () => {
+                    if (
+                      await confirmBool({
+                        title: 'Eklenti Sil',
+                        message: `"${att.file_name}" silinsin mi?`,
+                        variant: 'danger',
+                        confirmLabel: 'Sil',
+                      })
+                    )
+                      del.mutate(att.id);
                   }}
                   className="text-red-500 hover:bg-red-50 p-1 rounded"
                   title="Sil"

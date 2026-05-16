@@ -42,18 +42,20 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Admin için tenant otomatik seçimi: tenant seçilmemiş VE aggregate mode aktif değilse
   // ilk tenant otomatik atanır. Aggregate mode kullanıcı tarafından açıkça seçilince
   // tenant null kalmalı.
+  // Sadece "tenants yüklendi ve aktif tenant yok" durumunda tetiklensin —
+  // tenantsQ.data referansı her refetch'te değişir, length yeterli güvenli signal.
+  const firstTenantSlug = tenantsQ.data?.[0]?.slug;
   useEffect(() => {
     if (
       authed &&
       isAdmin &&
       !active.tenantSlug &&
       !active.aggregate &&
-      tenantsQ.data &&
-      tenantsQ.data.length > 0
+      firstTenantSlug
     ) {
-      setActive({ tenantSlug: tenantsQ.data[0]!.slug });
+      setActive({ tenantSlug: firstTenantSlug });
     }
-  }, [authed, isAdmin, active.tenantSlug, active.aggregate, tenantsQ.data, setActive]);
+  }, [authed, isAdmin, active.tenantSlug, active.aggregate, firstTenantSlug, setActive]);
 
   if (!initialized) {
     return (

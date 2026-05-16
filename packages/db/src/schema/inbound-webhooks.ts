@@ -72,11 +72,18 @@ export const inboundWebhookEvents = pgTable(
     created_record_id: uuid('created_record_id'),
     error_message: text('error_message'),
 
+    /** Idempotency: caller X-Idempotency-Key header'ı geçerse aynı key'le ikinci
+     * çağrı duplicate kabul edilir (uniqueIndex DB seviyesinde garanti). */
+    idempotency_key: text('idempotency_key'),
+
     received_at: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
     processed_at: timestamp('processed_at', { withTimezone: true }),
   },
   (table) => ({
     endpointIdx: index('idx_inbound_events_endpoint').on(table.endpoint_id, table.received_at),
+    idempotencyUq: uniqueIndex('uniq_inbound_idempotency')
+      .on(table.endpoint_id, table.idempotency_key)
+      .where(sql`idempotency_key IS NOT NULL`),
   }),
 );
 
