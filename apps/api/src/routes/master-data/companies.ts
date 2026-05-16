@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, companies } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
+import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg, shareScopeWhereSQL } from '../../lib/helpers';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]);
@@ -49,6 +50,21 @@ companiesRouter.post('/companies', requireAuth, requireOrg, async (req, res, nex
         share_scope: body.share_scope,
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'company.create',
+      target_type: 'companies',
+      target_id: row?.id ?? null,
+      details: {
+        name: body.name,
+        tax_number: body.tax_number ?? null,
+        share_scope: body.share_scope,
+      },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -79,6 +95,17 @@ companiesRouter.patch('/companies/:id', requireAuth, requireOrg, async (req, res
       .where(and(eq(companies.id, String(req.params.id ?? '')), eq(companies.organization_id, req.activeOrgId!)))
       .returning();
     if (!row) throw new HttpError(404, 'Şirket bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'company.update',
+      target_type: 'companies',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { patch: body },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -94,6 +121,17 @@ companiesRouter.delete('/companies/:id', requireAuth, requireOrg, async (req, re
       .where(and(eq(companies.id, String(req.params.id ?? '')), eq(companies.organization_id, req.activeOrgId!)))
       .returning();
     if (!row) throw new HttpError(404, 'Şirket bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'company.delete',
+      target_type: 'companies',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { soft_delete: true },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);

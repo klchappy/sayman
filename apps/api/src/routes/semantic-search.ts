@@ -19,6 +19,7 @@ import { getDb, payableItems } from '@sayman/db';
 import { isConfigured } from '../config/env';
 import { embedQuery, embedText, toPgVector } from '../lib/embeddings';
 import { HttpError, requireOrg } from '../lib/helpers';
+import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
 export const semanticSearchRouter = Router();
@@ -39,6 +40,13 @@ semanticSearchRouter.get('/search/semantic', requireAuth, requireOrg, async (req
     }
     const tenantId = req.saymanContext?.tenantId;
     if (!tenantId) throw new HttpError(400, 'Tenant context gerekli', 'NO_TENANT');
+
+    // Rate limit — Voyage API ücretli, kullanıcı başına dakikada 30 sorgu
+    await consumeRateLimit({
+      identifier: `semantic:${req.authUser?.id ?? 'anon'}`,
+      limit: 30,
+      window_seconds: 60,
+    });
 
     const { q, limit } = querySchema.parse(req.query);
     const vec = await embedQuery(q);

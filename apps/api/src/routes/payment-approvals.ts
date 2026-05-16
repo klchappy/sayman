@@ -14,7 +14,7 @@
  *
  * Eşik: 50000 TRY (hardcoded MVP — sonra org_settings'e taşınır)
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -151,29 +151,29 @@ paymentApprovalsRouter.post(
       const { reason } = decisionSchema.parse(req.body);
       const db = getDb();
 
-      const [appr] = await db
-        .select()
-        .from(paymentApprovals)
-        .where(
-          and(
-            eq(paymentApprovals.id, String(req.params.id ?? '')),
-            eq(paymentApprovals.tenant_id, req.activeTenantId!),
-          ),
-        );
-      if (!appr) throw new HttpError(404, 'Onay bulunamadı');
-      if (appr.status !== 'pending') throw new HttpError(400, 'Bu onay zaten karar verilmiş');
-      if (appr.requested_by_user_id === req.authUser!.id) {
-        throw new HttpError(
-          400,
-          'Kendi başlattığın ödemeyi onaylayamazsın (görevler ayrılığı)',
-          'SELF_APPROVAL_FORBIDDEN',
-        );
-      }
+      // Tüm akış tek $transaction içinde + SELECT FOR UPDATE — paralel
+      // approve/reject isteklerinde yarış engellendi.
+      const apprId = String(req.params.id ?? '');
+      const { appr, payment } = await db.transaction(async (tx) => {
+        const lockRes = await tx.execute(sql`
+          SELECT id, status, tenant_id, payable_id, paid_at, amount, method, reference_no,
+                 requested_by_user_id
+          FROM payment_approvals
+          WHERE id = ${apprId}::uuid AND tenant_id = ${req.activeTenantId!}::uuid
+          FOR UPDATE
+        `);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const a = ((lockRes as any).rows ?? (lockRes as any))[0];
+        if (!a) throw new HttpError(404, 'Onay bulunamadı');
+        if (a.status !== 'pending') throw new HttpError(400, 'Bu onay zaten karar verilmiş');
+        if (a.requested_by_user_id === req.authUser!.id) {
+          throw new HttpError(
+            400,
+            'Kendi başlattığın ödemeyi onaylayamazsın (görevler ayrılığı)',
+            'SELF_APPROVAL_FORBIDDEN',
+          );
+        }
 
-      // Onayla + asıl payment transaction oluştur — atomik
-      // Eğer payment insert fail ederse approval 'pending' kalır, audit log düşmez,
-      // kullanıcı tekrar deneyebilir.
-      const payment = await db.transaction(async (tx) => {
         await tx
           .update(paymentApprovals)
           .set({
@@ -182,21 +182,21 @@ paymentApprovalsRouter.post(
             decision_reason: reason ?? null,
             decided_at: new Date(),
           })
-          .where(eq(paymentApprovals.id, appr.id));
+          .where(eq(paymentApprovals.id, a.id));
 
         const [row] = await tx
           .insert(paymentTransactions)
           .values({
-            tenant_id: appr.tenant_id,
-            payable_id: appr.payable_id,
-            paid_at: appr.paid_at,
-            amount: appr.amount,
-            method: appr.method as any,
-            reference_no: appr.reference_no,
+            tenant_id: a.tenant_id,
+            payable_id: a.payable_id,
+            paid_at: a.paid_at,
+            amount: a.amount,
+            method: a.method as any,
+            reference_no: a.reference_no,
             status: 'approved',
           })
           .returning({ id: paymentTransactions.id });
-        return row;
+        return { appr: a, payment: row };
       });
 
       await auditFromRequest(req, {
@@ -296,6 +296,16 @@ paymentApprovalsRouter.post(
         .update(paymentApprovals)
         .set({ status: 'cancelled', decided_at: new Date() })
         .where(eq(paymentApprovals.id, appr.id));
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'payment_approval.cancel',
+        target_type: 'payment_approvals',
+        target_id: appr.id,
+        details: { payable_id: appr.payable_id },
+      });
 
       res.json({ ok: true });
     } catch (err) {

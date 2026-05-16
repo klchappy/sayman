@@ -97,13 +97,35 @@ export function PayrollPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payroll-runs'] });
+      qc.invalidateQueries({ queryKey: ['payroll-summary'] });
       setCreating(false);
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Bordro oluşturulamadı',
+      );
     },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/payroll/runs/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-runs'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-runs'] });
+      qc.invalidateQueries({ queryKey: ['payroll-summary'] });
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Silme işlemi başarısız',
+      );
+    },
   });
 
   if (!active.tenantSlug && !active.aggregate) {
@@ -261,6 +283,7 @@ export function PayrollPage() {
 export function PayrollRunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: ['payroll-run', id],
@@ -275,12 +298,40 @@ export function PayrollRunDetailPage() {
 
   const approve = useMutation({
     mutationFn: async () => api.post(`/payroll/runs/${id}/approve`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-run', id] });
+      qc.invalidateQueries({ queryKey: ['payroll-runs'] });
+      qc.invalidateQueries({ queryKey: ['payroll-summary'] });
+      setActionError(null);
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setActionError(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Onaylama başarısız',
+      );
+    },
   });
 
   const markPaid = useMutation({
     mutationFn: async () => api.post(`/payroll/runs/${id}/mark-paid`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-run', id] });
+      qc.invalidateQueries({ queryKey: ['payroll-runs'] });
+      qc.invalidateQueries({ queryKey: ['payroll-summary'] });
+      setActionError(null);
+    },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setActionError(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Ödendi işaretleme başarısız',
+      );
+    },
   });
 
   if (q.isLoading || !q.data) {
@@ -337,6 +388,18 @@ export function PayrollRunDetailPage() {
           )}
         </div>
       </header>
+
+      {actionError && (
+        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-900 px-4 py-3 flex items-start justify-between gap-3">
+          <p className="text-sm text-red-700 dark:text-red-300">{actionError}</p>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-red-600 dark:text-red-300 text-xs hover:underline"
+          >
+            Kapat
+          </button>
+        </div>
+      )}
 
       {/* Toplamlar */}
       <div className="grid sm:grid-cols-4 gap-3 mb-6">

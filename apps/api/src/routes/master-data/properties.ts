@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, properties } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
+import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg, shareScopeWhereSQL } from '../../lib/helpers';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]);
@@ -55,6 +56,21 @@ propertiesRouter.post('/properties', requireAuth, requireOrg, async (req, res, n
         share_scope: body.share_scope,
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'property.create',
+      target_type: 'properties',
+      target_id: row?.id ?? null,
+      details: {
+        name: body.name,
+        property_type: body.property_type ?? null,
+        share_scope: body.share_scope,
+      },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -76,6 +92,17 @@ propertiesRouter.patch('/properties/:id', requireAuth, requireOrg, async (req, r
       )
       .returning();
     if (!row) throw new HttpError(404, 'Mülk bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'property.update',
+      target_type: 'properties',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { patch: body },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -96,6 +123,17 @@ propertiesRouter.delete('/properties/:id', requireAuth, requireOrg, async (req, 
       )
       .returning();
     if (!row) throw new HttpError(404, 'Mülk bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'property.delete',
+      target_type: 'properties',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { soft_delete: true },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);

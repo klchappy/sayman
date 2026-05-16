@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, persons, type Person } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
+import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg, requireTenant, shareScopeWhereSQL } from '../../lib/helpers';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]);
@@ -56,6 +57,21 @@ personsRouter.post('/persons', requireAuth, requireOrg, async (req, res, next) =
         share_scope: body.share_scope,
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'person.create',
+      target_type: 'persons',
+      target_id: row?.id ?? null,
+      details: {
+        full_name: body.full_name,
+        national_id: body.national_id ?? null,
+        share_scope: body.share_scope,
+      },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -88,6 +104,17 @@ personsRouter.patch('/persons/:id', requireAuth, requireOrg, async (req, res, ne
       .where(and(eq(persons.id, String(req.params.id ?? '')), eq(persons.organization_id, req.activeOrgId!)))
       .returning();
     if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'person.update',
+      target_type: 'persons',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { patch: body },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -104,6 +131,17 @@ personsRouter.delete('/persons/:id', requireAuth, requireOrg, async (req, res, n
       .where(and(eq(persons.id, String(req.params.id ?? '')), eq(persons.organization_id, req.activeOrgId!)))
       .returning();
     if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'person.delete',
+      target_type: 'persons',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { soft_delete: true },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);

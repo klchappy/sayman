@@ -108,6 +108,15 @@ export function FixedAssetsPage() {
       qc.invalidateQueries({ queryKey: ['fixed-assets'] });
       qc.invalidateQueries({ queryKey: ['fixed-assets-summary'] });
     },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Silme işlemi başarısız',
+      );
+    },
   });
 
   if (!active.tenantSlug && !active.aggregate) {
@@ -357,7 +366,15 @@ function AssetForm({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: ['fixed-assets-summary'] });
       onClose();
     },
-    onError: (e) => setError((e as Error).message),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Kayıt başarısız',
+      );
+    },
   });
 
   return (

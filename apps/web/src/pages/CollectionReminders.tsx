@@ -95,6 +95,15 @@ export function CollectionRemindersPage() {
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/collection-reminder-rules/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection-rules'] }),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Silme işlemi başarısız',
+      );
+    },
   });
 
   const toggleActive = useMutation({

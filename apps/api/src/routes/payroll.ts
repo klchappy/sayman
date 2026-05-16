@@ -218,22 +218,48 @@ payrollRouter.post(
         throw new HttpError(403, 'Bordro onaylama yetkisi yok');
       }
       const db = getDb();
-      const [row] = await db
-        .update(payrollRuns)
-        .set({
-          status: 'approved',
-          approved_by: req.authUser?.id ?? null,
-          approved_at: new Date(),
-          updated_at: new Date(),
-        })
-        .where(
-          and(
-            eq(payrollRuns.id, String(req.params.id ?? '')),
-            eq(payrollRuns.tenant_id, req.activeTenantId!),
-          ),
-        )
-        .returning();
-      if (!row) throw new HttpError(404, 'Bordro bulunamadı');
+      const runId = String(req.params.id ?? '');
+
+      // SELECT FOR UPDATE: paralel approve istekleri yarış etmesin + status
+      // transition validation (sadece draft → approved). Tek transaction.
+      const row = await db.transaction(async (trx) => {
+        const lockRes = await trx.execute(sql`
+          SELECT id, status FROM payroll_runs
+          WHERE id = ${runId}::uuid AND tenant_id = ${req.activeTenantId!}::uuid
+          FOR UPDATE
+        `);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = ((lockRes as any).rows ?? (lockRes as any))[0];
+        if (!existing) throw new HttpError(404, 'Bordro bulunamadı');
+        if (existing.status !== 'draft') {
+          throw new HttpError(
+            400,
+            `Sadece taslak (draft) bordrolar onaylanabilir — mevcut: ${existing.status}`,
+            'INVALID_TRANSITION',
+          );
+        }
+        const [updated] = await trx
+          .update(payrollRuns)
+          .set({
+            status: 'approved',
+            approved_by: req.authUser?.id ?? null,
+            approved_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where(eq(payrollRuns.id, runId))
+          .returning();
+        return updated;
+      });
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'payroll.approve',
+        target_type: 'payroll_runs',
+        target_id: runId,
+      });
+
       res.json({ data: row });
     } catch (err) {
       next(err);
@@ -248,17 +274,42 @@ payrollRouter.post(
   async (req, res, next) => {
     try {
       const db = getDb();
-      const [row] = await db
-        .update(payrollRuns)
-        .set({ status: 'paid', paid_at: new Date(), updated_at: new Date() })
-        .where(
-          and(
-            eq(payrollRuns.id, String(req.params.id ?? '')),
-            eq(payrollRuns.tenant_id, req.activeTenantId!),
-          ),
-        )
-        .returning();
-      if (!row) throw new HttpError(404, 'Bordro bulunamadı');
+      const runId = String(req.params.id ?? '');
+
+      // SELECT FOR UPDATE + status validation: sadece approved → paid
+      const row = await db.transaction(async (trx) => {
+        const lockRes = await trx.execute(sql`
+          SELECT id, status FROM payroll_runs
+          WHERE id = ${runId}::uuid AND tenant_id = ${req.activeTenantId!}::uuid
+          FOR UPDATE
+        `);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = ((lockRes as any).rows ?? (lockRes as any))[0];
+        if (!existing) throw new HttpError(404, 'Bordro bulunamadı');
+        if (existing.status !== 'approved') {
+          throw new HttpError(
+            400,
+            `Sadece onaylanmış (approved) bordrolar ödendi işaretlenebilir — mevcut: ${existing.status}`,
+            'INVALID_TRANSITION',
+          );
+        }
+        const [updated] = await trx
+          .update(payrollRuns)
+          .set({ status: 'paid', paid_at: new Date(), updated_at: new Date() })
+          .where(eq(payrollRuns.id, runId))
+          .returning();
+        return updated;
+      });
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'payroll.mark_paid',
+        target_type: 'payroll_runs',
+        target_id: runId,
+      });
+
       res.json({ data: row });
     } catch (err) {
       next(err);

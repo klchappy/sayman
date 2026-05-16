@@ -11,6 +11,7 @@ import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { aiSummaries, getDb } from '@sayman/db';
 import { HttpError, requireOrg } from '../lib/helpers';
+import { consumeRateLimit } from '../lib/rate-limit';
 import { todayISO } from '../jobs/helpers';
 import { runGenerateAiSummary } from '../jobs/generate-ai-summary';
 import { requireAuth } from '../middleware/auth';
@@ -36,9 +37,13 @@ aiSummaryRouter.get('/ai/summary/today', requireAuth, requireOrg, async (req, re
       );
 
     if (!row) {
-      // Lazy generation: cron henüz çalışmamış olabilir (tenant yeni eklendi).
-      // Tek tenant için generate çalıştırma maliyetli — runGenerateAiSummary tümünü yapar,
-      // sonra tekrar okur.
+      // Lazy generation maliyetli (LLM çağırır). Rate limit: kullanıcı başına 5/saat.
+      await consumeRateLimit({
+        identifier: `ai-summary:${req.authUser?.id ?? 'anon'}`,
+        limit: 5,
+        window_seconds: 3600,
+      });
+      // Cron henüz çalışmamış olabilir (tenant yeni eklendi).
       await runGenerateAiSummary();
       [row] = await db
         .select()

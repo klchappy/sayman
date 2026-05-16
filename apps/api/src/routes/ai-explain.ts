@@ -96,9 +96,13 @@ aiExplainRouter.get(
       };
 
       let answer = '';
+      // 30s timeout — explain endpoint kısa olmalı
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30_000);
       try {
         const resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
+          signal: controller.signal,
           headers: {
             'x-api-key': env.ANTHROPIC_API_KEY!,
             'anthropic-version': '2023-06-01',
@@ -132,7 +136,7 @@ aiExplainRouter.get(
           .trim();
       } catch (err) {
         logger.warn({ err, payableId: p.id }, 'ai-explain Claude call failed');
-        // Graceful fallback — rule-based açıklama
+        // Graceful fallback — rule-based açıklama (timeout/network/Claude downsa devam)
         if (ratio > 2 && history.length >= 3) {
           answer = `Bu fatura ${current.toLocaleString('tr-TR')} TL ile, "${p.supplier_name}" için son 6 ay ortalaması ${mean.toLocaleString('tr-TR')} TL olan tutarın ${ratio.toFixed(1)}× üstünde. Olağandışı yüksek. Faturayı tekrar doğrulamak iyi olabilir.`;
         } else if (history.length === 0 && p.supplier_name) {
@@ -140,6 +144,8 @@ aiExplainRouter.get(
         } else {
           answer = `Tutar (${current.toLocaleString('tr-TR')} TL) tedarikçi geçmişiyle uyumlu görünüyor (ortalama ${mean.toLocaleString('tr-TR')} TL). Vade: ${p.due_date ?? '-'}.`;
         }
+      } finally {
+        clearTimeout(timer);
       }
 
       res.json({

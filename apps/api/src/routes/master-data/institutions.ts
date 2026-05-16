@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, institutions } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
+import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg } from '../../lib/helpers';
 
 const createSchema = z.object({
@@ -42,6 +43,17 @@ institutionsRouter.post('/institutions', requireAuth, requireOrg, async (req, re
         institution_type: body.institution_type ?? null,
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'institution.create',
+      target_type: 'institutions',
+      target_id: row?.id ?? null,
+      details: { name: body.name, institution_type: body.institution_type ?? null },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -63,6 +75,17 @@ institutionsRouter.patch('/institutions/:id', requireAuth, requireOrg, async (re
       )
       .returning();
     if (!row) throw new HttpError(404, 'Kurum bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'institution.update',
+      target_type: 'institutions',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { patch: body },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -83,6 +106,17 @@ institutionsRouter.delete('/institutions/:id', requireAuth, requireOrg, async (r
       )
       .returning();
     if (!row) throw new HttpError(404, 'Kurum bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'institution.delete',
+      target_type: 'institutions',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { soft_delete: true },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);

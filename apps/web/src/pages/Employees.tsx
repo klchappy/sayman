@@ -64,6 +64,15 @@ export function EmployeesPage() {
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/employees/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Silme işlemi başarısız',
+      );
+    },
   });
 
   if (!active.tenantSlug && !active.aggregate) {

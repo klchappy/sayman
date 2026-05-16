@@ -465,8 +465,53 @@ smartImportRouter.post(
         const xmlFiles: Array<{ name: string; content: string }> = [];
         const otherFiles: Array<{ name: string; ext: string }> = [];
 
+        // ZIP bomb / archive expansion protection
+        const MAX_TOTAL_UNCOMPRESSED = 100 * 1024 * 1024; // 100 MB total
+        const MAX_PER_FILE = 10 * 1024 * 1024; // 10 MB per file
+        const ZIP_BATCH_LIMIT = 100;
+        let totalUncompressed = 0;
+
         if (isZip) {
           const zip = await JSZip.loadAsync(f.buffer);
+
+          // Enforce entry count limit before extraction
+          let entryCount = 0;
+          zip.forEach((_relPath, entry) => {
+            if (!entry.dir) entryCount += 1;
+          });
+          if (entryCount > ZIP_BATCH_LIMIT * 10) {
+            throw new HttpError(
+              400,
+              `Arşivde çok fazla dosya var (${entryCount}). En fazla ${ZIP_BATCH_LIMIT * 10} dosya işlenebilir.`,
+              'ARCHIVE_TOO_MANY_FILES',
+            );
+          }
+
+          // Pre-validate uncompressed sizes (JSZip exposes via internal _data)
+          let preflightError: HttpError | null = null;
+          zip.forEach((relPath, entry) => {
+            if (entry.dir || preflightError) return;
+            const internal = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+            const uncompressedSize = internal?.uncompressedSize ?? 0;
+            if (uncompressedSize > MAX_PER_FILE) {
+              preflightError = new HttpError(
+                400,
+                `Arşiv içindeki dosya çok büyük (${relPath}): ${uncompressedSize} bayt, sınır ${MAX_PER_FILE} bayt.`,
+                'FILE_TOO_LARGE',
+              );
+              return;
+            }
+            totalUncompressed += uncompressedSize;
+            if (totalUncompressed > MAX_TOTAL_UNCOMPRESSED) {
+              preflightError = new HttpError(
+                400,
+                `Arşiv toplam uncompressed boyutu ${MAX_TOTAL_UNCOMPRESSED} bayt sınırını aştı.`,
+                'ARCHIVE_TOO_LARGE',
+              );
+            }
+          });
+          if (preflightError) throw preflightError;
+
           const promises: Promise<void>[] = [];
           zip.forEach((relPath, entry) => {
             if (entry.dir) return;
@@ -489,6 +534,37 @@ smartImportRouter.post(
             const rarData = new ArrayBuffer(f.buffer.byteLength);
             new Uint8Array(rarData).set(f.buffer);
             const extractor = await createExtractorFromData({ data: rarData });
+
+            // Pre-validate uncompressed sizes via file list (no extraction yet)
+            const listOnly = extractor.getFileList();
+            const fileHeaders = [...listOnly.fileHeaders];
+            if (fileHeaders.length > ZIP_BATCH_LIMIT * 10) {
+              throw new HttpError(
+                400,
+                `Arşivde çok fazla dosya var (${fileHeaders.length}). En fazla ${ZIP_BATCH_LIMIT * 10} dosya işlenebilir.`,
+                'ARCHIVE_TOO_MANY_FILES',
+              );
+            }
+            for (const header of fileHeaders) {
+              if (header.flags.directory) continue;
+              const unpSize = header.unpSize ?? 0;
+              if (unpSize > MAX_PER_FILE) {
+                throw new HttpError(
+                  400,
+                  `Arşiv içindeki dosya çok büyük (${header.name}): ${unpSize} bayt, sınır ${MAX_PER_FILE} bayt.`,
+                  'FILE_TOO_LARGE',
+                );
+              }
+              totalUncompressed += unpSize;
+              if (totalUncompressed > MAX_TOTAL_UNCOMPRESSED) {
+                throw new HttpError(
+                  400,
+                  `Arşiv toplam uncompressed boyutu ${MAX_TOTAL_UNCOMPRESSED} bayt sınırını aştı.`,
+                  'ARCHIVE_TOO_LARGE',
+                );
+              }
+            }
+
             const list = extractor.extract({});
             const files = [...list.files];
             for (const file of files) {
@@ -505,6 +581,7 @@ smartImportRouter.post(
               }
             }
           } catch (err) {
+            if (err instanceof HttpError) throw err;
             throw new HttpError(
               400,
               `RAR ayıklama hatası: ${(err as Error).message}`,
@@ -513,7 +590,6 @@ smartImportRouter.post(
           }
         }
 
-        const ZIP_BATCH_LIMIT = 100;
         const willTruncate = xmlFiles.length > ZIP_BATCH_LIMIT;
 
         if (!commit) {

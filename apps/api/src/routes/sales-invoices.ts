@@ -162,6 +162,23 @@ salesInvoicesRouter.post('/sales-invoices', requireAuth, requireTenant, async (r
         status: 'sent',
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'sales_invoice.create',
+      target_type: 'sales_invoices',
+      target_id: row?.id ?? null,
+      details: {
+        title: body.title,
+        invoice_number: body.invoice_number ?? null,
+        amount: body.amount,
+        currency: body.currency,
+        customer_type: body.customer_type,
+      },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -203,6 +220,22 @@ const patchSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+// Status transition guard: hangi statüden hangi statüye geçilebilir
+// draft → sent | cancelled
+// sent → partial_paid | paid | overdue | cancelled
+// partial_paid → paid | overdue | cancelled
+// overdue → partial_paid | paid | cancelled
+// paid → (kilitli; geri dönüş yok)
+// cancelled → (kilitli)
+const SALES_INVOICE_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
+  draft: ['sent', 'cancelled'],
+  sent: ['partial_paid', 'paid', 'overdue', 'cancelled'],
+  partial_paid: ['paid', 'overdue', 'cancelled'],
+  overdue: ['partial_paid', 'paid', 'cancelled'],
+  paid: [],
+  cancelled: [],
+};
+
 salesInvoicesRouter.patch(
   '/sales-invoices/:id',
   requireAuth,
@@ -211,6 +244,30 @@ salesInvoicesRouter.patch(
     try {
       const body = patchSchema.parse(req.body);
       const db = getDb();
+      const id = String(req.params.id ?? '');
+
+      // Status transition validation — kullanıcı yanlış status değişimi yapmasın
+      if (body.status) {
+        const [current] = await db
+          .select({ status: salesInvoices.status })
+          .from(salesInvoices)
+          .where(
+            and(
+              eq(salesInvoices.id, id),
+              eq(salesInvoices.tenant_id, req.activeTenantId!),
+            ),
+          );
+        if (!current) throw new HttpError(404, 'Satış faturası bulunamadı');
+        const allowed = SALES_INVOICE_TRANSITIONS[current.status] ?? [];
+        if (current.status !== body.status && !allowed.includes(body.status)) {
+          throw new HttpError(
+            400,
+            `Geçersiz status değişimi: ${current.status} → ${body.status}. İzin verilen: ${allowed.join(', ') || 'yok'}`,
+            'INVALID_TRANSITION',
+          );
+        }
+      }
+
       const patch: Record<string, unknown> = { updated_at: new Date() };
       if (body.status) patch.status = body.status;
       if (body.paid_amount != null) patch.paid_amount = body.paid_amount;
@@ -227,6 +284,20 @@ salesInvoicesRouter.patch(
         )
         .returning();
       if (!row) throw new HttpError(404, 'Satış faturası bulunamadı');
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'sales_invoice.update',
+        target_type: 'sales_invoices',
+        target_id: row?.id ?? String(req.params.id ?? ''),
+        details: {
+          changed: Object.keys(patch).filter((k) => k !== 'updated_at'),
+          patch,
+        },
+      });
+
       res.json({ data: row });
     } catch (err) {
       next(err);
@@ -252,6 +323,17 @@ salesInvoicesRouter.delete(
         )
         .returning({ id: salesInvoices.id });
       if (!row) throw new HttpError(404, 'Satış faturası bulunamadı');
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'sales_invoice.delete',
+        target_type: 'sales_invoices',
+        target_id: row?.id ?? String(req.params.id ?? ''),
+        details: { soft_delete: true },
+      });
+
       res.json({ ok: true });
     } catch (err) {
       next(err);

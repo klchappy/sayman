@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { banks, getDb } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
+import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg } from '../../lib/helpers';
 
 const createSchema = z.object({
@@ -42,6 +43,17 @@ banksRouter.post('/banks', requireAuth, requireOrg, async (req, res, next) => {
         short_code: body.short_code ?? null,
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'bank.create',
+      target_type: 'banks',
+      target_id: row?.id ?? null,
+      details: { name: body.name, short_code: body.short_code ?? null },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -58,6 +70,17 @@ banksRouter.patch('/banks/:id', requireAuth, requireOrg, async (req, res, next) 
       .where(and(eq(banks.id, String(req.params.id ?? '')), eq(banks.organization_id, req.activeOrgId!)))
       .returning();
     if (!row) throw new HttpError(404, 'Banka bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'bank.update',
+      target_type: 'banks',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { patch: body },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -73,6 +96,17 @@ banksRouter.delete('/banks/:id', requireAuth, requireOrg, async (req, res, next)
       .where(and(eq(banks.id, String(req.params.id ?? '')), eq(banks.organization_id, req.activeOrgId!)))
       .returning();
     if (!row) throw new HttpError(404, 'Banka bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'bank.delete',
+      target_type: 'banks',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { soft_delete: true },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);

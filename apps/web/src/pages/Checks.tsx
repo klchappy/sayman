@@ -298,6 +298,15 @@ function CheckRow({ check, aggregate }: { check: Check; aggregate: boolean }) {
       setShowReturn(false);
       setReturnReason('');
     },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'İşlem başarısız',
+      );
+    },
   });
 
   const counterpart = check.direction === 'incoming' ? check.drawer_name : check.beneficiary_name;
@@ -444,7 +453,15 @@ function CheckForm({
       qc.invalidateQueries({ queryKey: ['checks-summary'] });
       onClose();
     },
-    onError: (e) => setError((e as Error).message),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      setError(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Kayıt başarısız',
+      );
+    },
   });
 
   return (

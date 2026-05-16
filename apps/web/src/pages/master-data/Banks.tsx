@@ -29,6 +29,15 @@ export function BanksPage() {
   const del = useMutation({
     mutationFn: async (id: string) => api.delete(`/banks/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['banks'] }),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Silme işlemi başarısız',
+      );
+    },
   });
 
   if (!active.orgSlug) {

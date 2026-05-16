@@ -85,37 +85,50 @@ interface ClaudeMessage {
 async function callClaude(messages: ClaudeMessage[]): Promise<ClaudeMessage> {
   if (!isConfigured.ai) throw new HttpError(503, 'AI asistan yapılandırılmamış', 'NO_AI');
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system:
-        'Sen Sayman muhasebe SaaS\'inin Türkçe AI asistanısın. Kullanıcı doğal dilde sorgu yapar (örn "bu ay vadesi geçen faturalar"). ' +
-        'Tools kullanarak DB sorgusu yapıp Türkçe ve kısa bir yanıt ver. Sayıları TL formatla. Yanıtları madde madde, NET. ' +
-        'Para birimi: TRY. Bugün ' +
-        new Date().toISOString().slice(0, 10) +
-        '. Tarih hesaplamalarında bunu kullan.',
-      tools: TOOLS,
-      messages,
-    }),
-  });
+  // 45s timeout: LLM hung olursa request sürekli açık kalmasın.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system:
+          'Sen Sayman muhasebe SaaS\'inin Türkçe AI asistanısın. Kullanıcı doğal dilde sorgu yapar (örn "bu ay vadesi geçen faturalar"). ' +
+          'Tools kullanarak DB sorgusu yapıp Türkçe ve kısa bir yanıt ver. Sayıları TL formatla. Yanıtları madde madde, NET. ' +
+          'Para birimi: TRY. Bugün ' +
+          new Date().toISOString().slice(0, 10) +
+          '. Tarih hesaplamalarında bunu kullan.',
+        tools: TOOLS,
+        messages,
+      }),
+    });
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new HttpError(500, `Claude API hatası: ${txt.slice(0, 200)}`, 'AI_FAIL');
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new HttpError(500, `Claude API hatası: ${txt.slice(0, 200)}`, 'AI_FAIL');
+    }
+
+    const data = (await res.json()) as {
+      content: ClaudeMessage['content'];
+      stop_reason: string;
+    };
+    return { role: 'assistant', content: data.content };
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      throw new HttpError(504, 'AI yanıtı çok uzun sürdü (45s timeout)', 'AI_TIMEOUT');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = (await res.json()) as {
-    content: ClaudeMessage['content'];
-    stop_reason: string;
-  };
-  return { role: 'assistant', content: data.content };
 }
 
 async function runTool(

@@ -12,6 +12,7 @@ import { and, asc, desc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { employees, getDb, tenants } from '@sayman/db';
+import { auditFromRequest } from '../lib/audit';
 import { calculatePayroll } from '../lib/payroll-calc';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
@@ -90,6 +91,23 @@ employeesRouter.post('/employees', requireAuth, requireTenant, async (req, res, 
         created_by: req.authUser?.id ?? null,
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'employee.create',
+      target_type: 'employees',
+      target_id: row?.id ?? null,
+      details: {
+        full_name: body.full_name,
+        hire_date: body.hire_date,
+        gross_salary: body.gross_salary,
+        department: body.department ?? null,
+        position: body.position ?? null,
+      },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -141,6 +159,20 @@ employeesRouter.patch('/employees/:id', requireAuth, requireTenant, async (req, 
       )
       .returning();
     if (!row) throw new HttpError(404, 'Personel bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'employee.update',
+      target_type: 'employees',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: {
+        changed: Object.keys(patch).filter((k) => k !== 'updated_at'),
+        patch,
+      },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -161,6 +193,17 @@ employeesRouter.delete('/employees/:id', requireAuth, requireTenant, async (req,
       )
       .returning({ id: employees.id });
     if (!row) throw new HttpError(404, 'Personel bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'employee.delete',
+      target_type: 'employees',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { soft_delete: true, status: 'left' },
+    });
+
     res.json({ ok: true });
   } catch (err) {
     next(err);

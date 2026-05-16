@@ -182,6 +182,15 @@ function StockRow({ item, aggregate }: { item: StockItem; aggregate: boolean }) 
       qc.invalidateQueries({ queryKey: ['stock'] });
       setEditing(false);
     },
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Güncelleme başarısız',
+      );
+    },
   });
 
   const qty = Number(item.quantity);

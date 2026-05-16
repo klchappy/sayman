@@ -17,6 +17,7 @@ import { budgets, getDb, payableItems } from '@sayman/db';
 import { CATEGORY_LABELS, PAYABLE_CATEGORIES, type PayableCategory } from '@sayman/shared';
 import { env, isConfigured } from '../config/env';
 import { logger } from '../config/logger';
+import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
@@ -193,6 +194,23 @@ budgetsRouter.post('/budgets', requireAuth, requireTenant, async (req, res, next
           created_by: req.authUser?.id ?? null,
         })
         .returning();
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'budget.create',
+        target_type: 'budgets',
+        target_id: row?.id ?? null,
+        details: {
+          category: body.category,
+          period: body.period,
+          period_kind: body.period_kind,
+          planned_amount: body.planned_amount,
+          currency: body.currency,
+        },
+      });
+
       res.status(201).json({ data: row });
     } catch (err) {
       if ((err as Error).message.includes('uq_budgets')) {
@@ -232,6 +250,20 @@ budgetsRouter.patch('/budgets/:id', requireAuth, requireTenant, async (req, res,
       )
       .returning();
     if (!row) throw new HttpError(404, 'Bütçe bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'budget.update',
+      target_type: 'budgets',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: {
+        changed: Object.keys(patch).filter((k) => k !== 'updated_at'),
+        patch,
+      },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -252,6 +284,17 @@ budgetsRouter.delete('/budgets/:id', requireAuth, requireTenant, async (req, res
       )
       .returning({ id: budgets.id });
     if (!row) throw new HttpError(404, 'Bütçe bulunamadı');
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'budget.delete',
+      target_type: 'budgets',
+      target_id: row?.id ?? String(req.params.id ?? ''),
+      details: { soft_delete: true },
+    });
+
     res.json({ ok: true });
   } catch (err) {
     next(err);

@@ -19,6 +19,7 @@ import {
   getDb,
   tenants,
 } from '@sayman/db';
+import { auditFromRequest } from '../lib/audit';
 import { buildSchedule, calculateMonthlyDepreciation } from '../lib/depreciation';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
@@ -171,6 +172,22 @@ fixedAssetsRouter.post('/fixed-assets', requireAuth, requireTenant, async (req, 
         created_by: req.authUser?.id ?? null,
       })
       .returning();
+
+    await auditFromRequest(req, {
+      organization_id: req.activeOrgId!,
+      actor_user_id: req.authUser?.id,
+      actor_email: req.authUser?.email,
+      action: 'fixed_asset.create',
+      target_type: 'fixed_assets',
+      target_id: row?.id ?? null,
+      details: {
+        name: body.name,
+        category: body.category,
+        purchase_cost: body.purchase_cost,
+        currency: body.currency,
+      },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -241,6 +258,20 @@ fixedAssetsRouter.patch(
         )
         .returning();
       if (!row) throw new HttpError(404, 'Demirbaş bulunamadı');
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'fixed_asset.update',
+        target_type: 'fixed_assets',
+        target_id: row?.id ?? String(req.params.id ?? ''),
+        details: {
+          changed: Object.keys(patch).filter((k) => k !== 'updated_at'),
+          patch,
+        },
+      });
+
       res.json({ data: row });
     } catch (err) {
       next(err);
@@ -266,6 +297,17 @@ fixedAssetsRouter.delete(
         )
         .returning({ id: fixedAssets.id });
       if (!row) throw new HttpError(404, 'Demirbaş bulunamadı');
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'fixed_asset.delete',
+        target_type: 'fixed_assets',
+        target_id: row?.id ?? String(req.params.id ?? ''),
+        details: { soft_delete: true },
+      });
+
       res.json({ ok: true });
     } catch (err) {
       next(err);
@@ -291,6 +333,22 @@ fixedAssetsRouter.post(
     try {
       const body = disposeSchema.parse(req.body);
       const db = getDb();
+      const id = String(req.params.id ?? '');
+
+      // Yalnız 'active' durumdaki demirbaş elden çıkarılabilir
+      const [current] = await db
+        .select({ status: fixedAssets.status })
+        .from(fixedAssets)
+        .where(and(eq(fixedAssets.id, id), eq(fixedAssets.tenant_id, req.activeTenantId!)));
+      if (!current) throw new HttpError(404, 'Demirbaş bulunamadı');
+      if (current.status !== 'active') {
+        throw new HttpError(
+          400,
+          `Sadece aktif demirbaş elden çıkarılabilir — mevcut: ${current.status}`,
+          'INVALID_TRANSITION',
+        );
+      }
+
       const [row] = await db
         .update(fixedAssets)
         .set({
@@ -301,13 +359,25 @@ fixedAssetsRouter.post(
           updated_at: new Date(),
         })
         .where(
-          and(
-            eq(fixedAssets.id, String(req.params.id ?? '')),
-            eq(fixedAssets.tenant_id, req.activeTenantId!),
-          ),
+          and(eq(fixedAssets.id, id), eq(fixedAssets.tenant_id, req.activeTenantId!)),
         )
         .returning();
       if (!row) throw new HttpError(404, 'Demirbaş bulunamadı');
+
+      await auditFromRequest(req, {
+        organization_id: req.activeOrgId!,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'fixed_asset.dispose',
+        target_type: 'fixed_assets',
+        target_id: row?.id ?? String(req.params.id ?? ''),
+        details: {
+          new_status: body.status,
+          disposal_proceeds: body.disposal_proceeds ?? null,
+          disposed_at: body.disposed_at ?? null,
+        },
+      });
+
       res.json({ data: row });
     } catch (err) {
       next(err);
