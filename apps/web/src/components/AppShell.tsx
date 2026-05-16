@@ -388,6 +388,10 @@ export function AppShell() {
               <span className="font-mono">
                 {active.tenantSlug}.{active.orgSlug}.sayman
               </span>
+            ) : active.aggregate && active.orgSlug ? (
+              <span className="font-mono text-amber-600 dark:text-amber-400">
+                {active.orgSlug}.sayman (Tüm Şirketler — okuma)
+              </span>
             ) : active.orgSlug ? (
               <span className="font-mono">{active.orgSlug}.sayman (tenant seçilmedi)</span>
             ) : (

@@ -66,7 +66,14 @@ export function BulkCategorizePage() {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
-          <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-brand-700 font-medium">
+            {active.aggregate ? 'Bu işlem için bir şirket seçmelisin' : 'Tenant seçilmedi'}
+          </p>
+          <p className="text-sm text-brand-500 mt-1">
+            {active.aggregate
+              ? 'Toplu kategorize tek şirket için çalışır — sağ üstten bir şirket seç.'
+              : 'Sağ üstten bir şirket seç.'}
+          </p>
         </div>
       </div>
     );

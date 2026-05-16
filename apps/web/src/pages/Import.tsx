@@ -224,14 +224,22 @@ function SmartImportSection() {
   if (!active.tenantSlug && !isAdmin) {
     return (
       <div className="card text-center">
-        <p className="text-amber-700 text-sm">Tenant seçilmedi. Üst köşeden bir tenant seç.</p>
+        <p className="text-amber-700 text-sm">
+          {active.aggregate
+            ? 'İçe aktarım tek şirket için yapılır — sağ üstten bir şirket seç.'
+            : 'Tenant seçilmedi. Üst köşeden bir tenant seç.'}
+        </p>
       </div>
     );
   }
   if (!active.tenantSlug && isAdmin) {
     return (
       <div className="card text-center">
-        <p className="text-brand-500 text-sm">Tenant yükleniyor…</p>
+        <p className="text-amber-700 text-sm">
+          {active.aggregate
+            ? 'İçe aktarım tek şirket için yapılır — sağ üstten bir şirket seç.'
+            : 'Tenant yükleniyor…'}
+        </p>
       </div>
     );
   }

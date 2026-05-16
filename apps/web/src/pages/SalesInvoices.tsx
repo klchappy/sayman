@@ -41,6 +41,7 @@ interface SalesInvoice {
   issue_date: string | null;
   due_date: string | null;
   status: 'draft' | 'sent' | 'partial_paid' | 'paid' | 'overdue' | 'cancelled';
+  needs_review?: boolean;
   erp_push_status: string | null;
   erp_external_id: string | null;
   auto_created_source: string | null;
@@ -86,12 +87,15 @@ function fmtTRY(v: string | number) {
 export function SalesInvoicesPage() {
   const active = useAuth((s) => s.active);
   const [showForm, setShowForm] = useState(false);
+  const [includeReview, setIncludeReview] = useState(false);
 
   const list = useQuery({
-    queryKey: ['sales-invoices', active.tenantSlug, active.aggregate],
+    queryKey: ['sales-invoices', active.tenantSlug, active.aggregate, includeReview],
     enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
-      const res = await api.get<{ data: SalesInvoice[] }>('/sales-invoices');
+      const res = await api.get<{ data: SalesInvoice[] }>(
+        `/sales-invoices${includeReview ? '?include_review=1' : ''}`,
+      );
       return res.data.data;
     },
   });
@@ -181,13 +185,27 @@ export function SalesInvoicesPage() {
 
       <PendingReviewBanner type="sales_invoices" />
 
+      <div className="flex items-center gap-2 mb-3">
+        <label className="flex items-center gap-2 text-xs text-brand-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeReview}
+            onChange={(e) => setIncludeReview(e.target.checked)}
+            className="rounded"
+          />
+          <span>Onay bekleyenleri de listeye dahil et</span>
+        </label>
+      </div>
+
       <div className="card overflow-x-auto p-0">
         {list.isLoading && <p className="text-brand-500 text-sm p-4">Yükleniyor…</p>}
         {list.data && list.data.length === 0 && (
           <div className="text-center py-12">
             <Coins className="size-12 mx-auto text-brand-300 mb-2" />
             <p className="text-brand-700 dark:text-slate-300 font-medium">
-              Henüz satış faturası yok.
+              {includeReview
+                ? 'Bu görünümde gösterilecek satış faturası yok.'
+                : 'Onaylanmış satış faturası yok. Smart Import / OCR kayıtları "Onay Bekleyenler"de olabilir — yukarıdaki onay kutusunu işaretle.'}
             </p>
             <PendingReviewEmptyHint type="sales_invoices" />
           </div>
@@ -210,7 +228,9 @@ export function SalesInvoicesPage() {
               {list.data.map((s) => (
                 <tr
                   key={s.id}
-                  className="border-b border-brand-50 dark:border-slate-800/50 hover:bg-brand-50/50 dark:hover:bg-slate-800/30"
+                  className={`border-b border-brand-50 dark:border-slate-800/50 hover:bg-brand-50/50 dark:hover:bg-slate-800/30 ${
+                    s.needs_review ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''
+                  }`}
                 >
                   <td className="py-2 px-3 font-medium text-brand-900 dark:text-slate-100">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -218,6 +238,14 @@ export function SalesInvoicesPage() {
                       {active.aggregate && s.tenant_name && (
                         <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
                           {s.tenant_name}
+                        </span>
+                      )}
+                      {s.needs_review && (
+                        <span
+                          title="Onay bekliyor — Onay Bekleyenler'de doğrula"
+                          className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase tracking-wider"
+                        >
+                          ⏳ Onay
                         </span>
                       )}
                       <ProvenanceBadge item={s} />

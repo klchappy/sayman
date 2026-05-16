@@ -36,6 +36,7 @@ interface Payable {
   paid_amount: string;
   currency: string;
   status: PayableStatus;
+  needs_review?: boolean;
   erp_push_status: 'pushed' | 'pulled' | 'failed' | null;
   auto_created_source: string | null;
   reviewed_at: string | null;
@@ -89,12 +90,15 @@ export function PayablesPage() {
   const [showForm, setShowForm] = useState(false);
   const [semanticQuery, setSemanticQuery] = useState('');
   const [semanticInput, setSemanticInput] = useState('');
+  const [includeReview, setIncludeReview] = useState(false);
 
   const q = useQuery({
-    queryKey: ['payables', active.orgSlug, active.tenantSlug, active.aggregate],
+    queryKey: ['payables', active.orgSlug, active.tenantSlug, active.aggregate, includeReview],
     enabled: (!!active.tenantSlug || active.aggregate === true) && !semanticQuery,
     queryFn: async () => {
-      const res = await api.get<{ data: Payable[] }>('/payables');
+      const res = await api.get<{ data: Payable[] }>(
+        `/payables${includeReview ? '?include_review=1' : ''}`,
+      );
       return res.data.data;
     },
   });
@@ -184,6 +188,19 @@ export function PayablesPage() {
 
       <PendingReviewBanner type="payables" />
 
+      {/* Onay bekleyen kayıtları listede dahil et toggle */}
+      <div className="flex items-center gap-2 mb-3">
+        <label className="flex items-center gap-2 text-xs text-brand-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeReview}
+            onChange={(e) => setIncludeReview(e.target.checked)}
+            className="rounded"
+          />
+          <span>Onay bekleyenleri de listeye dahil et</span>
+        </label>
+      </div>
+
       {/* Semantic search bar */}
       <div className="card mb-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -244,7 +261,9 @@ export function PayablesPage() {
             {q.data?.length === 0 && (
               <>
                 <p className="text-brand-500 text-sm py-6 text-center">
-                  Bu tenant'ta henüz fatura yok.
+                  {includeReview
+                    ? 'Bu görünümde gösterilecek fatura yok.'
+                    : 'Onaylanmış fatura yok. Smart Import / OCR ile gelen kayıtlar "Onay Bekleyenler" listesinde olabilir — yukarıdaki onay kutusunu işaretle veya soldaki "Onay Bekleyenler"e git.'}
                 </p>
                 <PendingReviewEmptyHint type="payables" />
               </>
@@ -264,12 +283,25 @@ export function PayablesPage() {
                 </thead>
                 <tbody>
                   {q.data.map((p) => (
-                    <tr key={p.id} className="border-b border-brand-50 hover:bg-brand-50">
+                    <tr
+                      key={p.id}
+                      className={`border-b border-brand-50 hover:bg-brand-50 ${
+                        p.needs_review ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''
+                      }`}
+                    >
                       <td className="py-2 px-2 font-medium text-brand-900 flex items-center gap-2 flex-wrap">
                         <Receipt className="size-4 text-brand-400" />
                         <Link to={`/payables/${p.id}`} className="hover:text-brand-700">
                           {p.title}
                         </Link>
+                        {p.needs_review && (
+                          <span
+                            title="Onay bekliyor — Onay Bekleyenler'de doğrula"
+                            className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded uppercase tracking-wider"
+                          >
+                            ⏳ Onay
+                          </span>
+                        )}
                         <ProvenanceBadge item={p} />
                         {p.erp_push_status === 'pushed' && (
                           <span
