@@ -85,13 +85,29 @@ payablesRouter.get(
   async (req, res, next) => {
     try {
       const db = getDb();
-      const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      // Default: TÜM aktif faturalar (review-pending dahil, amber bg ile ayırılır)
+      // `?only_approved=1` istenirse needs_review=false filtresi uygulanır.
+      // Eski `include_review` parametresi geriye uyumluluk için kabul edilir.
+      const onlyApproved =
+        req.query.only_approved === '1' || req.query.only_approved === 'true';
+      const legacyIncludeReview =
+        req.query.include_review === '1' || req.query.include_review === 'true';
+      // legacy: include_review=true → onlyApproved=false (zaten default)
+      // legacy: include_review=false (eski default) → onlyApproved=true (eski davranış)
+      const applyApprovedFilter = onlyApproved || (req.query.include_review === '0' || req.query.include_review === 'false');
+      void legacyIncludeReview;
+
       const limit = Math.min(Number(req.query.limit ?? 100), 500);
       // Cursor: önceki sayfanın son satırının created_at ISO timestamp'i
       const cursor = req.query.cursor ? String(req.query.cursor) : null;
 
-      const conditions = [tenantScope(req, payableItems.tenant_id)];
-      if (!includeReview) conditions.push(eq(payableItems.needs_review, false));
+      const conditions = [
+        tenantScope(req, payableItems.tenant_id),
+        eq(payableItems.is_active, true),
+      ];
+      if (applyApprovedFilter) {
+        conditions.push(eq(payableItems.needs_review, false));
+      }
       if (cursor) {
         // created_at < cursor — bir önceki sayfa devamı
         conditions.push(sql`${payableItems.created_at} < ${cursor}::timestamptz`);

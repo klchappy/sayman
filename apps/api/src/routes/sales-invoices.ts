@@ -53,7 +53,13 @@ salesInvoicesRouter.get(
   async (req, res, next) => {
     try {
       const db = getDb();
-      const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      // Default: TÜM aktif satış faturaları (review-pending dahil, amber bg ile ayırılır).
+      // `?only_approved=1` → sadece needs_review=false. Eski `include_review=0` da kabul edilir.
+      const onlyApproved =
+        req.query.only_approved === '1' || req.query.only_approved === 'true';
+      const applyApprovedFilter =
+        onlyApproved || req.query.include_review === '0' || req.query.include_review === 'false';
+
       const limit = Math.min(Number(req.query.limit ?? 100), 500);
       const cursor = req.query.cursor ? String(req.query.cursor) : null;
 
@@ -61,7 +67,9 @@ salesInvoicesRouter.get(
         ? inArray(salesInvoices.tenant_id, req.aggregateTenantIds)
         : eq(salesInvoices.tenant_id, req.activeTenantId!);
       const conditions = [tenantScope, eq(salesInvoices.is_active, true)];
-      if (!includeReview) conditions.push(eq(salesInvoices.needs_review, false));
+      if (applyApprovedFilter) {
+        conditions.push(eq(salesInvoices.needs_review, false));
+      }
       if (cursor) {
         conditions.push(sql`${salesInvoices.created_at} < ${cursor}::timestamptz`);
       }
@@ -105,13 +113,17 @@ salesInvoicesRouter.get(
       monthStart.setDate(1);
       const monthStartStr = monthStart.toISOString().slice(0, 10);
 
-      // List ile aynı filtre: default'ta needs_review=true kayıtları sayma
-      const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      // List ile aynı default davranış: TÜM aktif satış faturaları sayılır
+      // (review-pending dahil). Sadece onaylananları istemek için ?only_approved=1.
+      const onlyApproved =
+        req.query.only_approved === '1' || req.query.only_approved === 'true';
+      const applyApprovedFilter =
+        onlyApproved || req.query.include_review === '0' || req.query.include_review === 'false';
       const conditions = [
         tenantScopeHelper(req, salesInvoices.tenant_id),
         eq(salesInvoices.is_active, true),
       ];
-      if (!includeReview) conditions.push(eq(salesInvoices.needs_review, false));
+      if (applyApprovedFilter) conditions.push(eq(salesInvoices.needs_review, false));
 
       const [r] = await db
         .select({

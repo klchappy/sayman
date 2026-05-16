@@ -87,14 +87,16 @@ export function PayablesPage() {
   const [showForm, setShowForm] = useState(false);
   const [semanticQuery, setSemanticQuery] = useState('');
   const [semanticInput, setSemanticInput] = useState('');
-  const [includeReview, setIncludeReview] = useState(false);
+  // Default: tüm faturalar görünür (review-pending kayıtlar amber bg ile ayırılır).
+  // Kullanıcı isterse "sadece onaylananlar"a daraltır.
+  const [onlyApproved, setOnlyApproved] = useState(false);
 
   const q = useQuery({
-    queryKey: ['payables', active.orgSlug, active.tenantSlug, active.aggregate, includeReview],
+    queryKey: ['payables', active.orgSlug, active.tenantSlug, active.aggregate, onlyApproved],
     enabled: (!!active.tenantSlug || active.aggregate === true) && !semanticQuery,
     queryFn: async () => {
       const res = await api.get<{ data: Payable[] }>(
-        `/payables${includeReview ? '?include_review=1' : ''}`,
+        `/payables${onlyApproved ? '?only_approved=1' : ''}`,
       );
       return res.data.data;
     },
@@ -185,16 +187,16 @@ export function PayablesPage() {
 
       <PendingReviewBanner type="payables" />
 
-      {/* Onay bekleyen kayıtları listede dahil et toggle */}
+      {/* Filtre: default tümü görünür, sadece onaylananlara daralt */}
       <div className="flex items-center gap-2 mb-3">
         <label className="flex items-center gap-2 text-xs text-brand-600 cursor-pointer">
           <input
             type="checkbox"
-            checked={includeReview}
-            onChange={(e) => setIncludeReview(e.target.checked)}
+            checked={onlyApproved}
+            onChange={(e) => setOnlyApproved(e.target.checked)}
             className="rounded"
           />
-          <span>Onay bekleyenleri de listeye dahil et</span>
+          <span>Sadece onaylanmış faturaları göster (review bekleyenleri gizle)</span>
         </label>
       </div>
 
@@ -258,9 +260,9 @@ export function PayablesPage() {
             {q.data?.length === 0 && (
               <>
                 <p className="text-brand-500 text-sm py-6 text-center">
-                  {includeReview
-                    ? 'Bu görünümde gösterilecek fatura yok.'
-                    : 'Onaylanmış fatura yok. Smart Import / OCR ile gelen kayıtlar "Onay Bekleyenler" listesinde olabilir — yukarıdaki onay kutusunu işaretle veya soldaki "Onay Bekleyenler"e git.'}
+                  {onlyApproved
+                    ? 'Onaylanmış fatura yok. "Onay Bekleyenler"de inceleyebilirsin.'
+                    : 'Bu tenant\'ta henüz fatura yok. Yeni Fatura veya Dosya Yükle ile başla.'}
                 </p>
                 <PendingReviewEmptyHint type="payables" />
               </>

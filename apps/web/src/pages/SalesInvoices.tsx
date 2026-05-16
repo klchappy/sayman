@@ -84,14 +84,15 @@ import { fmtTRY } from '../lib/formatting';
 export function SalesInvoicesPage() {
   const active = useAuth((s) => s.active);
   const [showForm, setShowForm] = useState(false);
-  const [includeReview, setIncludeReview] = useState(false);
+  // Default: tüm satış faturaları görünür (review-pending dahil)
+  const [onlyApproved, setOnlyApproved] = useState(false);
 
   const list = useQuery({
-    queryKey: ['sales-invoices', active.tenantSlug, active.aggregate, includeReview],
+    queryKey: ['sales-invoices', active.tenantSlug, active.aggregate, onlyApproved],
     enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: SalesInvoice[] }>(
-        `/sales-invoices${includeReview ? '?include_review=1' : ''}`,
+        `/sales-invoices${onlyApproved ? '?only_approved=1' : ''}`,
       );
       return res.data.data;
     },
@@ -186,11 +187,11 @@ export function SalesInvoicesPage() {
         <label className="flex items-center gap-2 text-xs text-brand-600 cursor-pointer">
           <input
             type="checkbox"
-            checked={includeReview}
-            onChange={(e) => setIncludeReview(e.target.checked)}
+            checked={onlyApproved}
+            onChange={(e) => setOnlyApproved(e.target.checked)}
             className="rounded"
           />
-          <span>Onay bekleyenleri de listeye dahil et</span>
+          <span>Sadece onaylanmış faturaları göster (review bekleyenleri gizle)</span>
         </label>
       </div>
 
@@ -200,9 +201,9 @@ export function SalesInvoicesPage() {
           <div className="text-center py-12">
             <Coins className="size-12 mx-auto text-brand-300 mb-2" />
             <p className="text-brand-700 dark:text-slate-300 font-medium">
-              {includeReview
-                ? 'Bu görünümde gösterilecek satış faturası yok.'
-                : 'Onaylanmış satış faturası yok. Smart Import / OCR kayıtları "Onay Bekleyenler"de olabilir — yukarıdaki onay kutusunu işaretle.'}
+              {onlyApproved
+                ? 'Onaylanmış satış faturası yok. "Onay Bekleyenler"de inceleyebilirsin.'
+                : 'Henüz satış faturası yok. Yeni Fatura ile başla.'}
             </p>
             <PendingReviewEmptyHint type="sales_invoices" />
           </div>
