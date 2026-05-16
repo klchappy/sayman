@@ -14,12 +14,12 @@
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { getDb, payableItems } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const similarRouter = Router();
 
-similarRouter.get('/similar/payable/:id', requireAuth, requireTenant, async (req, res, next) => {
+similarRouter.get('/similar/payable/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [target] = await db
@@ -28,7 +28,7 @@ similarRouter.get('/similar/payable/:id', requireAuth, requireTenant, async (req
       .where(
         and(
           eq(payableItems.id, String(req.params.id ?? '')),
-          eq(payableItems.tenant_id, req.activeTenantId!),
+          tenantScope(req, payableItems.tenant_id),
         ),
       );
     if (!target) throw new HttpError(404, 'Fatura bulunamadı', 'NOT_FOUND');
@@ -36,6 +36,11 @@ similarRouter.get('/similar/payable/:id', requireAuth, requireTenant, async (req
     const amount = Number(target.amount);
     const amountLow = (amount * 0.8).toFixed(2);
     const amountHigh = (amount * 1.2).toFixed(2);
+
+    // Aggregate-aware tenant filter for raw SQL: tek tenant tek id, aggregate çoklu liste
+    const tenantFilter = req.aggregateTenantIds
+      ? sql`p.tenant_id = ANY(${req.aggregateTenantIds}::uuid[])`
+      : sql`p.tenant_id = ${req.activeTenantId!}::uuid`;
 
     // Scored similar query
     const rows = await db.execute(sql`
@@ -58,7 +63,7 @@ similarRouter.get('/similar/payable/:id', requireAuth, requireTenant, async (req
           CASE WHEN p.created_at > NOW() - INTERVAL '90 days' THEN 1 ELSE 0 END
         ) AS score
       FROM payable_items p
-      WHERE p.tenant_id = ${req.activeTenantId!}::uuid
+      WHERE ${tenantFilter}
         AND p.id <> ${target.id}::uuid
         AND p.is_active = true
       ORDER BY score DESC, p.created_at DESC

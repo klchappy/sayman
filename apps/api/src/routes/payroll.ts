@@ -20,16 +20,16 @@ import {
 } from '@sayman/db';
 import { calculatePayroll } from '../lib/payroll-calc';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const payrollRouter = Router();
 
-payrollRouter.get('/payroll/runs', requireAuth, requireTenant, async (req, res, next) => {
+payrollRouter.get('/payroll/runs', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
-    const where = eq(payrollRuns.tenant_id, req.activeTenantId!);
+    const where = tenantScope(req, payrollRuns.tenant_id);
     const rows = await db
       .select()
       .from(payrollRuns)
@@ -166,7 +166,7 @@ payrollRouter.post('/payroll/runs', requireAuth, requireTenant, async (req, res,
   }
 });
 
-payrollRouter.get('/payroll/runs/:id', requireAuth, requireTenant, async (req, res, next) => {
+payrollRouter.get('/payroll/runs/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [run] = await db
@@ -175,7 +175,7 @@ payrollRouter.get('/payroll/runs/:id', requireAuth, requireTenant, async (req, r
       .where(
         and(
           eq(payrollRuns.id, String(req.params.id ?? '')),
-          eq(payrollRuns.tenant_id, req.activeTenantId!),
+          tenantScope(req, payrollRuns.tenant_id),
         ),
       );
     if (!run) throw new HttpError(404, 'Bordro bulunamadı');
@@ -295,7 +295,7 @@ payrollRouter.delete('/payroll/runs/:id', requireAuth, requireTenant, async (req
   }
 });
 
-payrollRouter.get('/payroll/summary', requireAuth, requireTenant, async (req, res, next) => {
+payrollRouter.get('/payroll/summary', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [employeeStats] = await db
@@ -304,12 +304,12 @@ payrollRouter.get('/payroll/summary', requireAuth, requireTenant, async (req, re
         total_gross: sql<string>`COALESCE(SUM(gross_salary::numeric) FILTER (WHERE status = 'active'), 0)`,
       })
       .from(employees)
-      .where(and(eq(employees.tenant_id, req.activeTenantId!), eq(employees.is_active, true)));
+      .where(and(tenantScope(req, employees.tenant_id), eq(employees.is_active, true)));
 
     const [lastRun] = await db
       .select()
       .from(payrollRuns)
-      .where(eq(payrollRuns.tenant_id, req.activeTenantId!))
+      .where(tenantScope(req, payrollRuns.tenant_id))
       .orderBy(desc(payrollRuns.period))
       .limit(1);
 

@@ -20,7 +20,7 @@ import {
   subsidiaries,
   tenants,
 } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import {
   drawKV,
   drawPdfFooter,
@@ -34,7 +34,7 @@ import { requireAuth } from '../middleware/auth';
 
 export const pdfRouter = Router();
 
-pdfRouter.get('/pdf/payable/:id', requireAuth, requireTenant, async (req, res, next) => {
+pdfRouter.get('/pdf/payable/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [row] = await db
@@ -52,7 +52,7 @@ pdfRouter.get('/pdf/payable/:id', requireAuth, requireTenant, async (req, res, n
       .where(
         and(
           eq(payableItems.id, String(req.params.id ?? '')),
-          eq(payableItems.tenant_id, req.activeTenantId!),
+          tenantScope(req, payableItems.tenant_id),
         ),
       );
 
@@ -130,7 +130,7 @@ pdfRouter.get('/pdf/payable/:id', requireAuth, requireTenant, async (req, res, n
   }
 });
 
-pdfRouter.get('/pdf/guarantee/:id', requireAuth, requireTenant, async (req, res, next) => {
+pdfRouter.get('/pdf/guarantee/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [row] = await db
@@ -149,7 +149,7 @@ pdfRouter.get('/pdf/guarantee/:id', requireAuth, requireTenant, async (req, res,
       .where(
         and(
           eq(guarantees.id, String(req.params.id ?? '')),
-          eq(guarantees.tenant_id, req.activeTenantId!),
+          tenantScope(req, guarantees.tenant_id),
         ),
       );
 

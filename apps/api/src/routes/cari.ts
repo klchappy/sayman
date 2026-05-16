@@ -12,15 +12,15 @@ import { and, asc, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import * as XLSX from 'xlsx';
 import { cariAccounts, cariMovements, erpConnections, getDb } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const cariRouter = Router();
 
-cariRouter.get('/cari', requireAuth, requireTenant, async (req, res, next) => {
+cariRouter.get('/cari', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
-    const conditions: any[] = [eq(cariAccounts.tenant_id, req.activeTenantId!)];
+    const conditions: any[] = [tenantScope(req, cariAccounts.tenant_id)];
     if (req.query.type && req.query.type !== 'all') {
       conditions.push(eq(cariAccounts.account_type, String(req.query.type)));
     }
@@ -56,7 +56,7 @@ cariRouter.get('/cari', requireAuth, requireTenant, async (req, res, next) => {
   }
 });
 
-cariRouter.get('/cari/:id', requireAuth, requireTenant, async (req, res, next) => {
+cariRouter.get('/cari/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [cari] = await db
@@ -65,7 +65,7 @@ cariRouter.get('/cari/:id', requireAuth, requireTenant, async (req, res, next) =
       .where(
         and(
           eq(cariAccounts.id, String(req.params.id ?? '')),
-          eq(cariAccounts.tenant_id, req.activeTenantId!),
+          tenantScope(req, cariAccounts.tenant_id),
         ),
       );
     if (!cari) throw new HttpError(404, 'Cari bulunamadı');
@@ -111,7 +111,7 @@ cariRouter.get('/cari/:id', requireAuth, requireTenant, async (req, res, next) =
   }
 });
 
-cariRouter.get('/cari/:id/movements', requireAuth, requireTenant, async (req, res, next) => {
+cariRouter.get('/cari/:id/movements', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [cari] = await db
@@ -120,7 +120,7 @@ cariRouter.get('/cari/:id/movements', requireAuth, requireTenant, async (req, re
       .where(
         and(
           eq(cariAccounts.id, String(req.params.id ?? '')),
-          eq(cariAccounts.tenant_id, req.activeTenantId!),
+          tenantScope(req, cariAccounts.tenant_id),
         ),
       );
     if (!cari) throw new HttpError(404, 'Cari bulunamadı');
@@ -149,7 +149,7 @@ cariRouter.get('/cari/:id/movements', requireAuth, requireTenant, async (req, re
 cariRouter.get(
   '/cari/:id/movements.xlsx',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -159,7 +159,7 @@ cariRouter.get(
         .where(
           and(
             eq(cariAccounts.id, String(req.params.id ?? '')),
-            eq(cariAccounts.tenant_id, req.activeTenantId!),
+            tenantScope(req, cariAccounts.tenant_id),
           ),
         );
       if (!cari) throw new HttpError(404, 'Cari bulunamadı');

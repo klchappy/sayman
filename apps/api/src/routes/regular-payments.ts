@@ -6,7 +6,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, regularPaymentPeriods, regularPaymentProfiles } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
@@ -36,11 +36,11 @@ const updateProfileSchema = createProfileSchema.partial();
 
 export const regularPaymentsRouter = Router();
 
-regularPaymentsRouter.get('/regular-payments', requireAuth, requireTenant, async (req, res, next) => {
+regularPaymentsRouter.get('/regular-payments', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const where = and(
-      eq(regularPaymentProfiles.tenant_id, req.activeTenantId!),
+      tenantScope(req, regularPaymentProfiles.tenant_id),
       eq(regularPaymentProfiles.is_active, true),
     );
     const rows = await db

@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, tasks } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
@@ -32,13 +32,13 @@ const updateSchema = createSchema.partial().extend({
 
 export const tasksRouter = Router();
 
-tasksRouter.get('/tasks', requireAuth, requireTenant, async (req, res, next) => {
+tasksRouter.get('/tasks', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const status = req.query['status'] as string | undefined;
     const assignedToMe = req.query['mine'] === 'true';
 
-    const conditions = [eq(tasks.tenant_id, req.activeTenantId!), eq(tasks.is_active, true)];
+    const conditions = [tenantScope(req, tasks.tenant_id), eq(tasks.is_active, true)];
     if (status) conditions.push(eq(tasks.status, status as never));
     if (assignedToMe) conditions.push(eq(tasks.assigned_to, req.authUserId!));
 

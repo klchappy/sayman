@@ -12,18 +12,18 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, taxCalendarEvents } from '@sayman/db';
 import { runGenerateTaxCalendar } from '../jobs/generate-tax-calendar';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const taxCalendarRouter = Router();
 
-taxCalendarRouter.get('/tax-calendar', requireAuth, requireTenant, async (req, res, next) => {
+taxCalendarRouter.get('/tax-calendar', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const upcoming = String(req.query.upcoming ?? '') === 'true';
     const conditions: any[] = [
-      eq(taxCalendarEvents.tenant_id, req.activeTenantId!),
+      tenantScope(req, taxCalendarEvents.tenant_id),
       eq(taxCalendarEvents.is_active, true),
     ];
     if (upcoming) {

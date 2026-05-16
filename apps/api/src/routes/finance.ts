@@ -5,7 +5,7 @@
  * Şahıs/Şirket FK'leri public schema'da (share_scope'lu), ama burası
  * tenant-private tablo.
  */
-import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -23,7 +23,7 @@ import {
   transactionStatusSchema,
 } from '@sayman/shared';
 import { requireAuth } from '../middleware/auth';
-import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 
 // --- /v1/payables -----------------------------------------------------------
@@ -66,10 +66,7 @@ payablesRouter.get(
       // Cursor: önceki sayfanın son satırının created_at ISO timestamp'i
       const cursor = req.query.cursor ? String(req.query.cursor) : null;
 
-      const tenantScope = req.aggregateTenantIds
-        ? inArray(payableItems.tenant_id, req.aggregateTenantIds)
-        : eq(payableItems.tenant_id, req.activeTenantId!);
-      const conditions = [tenantScope];
+      const conditions = [tenantScope(req, payableItems.tenant_id)];
       if (!includeReview) conditions.push(eq(payableItems.needs_review, false));
       if (cursor) {
         // created_at < cursor — bir önceki sayfa devamı
@@ -163,7 +160,7 @@ payablesRouter.post('/payables', requireAuth, requireTenant, async (req, res, ne
   }
 });
 
-payablesRouter.get('/payables/:id', requireAuth, requireTenant, async (req, res, next) => {
+payablesRouter.get('/payables/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [row] = await db
@@ -172,7 +169,7 @@ payablesRouter.get('/payables/:id', requireAuth, requireTenant, async (req, res,
       .where(
         and(
           eq(payableItems.id, String(req.params.id ?? '')),
-          eq(payableItems.tenant_id, req.activeTenantId!),
+          tenantScope(req, payableItems.tenant_id),
         ),
       );
     if (!row) throw new HttpError(404, 'Fatura bulunamadı');
@@ -245,11 +242,11 @@ const createPaymentSchema = z.object({
 
 export const paymentsRouter = Router();
 
-paymentsRouter.get('/payments', requireAuth, requireTenant, async (req, res, next) => {
+paymentsRouter.get('/payments', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const where = and(
-      eq(paymentTransactions.tenant_id, req.activeTenantId!),
+      tenantScope(req, paymentTransactions.tenant_id),
       eq(paymentTransactions.is_active, true),
     );
     const rows = await db

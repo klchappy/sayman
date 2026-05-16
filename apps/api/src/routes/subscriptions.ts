@@ -5,7 +5,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, subscriptions } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
@@ -32,11 +32,11 @@ const updateSchema = createSchema.partial();
 
 export const subscriptionsRouter = Router();
 
-subscriptionsRouter.get('/subscriptions', requireAuth, requireTenant, async (req, res, next) => {
+subscriptionsRouter.get('/subscriptions', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const where = and(
-      eq(subscriptions.tenant_id, req.activeTenantId!),
+      tenantScope(req, subscriptions.tenant_id),
       eq(subscriptions.is_active, true),
     );
     const rows = await db

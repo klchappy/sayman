@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { attachments, getDb } from '@sayman/db';
 import { env, isConfigured } from '../config/env';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 const BUCKET = 'sayman-attachments';
@@ -52,7 +52,7 @@ function getStorage() {
 export const attachmentsRouter = Router();
 
 // LIST
-attachmentsRouter.get('/attachments', requireAuth, requireTenant, async (req, res, next) => {
+attachmentsRouter.get('/attachments', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const relatedTable = String(req.query.related_table ?? '');
     const relatedId = String(req.query.related_id ?? '');
@@ -67,7 +67,7 @@ attachmentsRouter.get('/attachments', requireAuth, requireTenant, async (req, re
       .from(attachments)
       .where(
         and(
-          eq(attachments.tenant_id, req.activeTenantId!),
+          tenantScope(req, attachments.tenant_id),
           eq(attachments.related_table, relatedTable),
           eq(attachments.related_id, relatedId),
         ),
@@ -147,7 +147,7 @@ attachmentsRouter.post(
 );
 
 // GET signed URL (1 saat)
-attachmentsRouter.get('/attachments/:id/url', requireAuth, requireTenant, async (req, res, next) => {
+attachmentsRouter.get('/attachments/:id/url', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [att] = await db
@@ -156,7 +156,7 @@ attachmentsRouter.get('/attachments/:id/url', requireAuth, requireTenant, async 
       .where(
         and(
           eq(attachments.id, String(req.params.id ?? '')),
-          eq(attachments.tenant_id, req.activeTenantId!),
+          tenantScope(req, attachments.tenant_id),
         ),
       );
     if (!att) throw new HttpError(404, 'Eklenti bulunamadı', 'NOT_FOUND');

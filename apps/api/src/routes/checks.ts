@@ -20,7 +20,7 @@ import { requireAuth } from '../middleware/auth';
 
 export const checksRouter = Router();
 
-checksRouter.get('/checks/summary', requireAuth, requireTenant, async (req, res, next) => {
+checksRouter.get('/checks/summary', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const today = new Date().toISOString().slice(0, 10);
@@ -43,7 +43,7 @@ checksRouter.get('/checks/summary', requireAuth, requireTenant, async (req, res,
       })
       .from(checksAndNotes)
       .where(
-        and(eq(checksAndNotes.tenant_id, req.activeTenantId!), eq(checksAndNotes.is_active, true)),
+        and(tenantScope(req, checksAndNotes.tenant_id), eq(checksAndNotes.is_active, true)),
       );
 
     res.json({
@@ -171,7 +171,7 @@ checksRouter.post('/checks', requireAuth, requireTenant, async (req, res, next) 
   }
 });
 
-checksRouter.get('/checks/:id', requireAuth, requireTenant, async (req, res, next) => {
+checksRouter.get('/checks/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [row] = await db
@@ -180,7 +180,7 @@ checksRouter.get('/checks/:id', requireAuth, requireTenant, async (req, res, nex
       .where(
         and(
           eq(checksAndNotes.id, String(req.params.id ?? '')),
-          eq(checksAndNotes.tenant_id, req.activeTenantId!),
+          tenantScope(req, checksAndNotes.tenant_id),
         ),
       );
     if (!row) throw new HttpError(404, 'Çek/Senet bulunamadı');

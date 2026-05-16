@@ -9,16 +9,16 @@ import { and, asc, eq, ilike, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getDb, stockItems } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
 
 export const stockRouter = Router();
 
-stockRouter.get('/stock', requireAuth, requireTenant, async (req, res, next) => {
+stockRouter.get('/stock', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
-    const conditions: any[] = [eq(stockItems.tenant_id, req.activeTenantId!)];
+    const conditions: any[] = [tenantScope(req, stockItems.tenant_id)];
     if (req.query.search) {
       const s = `%${String(req.query.search)}%`;
       conditions.push(or(ilike(stockItems.name, s), ilike(stockItems.code, s)));
@@ -42,7 +42,7 @@ stockRouter.get('/stock', requireAuth, requireTenant, async (req, res, next) => 
   }
 });
 
-stockRouter.get('/stock/critical', requireAuth, requireTenant, async (req, res, next) => {
+stockRouter.get('/stock/critical', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const rows = await db
@@ -50,7 +50,7 @@ stockRouter.get('/stock/critical', requireAuth, requireTenant, async (req, res, 
       .from(stockItems)
       .where(
         and(
-          eq(stockItems.tenant_id, req.activeTenantId!),
+          tenantScope(req, stockItems.tenant_id),
           isNotNull(stockItems.critical_threshold),
           sql`${stockItems.quantity}::numeric <= ${stockItems.critical_threshold}::numeric`,
         ),

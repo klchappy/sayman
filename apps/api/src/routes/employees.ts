@@ -92,7 +92,7 @@ employeesRouter.post('/employees', requireAuth, requireTenant, async (req, res, 
   }
 });
 
-employeesRouter.get('/employees/:id', requireAuth, requireTenant, async (req, res, next) => {
+employeesRouter.get('/employees/:id', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
   try {
     const db = getDb();
     const [row] = await db
@@ -101,7 +101,7 @@ employeesRouter.get('/employees/:id', requireAuth, requireTenant, async (req, re
       .where(
         and(
           eq(employees.id, String(req.params.id ?? '')),
-          eq(employees.tenant_id, req.activeTenantId!),
+          tenantScope(req, employees.tenant_id),
         ),
       );
     if (!row) throw new HttpError(404, 'Personel bulunamadı');
