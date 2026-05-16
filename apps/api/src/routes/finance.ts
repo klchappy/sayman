@@ -268,16 +268,19 @@ paymentsRouter.post('/payments', requireAuth, requireTenant, async (req, res, ne
     const db = getDb();
 
     const tx = await db.transaction(async (trx) => {
-      // Payable'ı transaction içinde oku — concurrent payment'lar lost update yapmasın
-      const [payable] = await trx
-        .select()
-        .from(payableItems)
-        .where(
-          and(
-            eq(payableItems.id, body.payable_id),
-            eq(payableItems.tenant_id, req.activeTenantId!),
-          ),
-        );
+      // SELECT FOR UPDATE — concurrent payment'larda lost update'i engelle.
+      // Plain SELECT (transaction içinde bile) snapshot okur; FOR UPDATE
+      // row-level lock alır, paralel transaction commit bekler ve güncel
+      // paid_amount'u görür.
+      const lockResult = await trx.execute(sql`
+        SELECT id, amount, paid_amount, status
+        FROM payable_items
+        WHERE id = ${body.payable_id}::uuid
+          AND tenant_id = ${req.activeTenantId!}::uuid
+        FOR UPDATE
+      `);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payable = ((lockResult as any).rows ?? (lockResult as any))[0];
       if (!payable) throw new HttpError(404, 'Fatura bulunamadı (bu tenant\'ta)');
 
       const [inserted] = await trx

@@ -286,7 +286,14 @@ reviewQueueRouter.post(
           .returning({ id: persons.id });
         if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
       } else if (type === 'payable') {
-        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        // Kaydın kendi tenant_id'sini DB'den oku, org üyeliği authorize et.
+        // Bu sayede aggregate (Tüm Şirketler) mode'unda da onay/red yapılabilir.
+        const [existing] = await db
+          .select({ tenant_id: payableItems.tenant_id })
+          .from(payableItems)
+          .innerJoin(tenants, eq(tenants.id, payableItems.tenant_id))
+          .where(and(eq(payableItems.id, id), eq(tenants.organization_id, orgId)));
+        if (!existing) throw new HttpError(404, 'Fatura bulunamadı');
         const [row] = await db
           .update(payableItems)
           .set({
@@ -295,11 +302,16 @@ reviewQueueRouter.post(
             reviewed_by: req.authUser?.id ?? null,
             updated_at: new Date(),
           })
-          .where(and(eq(payableItems.id, id), eq(payableItems.tenant_id, tenantId)))
+          .where(and(eq(payableItems.id, id), eq(payableItems.tenant_id, existing.tenant_id)))
           .returning({ id: payableItems.id });
         if (!row) throw new HttpError(404, 'Fatura bulunamadı');
       } else if (type === 'sales_invoice') {
-        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        const [existing] = await db
+          .select({ tenant_id: salesInvoices.tenant_id })
+          .from(salesInvoices)
+          .innerJoin(tenants, eq(tenants.id, salesInvoices.tenant_id))
+          .where(and(eq(salesInvoices.id, id), eq(tenants.organization_id, orgId)));
+        if (!existing) throw new HttpError(404, 'Satış faturası bulunamadı');
         const [row] = await db
           .update(salesInvoices)
           .set({
@@ -308,7 +320,7 @@ reviewQueueRouter.post(
             reviewed_by: req.authUser?.id ?? null,
             updated_at: new Date(),
           })
-          .where(and(eq(salesInvoices.id, id), eq(salesInvoices.tenant_id, tenantId)))
+          .where(and(eq(salesInvoices.id, id), eq(salesInvoices.tenant_id, existing.tenant_id)))
           .returning({ id: salesInvoices.id });
         if (!row) throw new HttpError(404, 'Satış faturası bulunamadı');
       } else {
