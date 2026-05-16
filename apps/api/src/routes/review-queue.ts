@@ -13,7 +13,7 @@
  * Smart import / efatura / inbound webhook gibi otomatik akışlar bu queue'yu doldurur.
  * Onaylanan kayıt normal listede görünür; reddedilen DB'den tamamen silinir.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { companies, getDb, payableItems, persons, salesInvoices, tenants } from '@sayman/db';
@@ -390,26 +390,38 @@ reviewQueueRouter.delete(
           .returning({ id: persons.id });
         deleted = row;
       } else if (type === 'payable') {
-        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        // Kaydın tenant_id'sini DB'den oku + org üyeliği ile authorize
+        // (aggregate mode'da req.activeTenantId null olabilir).
+        const [existing] = await db
+          .select({ tenant_id: payableItems.tenant_id })
+          .from(payableItems)
+          .innerJoin(tenants, eq(tenants.id, payableItems.tenant_id))
+          .where(and(eq(payableItems.id, id), eq(tenants.organization_id, orgId)));
+        if (!existing) throw new HttpError(404, 'Fatura bulunamadı');
         const [row] = await db
           .delete(payableItems)
           .where(
             and(
               eq(payableItems.id, id),
-              eq(payableItems.tenant_id, tenantId),
+              eq(payableItems.tenant_id, existing.tenant_id),
               eq(payableItems.needs_review, true),
             ),
           )
           .returning({ id: payableItems.id });
         deleted = row;
       } else if (type === 'sales_invoice') {
-        if (!tenantId) throw new HttpError(400, 'Tenant seçilmedi', 'NO_TENANT');
+        const [existing] = await db
+          .select({ tenant_id: salesInvoices.tenant_id })
+          .from(salesInvoices)
+          .innerJoin(tenants, eq(tenants.id, salesInvoices.tenant_id))
+          .where(and(eq(salesInvoices.id, id), eq(tenants.organization_id, orgId)));
+        if (!existing) throw new HttpError(404, 'Satış faturası bulunamadı');
         const [row] = await db
           .delete(salesInvoices)
           .where(
             and(
               eq(salesInvoices.id, id),
-              eq(salesInvoices.tenant_id, tenantId),
+              eq(salesInvoices.tenant_id, existing.tenant_id),
               eq(salesInvoices.needs_review, true),
             ),
           )
@@ -811,6 +823,194 @@ reviewQueueRouter.post(
         moved_payables: moved.length,
         source_deleted: remainingCount === 0,
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ====== BULK APPROVE / REJECT ============================================
+// Onay Bekleyenler sayfasında çoklu seçim + tek tıklama operasyonu.
+// Body: { type: 'payable'|'sales_invoice'|'company'|'person', ids: string[] }
+// Org-scope: kayıtların tenant_id'leri DB'den okunur, ayrıca aktif tenant
+// seçimi zorunlu değildir (aggregate mode'da çalışır).
+
+const bulkSchema = z.object({
+  type: z.enum(['company', 'person', 'payable', 'sales_invoice']),
+  ids: z.array(z.string().uuid()).min(1).max(500),
+});
+
+reviewQueueRouter.post(
+  '/review-queue/bulk-approve',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const body = bulkSchema.parse(req.body);
+      const db = getDb();
+      const orgId = req.activeOrgId!;
+      const userId = req.authUser?.id ?? null;
+      const now = new Date();
+
+      let approved = 0;
+
+      if (body.type === 'company') {
+        const result = await db
+          .update(companies)
+          .set({ needs_review: false, reviewed_at: now, reviewed_by: userId, updated_at: now })
+          .where(
+            and(
+              inArray(companies.id, body.ids),
+              eq(companies.organization_id, orgId),
+              eq(companies.needs_review, true),
+            ),
+          )
+          .returning({ id: companies.id });
+        approved = result.length;
+      } else if (body.type === 'person') {
+        const result = await db
+          .update(persons)
+          .set({ needs_review: false, reviewed_at: now, reviewed_by: userId, updated_at: now })
+          .where(
+            and(
+              inArray(persons.id, body.ids),
+              eq(persons.organization_id, orgId),
+              eq(persons.needs_review, true),
+            ),
+          )
+          .returning({ id: persons.id });
+        approved = result.length;
+      } else if (body.type === 'payable') {
+        // Org'a ait tenant'ları için scope filter
+        const result = await db
+          .update(payableItems)
+          .set({ needs_review: false, reviewed_at: now, reviewed_by: userId, updated_at: now })
+          .where(
+            and(
+              inArray(payableItems.id, body.ids),
+              sql`${payableItems.tenant_id} IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid)`,
+              eq(payableItems.needs_review, true),
+            ),
+          )
+          .returning({ id: payableItems.id });
+        approved = result.length;
+      } else if (body.type === 'sales_invoice') {
+        const result = await db
+          .update(salesInvoices)
+          .set({ needs_review: false, reviewed_at: now, reviewed_by: userId, updated_at: now })
+          .where(
+            and(
+              inArray(salesInvoices.id, body.ids),
+              sql`${salesInvoices.tenant_id} IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid)`,
+              eq(salesInvoices.needs_review, true),
+            ),
+          )
+          .returning({ id: salesInvoices.id });
+        approved = result.length;
+      }
+
+      await auditFromRequest(req, {
+        organization_id: orgId,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'review_queue.bulk_approve',
+        target_type:
+          body.type === 'payable'
+            ? 'payable_items'
+            : body.type === 'sales_invoice'
+            ? 'sales_invoices'
+            : body.type === 'company'
+            ? 'companies'
+            : 'persons',
+        details: { requested: body.ids.length, approved },
+      });
+
+      res.json({ data: { approved, failed: body.ids.length - approved } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+reviewQueueRouter.post(
+  '/review-queue/bulk-reject',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const body = bulkSchema.parse(req.body);
+      const db = getDb();
+      const orgId = req.activeOrgId!;
+
+      let deleted = 0;
+
+      if (body.type === 'company') {
+        const result = await db
+          .delete(companies)
+          .where(
+            and(
+              inArray(companies.id, body.ids),
+              eq(companies.organization_id, orgId),
+              eq(companies.needs_review, true),
+            ),
+          )
+          .returning({ id: companies.id });
+        deleted = result.length;
+      } else if (body.type === 'person') {
+        const result = await db
+          .delete(persons)
+          .where(
+            and(
+              inArray(persons.id, body.ids),
+              eq(persons.organization_id, orgId),
+              eq(persons.needs_review, true),
+            ),
+          )
+          .returning({ id: persons.id });
+        deleted = result.length;
+      } else if (body.type === 'payable') {
+        const result = await db
+          .delete(payableItems)
+          .where(
+            and(
+              inArray(payableItems.id, body.ids),
+              sql`${payableItems.tenant_id} IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid)`,
+              eq(payableItems.needs_review, true),
+            ),
+          )
+          .returning({ id: payableItems.id });
+        deleted = result.length;
+      } else if (body.type === 'sales_invoice') {
+        const result = await db
+          .delete(salesInvoices)
+          .where(
+            and(
+              inArray(salesInvoices.id, body.ids),
+              sql`${salesInvoices.tenant_id} IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid)`,
+              eq(salesInvoices.needs_review, true),
+            ),
+          )
+          .returning({ id: salesInvoices.id });
+        deleted = result.length;
+      }
+
+      await auditFromRequest(req, {
+        organization_id: orgId,
+        actor_user_id: req.authUser?.id,
+        actor_email: req.authUser?.email,
+        action: 'review_queue.bulk_reject',
+        target_type:
+          body.type === 'payable'
+            ? 'payable_items'
+            : body.type === 'sales_invoice'
+            ? 'sales_invoices'
+            : body.type === 'company'
+            ? 'companies'
+            : 'persons',
+        details: { requested: body.ids.length, deleted, hard_deleted: true },
+      });
+
+      res.json({ data: { deleted, failed: body.ids.length - deleted } });
     } catch (err) {
       next(err);
     }

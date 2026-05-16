@@ -22,7 +22,8 @@ import {
   User,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useConfirmBool } from '../components/ConfirmDialog';
 import { api } from '../lib/api';
 
 interface OrgTenant {
@@ -127,12 +128,20 @@ type Tab = 'payables' | 'sales_invoices' | 'companies' | 'persons';
 export function ReviewQueuePage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('payables');
-  // URL'den scope (?scope=org) ve type filter'ı oku — Smart Import sonuç linki
-  // tenant mismatch durumunda scope=org gönderir
+  // URL'den scope (?scope=tenant ile geri dön) okunur — DEFAULT 'org'.
+  // Smart Import alıcı VKN auto-routing başka tenant'a yazabildiği için
+  // kullanıcı normalde tüm org'u görmek ister; özellikle tek-tenant'a kısıtlamak
+  // isterse toggle veya ?scope=tenant kullanır.
   const urlParams = new URLSearchParams(window.location.search);
   const [scope, setScope] = useState<'tenant' | 'org'>(
-    urlParams.get('scope') === 'org' ? 'org' : 'tenant',
+    urlParams.get('scope') === 'tenant' ? 'tenant' : 'org',
   );
+
+  // Bulk selection state — her tab için ayrı set, tab değişimi seçimi temizler
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setSelected(new Set());
+  }, [tab, scope]);
 
   const q = useQuery({
     queryKey: ['review-queue', scope],
@@ -152,6 +161,46 @@ export function ReviewQueuePage() {
     mutationFn: async ({ type, id }: { type: string; id: string }) =>
       api.delete(`/review-queue/${type}/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }), // tüm scope variant'lar
+  });
+
+  // Bulk approve / reject — tüm seçili kayıtlar için tek API çağrısı
+  const tabToType: Record<Tab, string> = {
+    payables: 'payable',
+    sales_invoices: 'sales_invoice',
+    companies: 'company',
+    persons: 'person',
+  };
+
+  const bulkApprove = useMutation({
+    mutationFn: async () => {
+      const type = tabToType[tab];
+      const ids = Array.from(selected);
+      const res = await api.post<{ data: { approved: number; failed: number } }>(
+        `/review-queue/bulk-approve`,
+        { type, ids },
+      );
+      return res.data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['review-queue'] });
+      setSelected(new Set());
+    },
+  });
+
+  const bulkReject = useMutation({
+    mutationFn: async () => {
+      const type = tabToType[tab];
+      const ids = Array.from(selected);
+      const res = await api.post<{ data: { deleted: number; failed: number } }>(
+        `/review-queue/bulk-reject`,
+        { type, ids },
+      );
+      return res.data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['review-queue'] });
+      setSelected(new Set());
+    },
   });
 
   const counts = {
@@ -248,6 +297,26 @@ export function ReviewQueuePage() {
 
       {q.isLoading && <p className="text-sm text-brand-500">Yükleniyor…</p>}
 
+      {/* Bulk action bar — aktif tab'da kayıt varsa görünür */}
+      <BulkActionBar
+        tab={tab}
+        scope={scope}
+        items={
+          tab === 'payables'
+            ? (q.data?.payables ?? []).map((p) => p.id)
+            : tab === 'sales_invoices'
+              ? (q.data?.sales_invoices ?? []).map((s) => s.id)
+              : tab === 'companies'
+                ? (q.data?.companies ?? []).map((c) => c.id)
+                : (q.data?.persons ?? []).map((p) => p.id)
+        }
+        selected={selected}
+        setSelected={setSelected}
+        onApproveAll={() => bulkApprove.mutate()}
+        onRejectAll={() => bulkReject.mutate()}
+        busy={bulkApprove.isPending || bulkReject.isPending}
+      />
+
       {tab === 'payables' && (
         <Section
           empty={!q.data || q.data.payables.length === 0}
@@ -255,13 +324,19 @@ export function ReviewQueuePage() {
           emptyHint="Akıllı yükleme veya e-Fatura ile gelen faturalar burada listelenir."
         >
           {q.data?.payables.map((p) => (
-            <PayableReviewCard
+            <ItemRow
               key={p.id}
-              item={p}
-              onApprove={() => approve.mutate({ type: 'payable', id: p.id })}
-              onReject={() => reject.mutate({ type: 'payable', id: p.id })}
-              busy={approve.isPending || reject.isPending}
-            />
+              id={p.id}
+              selected={selected}
+              setSelected={setSelected}
+            >
+              <PayableReviewCard
+                item={p}
+                onApprove={() => approve.mutate({ type: 'payable', id: p.id })}
+                onReject={() => reject.mutate({ type: 'payable', id: p.id })}
+                busy={approve.isPending || reject.isPending}
+              />
+            </ItemRow>
           ))}
         </Section>
       )}
@@ -273,13 +348,19 @@ export function ReviewQueuePage() {
           emptyHint="Otomatik akışla yaratılan kestiğimiz faturalar burada listelenir."
         >
           {q.data?.sales_invoices.map((s) => (
-            <SalesInvoiceReviewCard
+            <ItemRow
               key={s.id}
-              item={s}
-              onApprove={() => approve.mutate({ type: 'sales_invoice', id: s.id })}
-              onReject={() => reject.mutate({ type: 'sales_invoice', id: s.id })}
-              busy={approve.isPending || reject.isPending}
-            />
+              id={s.id}
+              selected={selected}
+              setSelected={setSelected}
+            >
+              <SalesInvoiceReviewCard
+                item={s}
+                onApprove={() => approve.mutate({ type: 'sales_invoice', id: s.id })}
+                onReject={() => reject.mutate({ type: 'sales_invoice', id: s.id })}
+                busy={approve.isPending || reject.isPending}
+              />
+            </ItemRow>
           ))}
         </Section>
       )}
@@ -291,13 +372,19 @@ export function ReviewQueuePage() {
           emptyHint="Akıllı yükleme veya ERP sync ile otomatik yaratılan tedarikçiler burada görünür."
         >
           {q.data?.companies.map((c) => (
-            <CompanyReviewCard
+            <ItemRow
               key={c.id}
-              company={c}
-              onApprove={() => approve.mutate({ type: 'company', id: c.id })}
-              onReject={() => reject.mutate({ type: 'company', id: c.id })}
-              busy={approve.isPending || reject.isPending}
-            />
+              id={c.id}
+              selected={selected}
+              setSelected={setSelected}
+            >
+              <CompanyReviewCard
+                company={c}
+                onApprove={() => approve.mutate({ type: 'company', id: c.id })}
+                onReject={() => reject.mutate({ type: 'company', id: c.id })}
+                busy={approve.isPending || reject.isPending}
+              />
+            </ItemRow>
           ))}
         </Section>
       )}
@@ -308,15 +395,156 @@ export function ReviewQueuePage() {
           emptyMsg="Bekleyen şahıs doğrulaması yok."
         >
           {q.data?.persons.map((p) => (
-            <PersonReviewCard
+            <ItemRow
               key={p.id}
-              person={p}
-              onApprove={() => approve.mutate({ type: 'person', id: p.id })}
-              onReject={() => reject.mutate({ type: 'person', id: p.id })}
-              busy={approve.isPending || reject.isPending}
-            />
+              id={p.id}
+              selected={selected}
+              setSelected={setSelected}
+            >
+              <PersonReviewCard
+                person={p}
+                onApprove={() => approve.mutate({ type: 'person', id: p.id })}
+                onReject={() => reject.mutate({ type: 'person', id: p.id })}
+                busy={approve.isPending || reject.isPending}
+              />
+            </ItemRow>
           ))}
         </Section>
+      )}
+    </div>
+  );
+}
+
+/** Card'ı sol checkbox ile saran wrapper — bulk selection için */
+function ItemRow({
+  id,
+  selected,
+  setSelected,
+  children,
+}: {
+  id: string;
+  selected: Set<string>;
+  setSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
+  children: React.ReactNode;
+}) {
+  const isOn = selected.has(id);
+  return (
+    <div className="flex gap-3 items-start">
+      <input
+        type="checkbox"
+        checked={isOn}
+        onChange={(e) => {
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (e.target.checked) next.add(id);
+            else next.delete(id);
+            return next;
+          });
+        }}
+        className="mt-4 size-4 cursor-pointer accent-brand-900"
+        aria-label="Seç"
+      />
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/** Aktif tab'daki kayıtlar üzerinde toplu seç + onayla / reddet */
+function BulkActionBar({
+  tab,
+  scope: _scope,
+  items,
+  selected,
+  setSelected,
+  onApproveAll,
+  onRejectAll,
+  busy,
+}: {
+  tab: Tab;
+  scope: 'tenant' | 'org';
+  items: string[];
+  selected: Set<string>;
+  setSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
+  onApproveAll: () => void;
+  onRejectAll: () => void;
+  busy: boolean;
+}) {
+  const confirmBool = useConfirmBool();
+  const selectedInTab = items.filter((id) => selected.has(id));
+  const allChecked = items.length > 0 && selectedInTab.length === items.length;
+  const someChecked = selectedInTab.length > 0 && !allChecked;
+
+  if (items.length === 0) return null;
+
+  const tabLabel: Record<Tab, string> = {
+    payables: 'gelen fatura',
+    sales_invoices: 'satış faturası',
+    companies: 'şirket',
+    persons: 'şahıs',
+  };
+
+  return (
+    <div className="mb-3 p-3 rounded-lg bg-brand-50 dark:bg-slate-800 border border-brand-100 dark:border-slate-700 flex items-center gap-3 flex-wrap">
+      <label className="flex items-center gap-2 cursor-pointer text-sm">
+        <input
+          type="checkbox"
+          checked={allChecked}
+          ref={(el) => {
+            if (el) el.indeterminate = someChecked;
+          }}
+          onChange={(e) => {
+            setSelected((prev) => {
+              const next = new Set(prev);
+              if (e.target.checked) items.forEach((id) => next.add(id));
+              else items.forEach((id) => next.delete(id));
+              return next;
+            });
+          }}
+          className="size-4 accent-brand-900"
+        />
+        <span className="font-medium text-brand-900 dark:text-slate-100">
+          {selectedInTab.length === 0
+            ? `Tümünü seç (${items.length})`
+            : `${selectedInTab.length} / ${items.length} seçili`}
+        </span>
+      </label>
+
+      <div className="flex-1" />
+
+      {selectedInTab.length > 0 && (
+        <>
+          <button
+            disabled={busy}
+            onClick={async () => {
+              const ok = await confirmBool({
+                title: 'Toplu onayla',
+                message: `${selectedInTab.length} ${tabLabel[tab]} onaylanacak. Onaylanan kayıtlar Faturalar/Cariler listesinde aktif olur. Devam?`,
+                confirmLabel: 'Onayla',
+                variant: 'default',
+              });
+              if (ok) onApproveAll();
+            }}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg flex items-center gap-1.5"
+          >
+            <CheckCircle2 className="size-4" />
+            Toplu Onayla ({selectedInTab.length})
+          </button>
+          <button
+            disabled={busy}
+            onClick={async () => {
+              const ok = await confirmBool({
+                title: 'Toplu reddet',
+                message: `${selectedInTab.length} ${tabLabel[tab]} KALICI olarak silinecek. Bu işlem geri alınamaz. Devam?`,
+                confirmLabel: 'Reddet ve Sil',
+                variant: 'danger',
+              });
+              if (ok) onRejectAll();
+            }}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg flex items-center gap-1.5"
+          >
+            Toplu Reddet ({selectedInTab.length})
+          </button>
+        </>
       )}
     </div>
   );
