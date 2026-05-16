@@ -23,6 +23,7 @@ import { auditFromRequest } from '../lib/audit';
 import { buildSchedule, calculateMonthlyDepreciation } from '../lib/depreciation';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
+import { restoreHandler } from '../lib/restore';
 import { requireAuth } from '../middleware/auth';
 
 export const fixedAssetsRouter = Router();
@@ -315,6 +316,14 @@ fixedAssetsRouter.delete(
       next(err);
     }
   },
+);
+
+// Restore — soft-deleted demirbaş geri al
+fixedAssetsRouter.post(
+  '/fixed-assets/:id/restore',
+  requireAuth,
+  requireTenant,
+  restoreHandler({ table: fixedAssets, entity: 'fixed_asset', resetStatus: 'active', scope: 'tenant' }),
 );
 
 const disposeSchema = z.object({

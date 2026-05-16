@@ -72,6 +72,8 @@ import { riskScoreRouter } from './risk-score';
 import { savedSearchesRouter } from './saved-searches';
 import { reviewQueueRouter } from './review-queue';
 import { supportRouter } from './support';
+import { archiveRouter } from './archive';
+import { reportsConsolidatedRouter } from './reports-consolidated';
 
 export const apiRouter = Router();
 
@@ -267,3 +269,9 @@ apiRouter.use(reviewQueueRouter);
 
 // Destek talepleri (manuel + ErrorBoundary auto + 500 auto)
 apiRouter.use(supportRouter);
+
+// Arşiv (silinmiş kayıtları görüntüle + geri yükle) — admin
+apiRouter.use(archiveRouter);
+
+// Konsolide raporlar (cross-tenant P&L + Bilanço) — admin
+apiRouter.use(reportsConsolidatedRouter);

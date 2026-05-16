@@ -8,6 +8,7 @@ import { getDb, companies } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
 import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg, shareScopeWhereSQL } from '../../lib/helpers';
+import { restoreHandler } from '../../lib/restore';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]);
 const createSchema = z.object({
@@ -146,3 +147,11 @@ companiesRouter.delete('/companies/:id', requireAuth, requireOrg, async (req, re
     next(err);
   }
 });
+
+// Restore — soft-deleted şirket geri al
+companiesRouter.post(
+  '/companies/:id/restore',
+  requireAuth,
+  requireOrg,
+  restoreHandler({ table: companies, entity: 'company', scope: 'org' }),
+);

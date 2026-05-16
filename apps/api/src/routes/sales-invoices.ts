@@ -26,6 +26,7 @@ import { getAdapter } from '../lib/erp';
 import { decryptSecret } from '../lib/secret-box';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope as tenantScopeHelper } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
+import { restoreHandler } from '../lib/restore';
 import { requireAuth } from '../middleware/auth';
 
 export const salesInvoicesRouter = Router();
@@ -344,6 +345,14 @@ salesInvoicesRouter.delete(
       next(err);
     }
   },
+);
+
+// Restore — soft-deleted satış faturası geri al
+salesInvoicesRouter.post(
+  '/sales-invoices/:id/restore',
+  requireAuth,
+  requireTenant,
+  restoreHandler({ table: salesInvoices, entity: 'sales_invoice', resetStatus: 'sent', scope: 'tenant' }),
 );
 
 salesInvoicesRouter.post(

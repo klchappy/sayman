@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { checksAndNotes, getDb, tenants } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
+import { restoreHandler } from '../lib/restore';
 import { requireAuth } from '../middleware/auth';
 
 export const checksRouter = Router();
@@ -214,6 +215,14 @@ checksRouter.delete('/checks/:id', requireAuth, requireTenant, async (req, res, 
     next(err);
   }
 });
+
+// Restore — soft-deleted çek/senet geri al
+checksRouter.post(
+  '/checks/:id/restore',
+  requireAuth,
+  requireTenant,
+  restoreHandler({ table: checksAndNotes, entity: 'check', scope: 'tenant' }),
+);
 
 // State transitions
 

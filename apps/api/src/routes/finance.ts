@@ -25,6 +25,7 @@ import {
 import { requireAuth } from '../middleware/auth';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
+import { restoreHandler } from '../lib/restore';
 import { APPROVAL_THRESHOLD_TRY } from './payment-approvals';
 
 // --- /v1/payables -----------------------------------------------------------
@@ -283,6 +284,14 @@ payablesRouter.delete('/payables/:id', requireAuth, requireTenant, async (req, r
     next(err);
   }
 });
+
+// Restore — soft-deleted fatura geri al
+payablesRouter.post(
+  '/payables/:id/restore',
+  requireAuth,
+  requireTenant,
+  restoreHandler({ table: payableItems, entity: 'payable', resetStatus: 'pending', scope: 'tenant' }),
+);
 
 // --- /v1/payments -----------------------------------------------------------
 

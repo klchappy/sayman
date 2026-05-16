@@ -9,6 +9,7 @@ import { getDb, persons, type Person } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
 import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg, requireTenant, shareScopeWhereSQL } from '../../lib/helpers';
+import { restoreHandler } from '../../lib/restore';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]);
 
@@ -156,3 +157,11 @@ personsRouter.delete('/persons/:id', requireAuth, requireOrg, async (req, res, n
     next(err);
   }
 });
+
+// Restore — soft-deleted şahıs geri al
+personsRouter.post(
+  '/persons/:id/restore',
+  requireAuth,
+  requireOrg,
+  restoreHandler({ table: persons, entity: 'person', scope: 'org' }),
+);

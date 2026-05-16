@@ -16,6 +16,7 @@ import { auditFromRequest } from '../lib/audit';
 import { calculatePayroll } from '../lib/payroll-calc';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
+import { restoreHandler } from '../lib/restore';
 import { requireAuth } from '../middleware/auth';
 
 export const employeesRouter = Router();
@@ -217,6 +218,14 @@ employeesRouter.delete('/employees/:id', requireAuth, requireTenant, async (req,
     next(err);
   }
 });
+
+// Restore — soft-deleted personel geri al (status='left' → 'active')
+employeesRouter.post(
+  '/employees/:id/restore',
+  requireAuth,
+  requireTenant,
+  restoreHandler({ table: employees, entity: 'employee', resetStatus: 'active', scope: 'tenant' }),
+);
 
 const calcSchema = z.object({
   gross_monthly: z.number().positive(),

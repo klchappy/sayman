@@ -137,6 +137,10 @@ const TenantsManagementPage = lazy(() =>
   import('./pages/TenantsManagement').then((m) => ({ default: m.TenantsManagementPage })),
 );
 const UsersPage = lazy(() => import('./pages/Users').then((m) => ({ default: m.UsersPage })));
+const ArchivePage = lazy(() => import('./pages/Archive').then((m) => ({ default: m.ArchivePage })));
+const ConsolidatedReportsPage = lazy(() =>
+  import('./pages/ConsolidatedReports').then((m) => ({ default: m.ConsolidatedReportsPage })),
+);
 const BanksPage = lazy(() =>
   import('./pages/master-data/Banks').then((m) => ({ default: m.BanksPage })),
 );
@@ -364,6 +368,22 @@ export default function App() {
           element={
             <Suspense fallback={<PageFallback />}>
               <SupportPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/arsiv"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ArchivePage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/raporlar/konsolide"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ConsolidatedReportsPage />
             </Suspense>
           }
         />

@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   AlertCircle,
+  Archive,
+  BarChart3,
   Bell,
   Building,
   Building2,
@@ -126,6 +128,13 @@ const navItems: NavItem[] = [
     group: 'Rapor',
   },
   {
+    to: '/raporlar/konsolide',
+    label: 'Konsolide (Tüm Şirketler)',
+    icon: BarChart3,
+    requires: 'finance',
+    group: 'Rapor',
+  },
+  {
     to: '/collection-reminders',
     label: 'Tahsilat Hatırlatma',
     icon: MailWarning,
@@ -202,6 +211,7 @@ const navItems: NavItem[] = [
   { to: '/import', label: 'Toplu Yükleme', icon: FileUp, group: 'Sistem', requires: 'imports' },
   { to: '/review-queue', label: 'Doğrulama Bekleyen', icon: AlertCircle, group: 'Sistem' },
   { to: '/destek', label: 'Destek Talepleri', icon: LifeBuoy, group: 'Sistem' },
+  { to: '/arsiv', label: 'Arşiv (Silinmişler)', icon: Archive, group: 'Sistem' },
   { to: '/ocr', label: 'OCR (Belge Oku)', icon: FileText, group: 'Sistem' },
   { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },
