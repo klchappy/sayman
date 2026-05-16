@@ -176,7 +176,9 @@ export function PendingReviewEmptyHint({ type }: { type: ReviewType }) {
     queryKey: ['review-queue-summary-empty', active.tenantSlug, active.orgSlug],
     enabled: !!active.orgSlug,
     queryFn: async () => {
-      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary');
+      // scope=org → Smart Import auto-routing başka tenant'a yazmış olabilir.
+      // Banner ve dashboard widget ile aynı scope kullan, count tutarsızlığı olmasın.
+      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary?scope=org');
       return res.data.data;
     },
     refetchInterval: 30000,

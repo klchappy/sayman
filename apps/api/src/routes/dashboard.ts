@@ -94,12 +94,19 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenantOrAggregate,
     }
 
     // --- 2. PAYABLES SUMMARY ---
+    // approaching: Inbox ile aynı logic — due_date 0-7 gün içinde, henüz ödenmemiş.
+    // Status alanına bağlanmak yerine türetilmiş hesaplama (status='approaching' otomatik
+    // set edilmiyor, bu yüzden status filtresi sayıyı eksik gösterir).
+    const today2 = new Date().toISOString().slice(0, 10);
+    const in7d = new Date();
+    in7d.setDate(in7d.getDate() + 7);
+    const in7Str = in7d.toISOString().slice(0, 10);
     const [payRollup] = await db
       .select({
         total: sql<string>`COALESCE(SUM(${payableItems.amount}), 0)`,
         paid: sql<string>`COALESCE(SUM(${payableItems.paid_amount}), 0)`,
-        overdue: sql<string>`COUNT(*) FILTER (WHERE ${payableItems.status} = 'overdue')`,
-        approaching: sql<string>`COUNT(*) FILTER (WHERE ${payableItems.status} = 'approaching')`,
+        overdue: sql<string>`COUNT(*) FILTER (WHERE ${payableItems.due_date} < ${today2} AND ${payableItems.status} != 'paid' AND ${payableItems.status} != 'cancelled')`,
+        approaching: sql<string>`COUNT(*) FILTER (WHERE ${payableItems.due_date} >= ${today2} AND ${payableItems.due_date} <= ${in7Str} AND ${payableItems.status} != 'paid' AND ${payableItems.status} != 'cancelled')`,
       })
       .from(payableItems)
       .where(and(tenantScope(req, payableItems.tenant_id), eq(payableItems.is_active, true)));

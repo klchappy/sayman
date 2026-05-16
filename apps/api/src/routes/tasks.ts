@@ -113,7 +113,13 @@ tasksRouter.patch('/tasks/:id', requireAuth, requireTenant, async (req, res, nex
     const [row] = await db
       .update(tasks)
       .set(updateData)
-      .where(and(eq(tasks.id, String(req.params.id ?? '')), eq(tasks.tenant_id, req.activeTenantId!)))
+      .where(
+        and(
+          eq(tasks.id, String(req.params.id ?? '')),
+          eq(tasks.tenant_id, req.activeTenantId!),
+          eq(tasks.is_active, true),
+        ),
+      )
       .returning();
     if (!row) throw new HttpError(404, 'Görev bulunamadı');
 

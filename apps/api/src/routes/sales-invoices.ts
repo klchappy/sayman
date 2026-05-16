@@ -103,6 +103,14 @@ salesInvoicesRouter.get(
       monthStart.setDate(1);
       const monthStartStr = monthStart.toISOString().slice(0, 10);
 
+      // List ile aynı filtre: default'ta needs_review=true kayıtları sayma
+      const includeReview = req.query.include_review === '1' || req.query.include_review === 'true';
+      const conditions = [
+        tenantScopeHelper(req, salesInvoices.tenant_id),
+        eq(salesInvoices.is_active, true),
+      ];
+      if (!includeReview) conditions.push(eq(salesInvoices.needs_review, false));
+
       const [r] = await db
         .select({
           total: sql<string>`COALESCE(SUM(${salesInvoices.amount}::numeric), 0)`,
@@ -114,12 +122,7 @@ salesInvoicesRouter.get(
           invoice_count: sql<string>`COUNT(*)`,
         })
         .from(salesInvoices)
-        .where(
-          and(
-            tenantScopeHelper(req, salesInvoices.tenant_id),
-            eq(salesInvoices.is_active, true),
-          ),
-        );
+        .where(and(...conditions));
 
       res.json({
         data: {

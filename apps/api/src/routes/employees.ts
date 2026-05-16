@@ -144,9 +144,15 @@ employeesRouter.patch('/employees/:id', requireAuth, requireTenant, async (req, 
     if (body.marital_status) patch.marital_status = body.marital_status;
     if (body.kids_count != null) patch.kids_count = String(body.kids_count);
     if (body.spouse_working != null) patch.spouse_working = body.spouse_working;
+    if (body.disability_degree != null) patch.disability_degree = String(body.disability_degree);
     if (body.department !== undefined) patch.department = body.department;
     if (body.position !== undefined) patch.position = body.position;
     if (body.iban !== undefined) patch.iban = body.iban;
+    if (body.email !== undefined) patch.email = body.email;
+    if (body.phone !== undefined) patch.phone = body.phone;
+    if (body.sgk_no !== undefined) patch.sgk_no = body.sgk_no;
+    if (body.tc_kimlik_no !== undefined) patch.tc_kimlik_no = body.tc_kimlik_no;
+    if (body.hire_date !== undefined) patch.hire_date = body.hire_date;
     if (body.notes !== undefined) patch.notes = body.notes;
 
     const [row] = await db
@@ -156,6 +162,7 @@ employeesRouter.patch('/employees/:id', requireAuth, requireTenant, async (req, 
         and(
           eq(employees.id, String(req.params.id ?? '')),
           eq(employees.tenant_id, req.activeTenantId!),
+          eq(employees.is_active, true),
         ),
       )
       .returning();

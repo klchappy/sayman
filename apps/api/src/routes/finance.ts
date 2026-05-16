@@ -52,6 +52,28 @@ const createPayableSchema = z.object({
 
 const updatePayableSchema = createPayableSchema.partial();
 
+// Payables status transition state machine
+// draft → pending | approaching | cancelled
+// pending → approaching | overdue | partial_paid | paid | cancelled
+// approaching → overdue | partial_paid | paid | cancelled
+// overdue → partial_paid | paid | cancelled
+// partial_paid → paid | overdue | cancelled
+// paid → (kilitli; geri dönüş yok)
+// cancelled → (kilitli)
+// archived/needs_review/waiting_approval transition'ları otomatik (kullanıcı zorlamaz)
+const PAYABLE_STATUS_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
+  draft: ['pending', 'approaching', 'cancelled'],
+  pending: ['approaching', 'overdue', 'partial_paid', 'paid', 'cancelled'],
+  approaching: ['overdue', 'partial_paid', 'paid', 'cancelled', 'pending'],
+  overdue: ['partial_paid', 'paid', 'cancelled', 'pending'],
+  partial_paid: ['paid', 'overdue', 'cancelled'],
+  paid: [],
+  cancelled: [],
+  archived: [],
+  needs_review: ['pending', 'draft', 'cancelled'],
+  waiting_approval: ['paid', 'pending', 'cancelled'],
+};
+
 export const payablesRouter = Router();
 
 payablesRouter.get(
@@ -189,6 +211,40 @@ payablesRouter.patch('/payables/:id', requireAuth, requireTenant, async (req, re
   try {
     const body = updatePayableSchema.parse(req.body);
     const db = getDb();
+
+    // Required field null protection: title ve amount silinmesin (PATCH ile)
+    if (body.title === null) {
+      throw new HttpError(400, 'Başlık boş bırakılamaz', 'INVALID_FIELD');
+    }
+    if (body.amount === null) {
+      throw new HttpError(400, 'Tutar boş bırakılamaz', 'INVALID_FIELD');
+    }
+
+    // Status transition kontrolü
+    let currentStatus: string | null = null;
+    if (body.status) {
+      const [existing] = await db
+        .select({ status: payableItems.status })
+        .from(payableItems)
+        .where(
+          and(
+            eq(payableItems.id, String(req.params.id ?? '')),
+            eq(payableItems.tenant_id, req.activeTenantId!),
+            eq(payableItems.is_active, true),
+          ),
+        );
+      if (!existing) throw new HttpError(404, 'Fatura bulunamadı');
+      currentStatus = existing.status;
+      const allowed = PAYABLE_STATUS_TRANSITIONS[currentStatus] ?? [];
+      if (currentStatus !== body.status && !allowed.includes(body.status)) {
+        throw new HttpError(
+          400,
+          `Status geçişi geçersiz: ${currentStatus} → ${body.status}`,
+          'INVALID_STATUS_TRANSITION',
+        );
+      }
+    }
+
     const [row] = await db
       .update(payableItems)
       .set({ ...body, updated_at: new Date() })
@@ -196,6 +252,7 @@ payablesRouter.patch('/payables/:id', requireAuth, requireTenant, async (req, re
         and(
           eq(payableItems.id, String(req.params.id ?? '')),
           eq(payableItems.tenant_id, req.activeTenantId!),
+          eq(payableItems.is_active, true),
         ),
       )
       .returning();
