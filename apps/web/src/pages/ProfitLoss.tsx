@@ -94,8 +94,8 @@ export function ProfitLossPage() {
   const [range, setRange] = useState(lastMonths(3));
 
   const q = useQuery({
-    queryKey: ['pnl', active.tenantSlug, range.from, range.to],
-    enabled: !!active.tenantSlug,
+    queryKey: ['pnl', active.tenantSlug, active.aggregate, range.from, range.to],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: PnL }>(
         `/reports/profit-loss?from=${range.from}&to=${range.to}`,
@@ -104,11 +104,14 @@ export function ProfitLossPage() {
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

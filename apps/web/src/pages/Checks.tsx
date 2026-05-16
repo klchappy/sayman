@@ -82,8 +82,8 @@ export function ChecksPage() {
   const [showForm, setShowForm] = useState(false);
 
   const summary = useQuery({
-    queryKey: ['checks-summary', active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['checks-summary', active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: ChecksSummary }>('/checks/summary');
       return res.data.data;
@@ -91,19 +91,22 @@ export function ChecksPage() {
   });
 
   const list = useQuery({
-    queryKey: ['checks', active.tenantSlug, tab],
-    enabled: !!active.tenantSlug,
+    queryKey: ['checks', active.tenantSlug, active.aggregate, tab],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: Check[] }>(`/checks?direction=${tab}`);
       return res.data.data;
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

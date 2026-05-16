@@ -34,19 +34,22 @@ export function BalanceSheetPage() {
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
 
   const q = useQuery({
-    queryKey: ['balance-sheet', active.tenantSlug, asOf],
-    enabled: !!active.tenantSlug,
+    queryKey: ['balance-sheet', active.tenantSlug, active.aggregate, asOf],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: BalanceSheet }>(`/reports/balance-sheet?as_of=${asOf}`);
       return res.data.data;
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

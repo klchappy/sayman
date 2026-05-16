@@ -37,19 +37,22 @@ export function ForecastPage() {
   const [months, setMonths] = useState(6);
 
   const q = useQuery({
-    queryKey: ['forecast-detail', active.tenantSlug, months],
-    enabled: !!active.tenantSlug,
+    queryKey: ['forecast-detail', active.tenantSlug, active.aggregate, months],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: ForecastResponse }>(`/forecast/cashflow?months=${months}`);
       return res.data.data;
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

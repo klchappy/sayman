@@ -49,8 +49,8 @@ export function TasksPage() {
   const [showForm, setShowForm] = useState(false);
 
   const q = useQuery({
-    queryKey: ['tasks', active.orgSlug, active.tenantSlug, filter],
-    enabled: !!active.tenantSlug,
+    queryKey: ['tasks', active.orgSlug, active.tenantSlug, active.aggregate, filter],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filter === 'mine') params.set('mine', 'true');
@@ -73,12 +73,14 @@ export function TasksPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
-          <p className="text-sm text-brand-500 mt-1">Üst köşeden bir sektör seç.</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

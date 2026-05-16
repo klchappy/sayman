@@ -75,8 +75,8 @@ export function CollectionRemindersPage() {
   const [showForm, setShowForm] = useState(false);
 
   const list = useQuery({
-    queryKey: ['collection-rules', active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['collection-rules', active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: ReminderRule[] }>('/collection-reminder-rules');
       return res.data.data;
@@ -84,8 +84,8 @@ export function CollectionRemindersPage() {
   });
 
   const recentRuns = useQuery({
-    queryKey: ['collection-runs', active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['collection-runs', active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: ReminderRun[] }>('/collection-reminder-runs');
       return res.data.data.slice(0, 30);
@@ -103,11 +103,14 @@ export function CollectionRemindersPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection-rules'] }),
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

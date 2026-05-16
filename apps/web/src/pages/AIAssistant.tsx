@@ -49,13 +49,13 @@ export function AIAssistantPage() {
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
           <p className="text-sm text-brand-500 mt-1">
-            AI asistan tenant verisine erişir. Üst köşeden bir tenant seç.
+            AI asistan tenant verisine erişir. Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
           </p>
         </div>
       </div>

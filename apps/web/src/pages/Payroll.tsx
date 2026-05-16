@@ -82,8 +82,8 @@ export function PayrollPage() {
   const [creating, setCreating] = useState(false);
 
   const list = useQuery({
-    queryKey: ['payroll-runs', active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['payroll-runs', active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: PayrollRun[] }>('/payroll/runs');
       return res.data.data;
@@ -106,11 +106,14 @@ export function PayrollPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-runs'] }),
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

@@ -42,8 +42,8 @@ export function StockPage() {
   const [lowOnly, setLowOnly] = useState(false);
 
   const q = useQuery({
-    queryKey: ['stock', active.tenantSlug, search, lowOnly],
-    enabled: !!active.tenantSlug,
+    queryKey: ['stock', active.tenantSlug, active.aggregate, search, lowOnly],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -53,11 +53,14 @@ export function StockPage() {
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

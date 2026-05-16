@@ -87,8 +87,8 @@ export function SalesInvoicesPage() {
   const [showForm, setShowForm] = useState(false);
 
   const list = useQuery({
-    queryKey: ['sales-invoices', active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['sales-invoices', active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: SalesInvoice[] }>('/sales-invoices');
       return res.data.data;
@@ -96,19 +96,22 @@ export function SalesInvoicesPage() {
   });
 
   const summary = useQuery({
-    queryKey: ['sales-summary', active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['sales-summary', active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => {
       const res = await api.get<{ data: SalesSummary }>('/sales-invoices/summary');
       return res.data.data;
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
+          <p className="text-sm text-brand-500 mt-1">
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
+          </p>
         </div>
       </div>
     );

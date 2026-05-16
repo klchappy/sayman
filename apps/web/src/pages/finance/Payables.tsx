@@ -91,8 +91,8 @@ export function PayablesPage() {
   const [semanticInput, setSemanticInput] = useState('');
 
   const q = useQuery({
-    queryKey: ['payables', active.orgSlug, active.tenantSlug],
-    enabled: !!active.tenantSlug && !semanticQuery,
+    queryKey: ['payables', active.orgSlug, active.tenantSlug, active.aggregate],
+    enabled: (!!active.tenantSlug || active.aggregate === true) && !semanticQuery,
     queryFn: async () => {
       const res = await api.get<{ data: Payable[] }>('/payables');
       return res.data.data;
@@ -100,8 +100,8 @@ export function PayablesPage() {
   });
 
   const semanticQ = useQuery<SemanticHit[] | { error: string }>({
-    queryKey: ['payables-semantic', active.tenantSlug, semanticQuery],
-    enabled: !!active.tenantSlug && !!semanticQuery,
+    queryKey: ['payables-semantic', active.tenantSlug, active.aggregate, semanticQuery],
+    enabled: (!!active.tenantSlug || active.aggregate === true) && !!semanticQuery,
     queryFn: async () => {
       try {
         const res = await api.get<{ data: SemanticHit[] }>(
@@ -120,13 +120,13 @@ export function PayablesPage() {
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
           <p className="text-brand-700 font-medium">Tenant seçilmedi</p>
           <p className="text-sm text-brand-500 mt-1">
-            Üst köşedeki seçiciden bir sektör (tenant) seç.
+            Üst köşeden bir şirket seç veya "Tüm Şirketler" seç.
           </p>
         </div>
       </div>
