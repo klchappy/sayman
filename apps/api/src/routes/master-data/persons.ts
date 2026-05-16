@@ -28,7 +28,10 @@ export const personsRouter = Router();
 personsRouter.get('/persons', requireAuth, requireOrg, async (req, res, next) => {
   try {
     const db = getDb();
-    let where = eq(persons.organization_id, req.activeOrgId!);
+    let where: ReturnType<typeof eq> | ReturnType<typeof and> = and(
+      eq(persons.organization_id, req.activeOrgId!),
+      eq(persons.is_active, true),
+    )!;
 
     // Tenant context'i varsa share_scope filtresi ekle
     if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
@@ -85,7 +88,13 @@ personsRouter.get('/persons/:id', requireAuth, requireOrg, async (req, res, next
     const [row] = await db
       .select()
       .from(persons)
-      .where(and(eq(persons.id, String(req.params.id ?? '')), eq(persons.organization_id, req.activeOrgId!)));
+      .where(
+        and(
+          eq(persons.id, String(req.params.id ?? '')),
+          eq(persons.organization_id, req.activeOrgId!),
+          eq(persons.is_active, true),
+        ),
+      );
     if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
     res.json({ data: row });
   } catch (err) {

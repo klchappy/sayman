@@ -124,6 +124,7 @@ employeesRouter.get('/employees/:id', requireAuth, requireTenantOrAggregate, asy
         and(
           eq(employees.id, String(req.params.id ?? '')),
           tenantScope(req, employees.tenant_id),
+          eq(employees.is_active, true),
         ),
       );
     if (!row) throw new HttpError(404, 'Personel bulunamadı');

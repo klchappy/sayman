@@ -116,6 +116,19 @@ guaranteesRouter.get(
   async (req, res, next) => {
     try {
       const db = getDb();
+      // Parent guarantee soft-delete edilmişse subresource'a da erişme
+      const [parent] = await db
+        .select({ id: guarantees.id })
+        .from(guarantees)
+        .where(
+          and(
+            eq(guarantees.id, String(req.params.id ?? '')),
+            tenantScope(req, guarantees.tenant_id),
+            eq(guarantees.is_active, true),
+          ),
+        );
+      if (!parent) throw new HttpError(404, 'Teminat bulunamadı');
+
       const rows = await db
         .select()
         .from(guaranteeCommissionPeriods)

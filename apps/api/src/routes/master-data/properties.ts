@@ -27,7 +27,10 @@ export const propertiesRouter = Router();
 propertiesRouter.get('/properties', requireAuth, requireOrg, async (req, res, next) => {
   try {
     const db = getDb();
-    let where = eq(properties.organization_id, req.activeOrgId!);
+    let where: ReturnType<typeof eq> | ReturnType<typeof and> = and(
+      eq(properties.organization_id, req.activeOrgId!),
+      eq(properties.is_active, true),
+    )!;
     if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
       where = and(where, shareScopeWhereSQL(req.saymanContext.tenantSlug)) as typeof where;
     }

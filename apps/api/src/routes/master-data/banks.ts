@@ -23,7 +23,7 @@ banksRouter.get('/banks', requireAuth, requireOrg, async (req, res, next) => {
     const rows = await db
       .select()
       .from(banks)
-      .where(eq(banks.organization_id, req.activeOrgId!))
+      .where(and(eq(banks.organization_id, req.activeOrgId!), eq(banks.is_active, true)))
       .orderBy(desc(banks.created_at));
     res.json({ data: rows, count: rows.length });
   } catch (err) {

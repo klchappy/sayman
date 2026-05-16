@@ -209,6 +209,7 @@ fixedAssetsRouter.get(
           and(
             eq(fixedAssets.id, String(req.params.id ?? '')),
             tenantScope(req, fixedAssets.tenant_id),
+            eq(fixedAssets.is_active, true),
           ),
         );
       if (!row) throw new HttpError(404, 'Demirbaş bulunamadı');
@@ -400,6 +401,7 @@ fixedAssetsRouter.get(
           and(
             eq(fixedAssets.id, String(req.params.id ?? '')),
             tenantScope(req, fixedAssets.tenant_id),
+            eq(fixedAssets.is_active, true),
           ),
         );
       if (!a) throw new HttpError(404, 'Demirbaş bulunamadı');

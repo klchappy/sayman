@@ -24,7 +24,10 @@ export const companiesRouter = Router();
 companiesRouter.get('/companies', requireAuth, requireOrg, async (req, res, next) => {
   try {
     const db = getDb();
-    let where = eq(companies.organization_id, req.activeOrgId!);
+    let where: ReturnType<typeof eq> | ReturnType<typeof and> = and(
+      eq(companies.organization_id, req.activeOrgId!),
+      eq(companies.is_active, true),
+    )!;
     if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
       where = and(where, shareScopeWhereSQL(req.saymanContext.tenantSlug)) as typeof where;
     }
@@ -77,7 +80,13 @@ companiesRouter.get('/companies/:id', requireAuth, requireOrg, async (req, res, 
     const [row] = await db
       .select()
       .from(companies)
-      .where(and(eq(companies.id, String(req.params.id ?? '')), eq(companies.organization_id, req.activeOrgId!)));
+      .where(
+        and(
+          eq(companies.id, String(req.params.id ?? '')),
+          eq(companies.organization_id, req.activeOrgId!),
+          eq(companies.is_active, true),
+        ),
+      );
     if (!row) throw new HttpError(404, 'Şirket bulunamadı');
     res.json({ data: row });
   } catch (err) {

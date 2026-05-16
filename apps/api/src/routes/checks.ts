@@ -185,6 +185,7 @@ checksRouter.get('/checks/:id', requireAuth, requireTenantOrAggregate, async (re
         and(
           eq(checksAndNotes.id, String(req.params.id ?? '')),
           tenantScope(req, checksAndNotes.tenant_id),
+          eq(checksAndNotes.is_active, true),
         ),
       );
     if (!row) throw new HttpError(404, 'Çek/Senet bulunamadı');

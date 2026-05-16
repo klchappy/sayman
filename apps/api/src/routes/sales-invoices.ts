@@ -199,6 +199,7 @@ salesInvoicesRouter.get(
           and(
             eq(salesInvoices.id, String(req.params.id ?? '')),
             tenantScopeHelper(req, salesInvoices.tenant_id),
+            eq(salesInvoices.is_active, true),
           ),
         );
       if (!row) throw new HttpError(404, 'Satış faturası bulunamadı');

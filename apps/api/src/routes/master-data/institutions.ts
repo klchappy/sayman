@@ -23,7 +23,7 @@ institutionsRouter.get('/institutions', requireAuth, requireOrg, async (req, res
     const rows = await db
       .select()
       .from(institutions)
-      .where(eq(institutions.organization_id, req.activeOrgId!))
+      .where(and(eq(institutions.organization_id, req.activeOrgId!), eq(institutions.is_active, true)))
       .orderBy(desc(institutions.created_at));
     res.json({ data: rows, count: rows.length });
   } catch (err) {
