@@ -18,7 +18,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { companies, getDb, payableItems, persons, salesInvoices, tenants } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireOrg, requireTenant } from '../lib/helpers';
+import { HttpError, requireOrg, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const reviewQueueRouter = Router();
@@ -33,16 +33,25 @@ reviewQueueRouter.get(
       const orgId = req.activeOrgId!;
       const tenantId = req.activeTenantId ?? null;
 
+      // scope: 'tenant' (default, sadece aktif tenant) veya 'org' (tüm org'daki tenant'lar)
+      // Smart Import alıcı VKN'ye göre faturayı başka tenant'a route edebilir; bu yüzden
+      // kullanıcı org-wide görünüm açabilmeli ki fatura "yokmuş" gibi görünmesin.
+      const scope = String(req.query.scope ?? 'tenant');
+      const orgWide = scope === 'org';
+
+      // Tenant filtre SQL parçası — org-wide veya tenant-scoped
+      const tenantFilter = orgWide
+        ? sql`tenant_id IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid AND is_active = true)`
+        : tenantId
+          ? sql`tenant_id = ${tenantId}::uuid`
+          : sql`false`;
+
       const [cnt] = await db
         .select({
           companies: sql<string>`(SELECT COUNT(*) FROM companies WHERE organization_id = ${orgId}::uuid AND needs_review = true AND is_active = true)`,
           persons: sql<string>`(SELECT COUNT(*) FROM persons WHERE organization_id = ${orgId}::uuid AND needs_review = true AND is_active = true)`,
-          payables: tenantId
-            ? sql<string>`(SELECT COUNT(*) FROM payable_items WHERE tenant_id = ${tenantId}::uuid AND needs_review = true AND is_active = true)`
-            : sql<string>`'0'`,
-          sales_invoices: tenantId
-            ? sql<string>`(SELECT COUNT(*) FROM sales_invoices WHERE tenant_id = ${tenantId}::uuid AND needs_review = true AND is_active = true)`
-            : sql<string>`'0'`,
+          payables: sql<string>`(SELECT COUNT(*) FROM payable_items WHERE ${tenantFilter} AND needs_review = true AND is_active = true)`,
+          sales_invoices: sql<string>`(SELECT COUNT(*) FROM sales_invoices WHERE ${tenantFilter} AND needs_review = true AND is_active = true)`,
         })
         .from(companies)
         .limit(1);
@@ -54,6 +63,7 @@ reviewQueueRouter.get(
 
       res.json({
         data: {
+          scope: orgWide ? 'org' : 'tenant',
           companies: companyCount,
           persons: personCount,
           payables: payableCount,
@@ -73,6 +83,10 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
     const typeFilter = String(req.query.type ?? '');
     const orgId = req.activeOrgId!;
     const tenantId = req.activeTenantId ?? null;
+    // scope=org → org'daki tüm tenant'larda ara (Smart Import auto-routing
+    // başka tenant'a yazmış olabilir, kullanıcı kayıp fatura sanmasın)
+    const scope = String(req.query.scope ?? 'tenant');
+    const orgWide = scope === 'org';
 
     let companyRows: any[] = [];
     let personRows: any[] = [];
@@ -111,16 +125,29 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
       `).then((r) => (r.rows ?? r) as any[]);
     }
 
-    if ((!typeFilter || typeFilter === 'payables') && tenantId) {
+    const tenantFilterPayable = orgWide
+      ? sql`pi.tenant_id IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid AND is_active = true)`
+      : tenantId
+        ? sql`pi.tenant_id = ${tenantId}::uuid`
+        : sql`false`;
+    const tenantFilterSales = orgWide
+      ? sql`si.tenant_id IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid AND is_active = true)`
+      : tenantId
+        ? sql`si.tenant_id = ${tenantId}::uuid`
+        : sql`false`;
+
+    if (!typeFilter || typeFilter === 'payables') {
       payableRows = await db.execute(sql`
         SELECT
           pi.id, pi.title, pi.invoice_number, pi.supplier_name, pi.company_id,
           pi.issue_date, pi.due_date, pi.amount, pi.currency, pi.category,
-          pi.auto_created_source, pi.created_at,
+          pi.auto_created_source, pi.created_at, pi.tenant_id,
+          t.name AS tenant_name, t.slug AS tenant_slug,
           c.name AS supplier_company_name
         FROM payable_items pi
         LEFT JOIN companies c ON c.id = pi.company_id
-        WHERE pi.tenant_id = ${tenantId}::uuid
+        LEFT JOIN tenants t ON t.id = pi.tenant_id
+        WHERE ${tenantFilterPayable}
           AND pi.needs_review = true
           AND pi.is_active = true
         ORDER BY pi.created_at DESC
@@ -128,19 +155,21 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
       `).then((r) => (r.rows ?? r) as any[]);
     }
 
-    if ((!typeFilter || typeFilter === 'sales_invoices') && tenantId) {
+    if (!typeFilter || typeFilter === 'sales_invoices') {
       salesRows = await db.execute(sql`
         SELECT
           si.id, si.title, si.invoice_number, si.customer_name,
           si.customer_company_id, si.customer_person_id,
           si.issue_date, si.due_date, si.amount, si.currency,
-          si.auto_created_source, si.created_at,
+          si.auto_created_source, si.created_at, si.tenant_id,
+          t.name AS tenant_name, t.slug AS tenant_slug,
           c.name AS customer_company_name,
           p.full_name AS customer_person_name
         FROM sales_invoices si
         LEFT JOIN companies c ON c.id = si.customer_company_id
         LEFT JOIN persons p ON p.id = si.customer_person_id
-        WHERE si.tenant_id = ${tenantId}::uuid
+        LEFT JOIN tenants t ON t.id = si.tenant_id
+        WHERE ${tenantFilterSales}
           AND si.needs_review = true
           AND si.is_active = true
         ORDER BY si.created_at DESC
@@ -187,6 +216,9 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
           category: pi.category,
           source: pi.auto_created_source,
           created_at: pi.created_at,
+          tenant_id: pi.tenant_id,
+          tenant_name: pi.tenant_name,
+          tenant_slug: pi.tenant_slug,
         })),
         sales_invoices: salesRows.map((si) => ({
           type: 'sales_invoice',
@@ -203,7 +235,12 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
           currency: si.currency,
           source: si.auto_created_source,
           created_at: si.created_at,
+          tenant_id: si.tenant_id,
+          tenant_name: si.tenant_name,
+          tenant_slug: si.tenant_slug,
         })),
+        scope: orgWide ? 'org' : 'tenant',
+        active_tenant_id: tenantId,
       },
     });
   } catch (err) {

@@ -50,7 +50,9 @@ export function PendingReviewBanner({ type }: { type: ReviewType }) {
     queryKey: ['review-queue-summary-banner', active.tenantSlug, active.orgSlug],
     enabled: !!active.orgSlug,
     queryFn: async () => {
-      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary');
+      // scope=org → Smart Import alıcı VKN'ye göre faturayı başka tenant'a route
+      // edebilir, kullanıcı aktif tenant'tayken org'daki tüm review-bekleyenleri görsün
+      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary?scope=org');
       return res.data.data;
     },
     refetchInterval: 30000,
@@ -98,7 +100,7 @@ export function PendingReviewDashboardWidget() {
     queryKey: ['review-queue-summary-shell', active.tenantSlug, active.orgSlug],
     enabled: !!active.orgSlug,
     queryFn: async () => {
-      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary');
+      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary?scope=org');
       return res.data.data;
     },
     refetchInterval: 30000,

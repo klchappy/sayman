@@ -85,6 +85,12 @@ interface SmartImportResult {
     needs_review: boolean;
     matched_by?: string;
   } | null;
+  /** Fatura hangi tenant'a yazıldı (auto-routing nedeniyle aktiften farklı olabilir) */
+  tenant_routing?: {
+    tenantId: string;
+    isAutoMatched: boolean;
+    mismatch: boolean;
+  };
   resource?: string;
   inserted?: number;
   inserted_ids?: string[];
@@ -526,12 +532,30 @@ function ImportResultPanel({
       {result.type === 'efatura_xml' && result.payable && (
         <div className="bg-white dark:bg-slate-900 rounded p-3 mb-2 text-sm space-y-2">
           <p className="font-medium text-brand-900 dark:text-slate-100">{result.payable.title}</p>
+          {result.tenant_routing?.mismatch && (
+            <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700">
+              <p className="text-xs text-amber-900 dark:text-amber-200 font-medium mb-1">
+                ⚠️ Fatura BAŞKA bir tenant'a yazıldı
+              </p>
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                e-Fatura'daki alıcı VKN'si, şu an aktif tenant'tan farklı bir tenant'la eşleşti.
+                Fatura doğru tenant'a route edildi — listede görmek için üst köşeden o tenant'a
+                geç veya{' '}
+                <a href="/review-queue?scope=org" className="underline font-medium">
+                  Onay Bekleyenler → Tüm Tenants
+                </a>{' '}
+                görünümünü kullan.
+              </p>
+            </div>
+          )}
           <div className="p-2 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <p className="text-xs text-blue-800 dark:text-blue-300 mb-2">
-              📋 Fatura otomatik yaratıldı, onay bekliyor. Tek tek onaylayabilir / düzenleyebilirsin.
+              📋 Fatura otomatik yaratıldı, onay bekliyor. Faturalar listesinde DEĞİL,{' '}
+              <strong>Onay Bekleyenler</strong> sayfasında. Onayladıktan sonra Faturalar
+              listesinde görünür.
             </p>
             <a
-              href="/review-queue"
+              href={result.tenant_routing?.mismatch ? '/review-queue?scope=org' : '/review-queue'}
               className="inline-flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium"
             >
               Onay Bekleyenler'e Git →

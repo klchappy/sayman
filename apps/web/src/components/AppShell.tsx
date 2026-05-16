@@ -247,7 +247,9 @@ export function AppShell() {
     queryKey: ['review-queue-summary-shell', active.tenantSlug, active.orgSlug],
     enabled: !!active.orgSlug,
     queryFn: async () => {
-      const res = await api.get<{ data: { total: number; payables: number; sales_invoices: number; companies: number; persons: number } }>('/review-queue/summary');
+      // scope=org → Smart Import alıcı VKN'ye göre faturayı başka tenant'a route
+      // edebildiği için badge org-wide bakmalı; aksi halde kullanıcı "fatura yok" sanır.
+      const res = await api.get<{ data: { total: number; payables: number; sales_invoices: number; companies: number; persons: number } }>('/review-queue/summary?scope=org');
       return res.data.data;
     },
     refetchInterval: 30000,

@@ -127,11 +127,17 @@ type Tab = 'payables' | 'sales_invoices' | 'companies' | 'persons';
 export function ReviewQueuePage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('payables');
+  // URL'den scope (?scope=org) ve type filter'ı oku — Smart Import sonuç linki
+  // tenant mismatch durumunda scope=org gönderir
+  const urlParams = new URLSearchParams(window.location.search);
+  const [scope, setScope] = useState<'tenant' | 'org'>(
+    urlParams.get('scope') === 'org' ? 'org' : 'tenant',
+  );
 
   const q = useQuery({
-    queryKey: ['review-queue'],
+    queryKey: ['review-queue', scope],
     queryFn: async () => {
-      const res = await api.get<{ data: ReviewQueueData }>('/review-queue');
+      const res = await api.get<{ data: ReviewQueueData }>(`/review-queue?scope=${scope}`);
       return res.data.data;
     },
   });
@@ -139,13 +145,13 @@ export function ReviewQueuePage() {
   const approve = useMutation({
     mutationFn: async ({ type, id }: { type: string; id: string }) =>
       api.post(`/review-queue/${type}/${id}/approve`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }), // tüm scope variant'lar
   });
 
   const reject = useMutation({
     mutationFn: async ({ type, id }: { type: string; id: string }) =>
       api.delete(`/review-queue/${type}/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }), // tüm scope variant'lar
   });
 
   const counts = {
@@ -175,6 +181,38 @@ export function ReviewQueuePage() {
           ilgili şirketin verisine işlenir. <strong className="text-red-600">Reddet</strong> → kayıt DB'den
           tamamen silinir, hiçbir yerde görünmez.
         </p>
+
+        {/* Scope toggle: Smart Import auto-routing başka tenant'a fatura yazabildiği için
+            kullanıcı "tek tenant" görünümünde fatura kayıp gibi sanar. Org-wide görünüm
+            ile org'daki tüm review-bekleyenleri görür. */}
+        <div className="mt-4 inline-flex rounded-lg border border-brand-200 dark:border-slate-700 overflow-hidden text-sm">
+          <button
+            onClick={() => setScope('tenant')}
+            className={`px-3 py-1.5 ${
+              scope === 'tenant'
+                ? 'bg-brand-900 text-white'
+                : 'bg-white dark:bg-slate-800 text-brand-700 dark:text-slate-300 hover:bg-brand-50 dark:hover:bg-slate-700'
+            }`}
+          >
+            Bu Tenant
+          </button>
+          <button
+            onClick={() => setScope('org')}
+            className={`px-3 py-1.5 border-l border-brand-200 dark:border-slate-700 ${
+              scope === 'org'
+                ? 'bg-brand-900 text-white'
+                : 'bg-white dark:bg-slate-800 text-brand-700 dark:text-slate-300 hover:bg-brand-50 dark:hover:bg-slate-700'
+            }`}
+          >
+            Tüm Tenant'lar (Org)
+          </button>
+        </div>
+        {scope === 'org' && (
+          <p className="text-xs text-brand-500 dark:text-slate-400 mt-2">
+            ℹ️ Smart Import alıcı VKN'ye göre faturayı başka tenant'a yönlendirmiş olabilir. Org
+            görünümünde her bir kayıt hangi tenant'ta olduğunu gösterir.
+          </p>
+        )}
       </header>
 
       <div className="flex border-b border-brand-100 dark:border-slate-800 mb-4 flex-wrap">
