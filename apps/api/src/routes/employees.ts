@@ -8,10 +8,10 @@
  *   DELETE /v1/employees/:id            → soft delete
  *   POST   /v1/employees/calculate      → brüt'ten net önizleme (kayıt değil)
  */
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { employees, getDb } from '@sayman/db';
+import { employees, getDb, tenants } from '@sayman/db';
 import { calculatePayroll } from '../lib/payroll-calc';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
@@ -30,8 +30,12 @@ employeesRouter.get('/employees', requireAuth, requireTenantOrAggregate, async (
     const where = and(...conditions);
 
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(employees),
+        tenant_name: tenants.name,
+      })
       .from(employees)
+      .leftJoin(tenants, eq(tenants.id, employees.tenant_id))
       .where(where)
       .orderBy(asc(employees.full_name))
       .limit(LIST_LIMITS.large);

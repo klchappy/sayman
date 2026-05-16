@@ -10,13 +10,14 @@
  *   GET    /v1/fixed-assets/:id/schedule   → ay-ay amortisman çizelgesi (preview)
  *   GET    /v1/fixed-assets/summary        → toplam değer + birikmiş + net + kategori dağılımı
  */
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
   depreciationEntries,
   fixedAssets,
   getDb,
+  tenants,
 } from '@sayman/db';
 import { buildSchedule, calculateMonthlyDepreciation } from '../lib/depreciation';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
@@ -97,8 +98,12 @@ fixedAssetsRouter.get('/fixed-assets', requireAuth, requireTenantOrAggregate, as
 
     const where = and(...conditions);
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(fixedAssets),
+        tenant_name: tenants.name,
+      })
       .from(fixedAssets)
+      .leftJoin(tenants, eq(tenants.id, fixedAssets.tenant_id))
       .where(where)
       .orderBy(desc(fixedAssets.purchase_date))
       .limit(LIST_LIMITS.large);

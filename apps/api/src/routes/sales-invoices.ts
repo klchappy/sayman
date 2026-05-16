@@ -9,13 +9,14 @@
  *   POST   /v1/sales-invoices/:id/push/:connId  → ERP'ye push
  *   GET    /v1/sales-invoices/summary           → toplam alacak + geciken + bu ay tahsil
  */
-import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
   erpConnections,
   getDb,
   salesInvoices,
+  tenants,
 } from '@sayman/db';
 import { env, isConfigured } from '../config/env';
 import { logger } from '../config/logger';
@@ -64,8 +65,12 @@ salesInvoicesRouter.get(
       }
 
       const rows = await db
-        .select()
+        .select({
+          ...getTableColumns(salesInvoices),
+          tenant_name: tenants.name,
+        })
         .from(salesInvoices)
+        .leftJoin(tenants, eq(tenants.id, salesInvoices.tenant_id))
         .where(and(...conditions))
         .orderBy(desc(salesInvoices.due_date), desc(salesInvoices.created_at))
         .limit(limit + 1);

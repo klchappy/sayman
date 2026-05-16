@@ -32,6 +32,7 @@ interface Employee {
   position: string | null;
   email: string | null;
   phone: string | null;
+  tenant_name?: string | null;
 }
 
 function fmtTRY(v: string | number) {
@@ -159,9 +160,14 @@ export function EmployeesPage() {
                   className="border-b border-brand-50 dark:border-slate-800/50 hover:bg-brand-50/30 dark:hover:bg-slate-800/30"
                 >
                   <td className="py-2 px-3 font-medium">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <User className="size-4 text-brand-400" />
                       <span className="text-brand-900 dark:text-slate-100">{e.full_name}</span>
+                      {active.aggregate && e.tenant_name && (
+                        <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                          {e.tenant_name}
+                        </span>
+                      )}
                     </div>
                     {e.department && (
                       <p className="text-[10px] text-brand-400">{e.department}</p>

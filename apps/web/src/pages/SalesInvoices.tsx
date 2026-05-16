@@ -47,6 +47,7 @@ interface SalesInvoice {
   reviewed_at: string | null;
   reviewed_by: string | null;
   metadata?: Record<string, unknown> | null;
+  tenant_name?: string | null;
 }
 
 interface SalesSummary {
@@ -214,6 +215,11 @@ export function SalesInvoicesPage() {
                   <td className="py-2 px-3 font-medium text-brand-900 dark:text-slate-100">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span>{s.title}</span>
+                      {active.aggregate && s.tenant_name && (
+                        <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                          {s.tenant_name}
+                        </span>
+                      )}
                       <ProvenanceBadge item={s} />
                       {s.erp_push_status === 'pushed' && (
                         <span className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded uppercase">

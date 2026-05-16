@@ -1,10 +1,10 @@
 /**
  * /v1/tasks — Görev yönetimi (tenant-scope).
  */
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { getDb, tasks } from '@sayman/db';
+import { getDb, tasks, tenants } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
@@ -44,8 +44,12 @@ tasksRouter.get('/tasks', requireAuth, requireTenantOrAggregate, async (req, res
 
     const where = and(...conditions);
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(tasks),
+        tenant_name: tenants.name,
+      })
       .from(tasks)
+      .leftJoin(tenants, eq(tenants.id, tasks.tenant_id))
       .where(where)
       .orderBy(asc(tasks.due_date), desc(tasks.created_at))
       .limit(LIST_LIMITS.medium);

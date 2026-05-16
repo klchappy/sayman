@@ -10,10 +10,10 @@
  *   POST   /v1/checks/:id/return           → karşılıksız döndü (reason zorunlu)
  *   GET    /v1/checks/summary              → portföy + bu ay vade dolan + risk
  */
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { checksAndNotes, getDb } from '@sayman/db';
+import { checksAndNotes, getDb, tenants } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
@@ -102,8 +102,12 @@ checksRouter.get('/checks', requireAuth, requireTenantOrAggregate, async (req, r
 
     const where = and(...conditions);
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(checksAndNotes),
+        tenant_name: tenants.name,
+      })
       .from(checksAndNotes)
+      .leftJoin(tenants, eq(tenants.id, checksAndNotes.tenant_id))
       .where(where)
       .orderBy(asc(checksAndNotes.due_date), desc(checksAndNotes.created_at))
       .limit(LIST_LIMITS.large);

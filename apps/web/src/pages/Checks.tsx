@@ -41,6 +41,7 @@ interface Check {
   returned_at: string | null;
   return_reason: string | null;
   notes: string | null;
+  tenant_name?: string | null;
 }
 
 interface ChecksSummary {
@@ -232,7 +233,7 @@ export function ChecksPage() {
             </thead>
             <tbody>
               {list.data.map((c) => (
-                <CheckRow key={c.id} check={c} />
+                <CheckRow key={c.id} check={c} aggregate={!!active.aggregate} />
               ))}
             </tbody>
           </table>
@@ -273,7 +274,7 @@ function Kpi({
   );
 }
 
-function CheckRow({ check }: { check: Check }) {
+function CheckRow({ check, aggregate }: { check: Check; aggregate: boolean }) {
   const qc = useQueryClient();
   const [actionOpen, setActionOpen] = useState(false);
   const [returnReason, setReturnReason] = useState('');
@@ -312,7 +313,14 @@ function CheckRow({ check }: { check: Check }) {
       }`}
     >
       <td className="py-2 px-3 text-xs">
-        {check.kind === 'check' ? 'Çek' : 'Senet'}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span>{check.kind === 'check' ? 'Çek' : 'Senet'}</span>
+          {aggregate && check.tenant_name && (
+            <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+              {check.tenant_name}
+            </span>
+          )}
+        </div>
       </td>
       <td className="py-2 px-3 font-mono text-xs">{check.document_no ?? '-'}</td>
       <td className="py-2 px-3 text-brand-700 dark:text-slate-300">{counterpart ?? '-'}</td>

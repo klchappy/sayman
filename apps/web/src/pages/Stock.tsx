@@ -29,6 +29,7 @@ interface StockItem {
   currency: string;
   critical_threshold: string | null;
   last_synced_at: string;
+  tenant_name?: string | null;
 }
 
 function fmtTRY(v: string | number) {
@@ -156,7 +157,7 @@ export function StockPage() {
             </thead>
             <tbody>
               {q.data.map((s) => (
-                <StockRow key={s.id} item={s} />
+                <StockRow key={s.id} item={s} aggregate={!!active.aggregate} />
               ))}
             </tbody>
           </table>
@@ -166,7 +167,7 @@ export function StockPage() {
   );
 }
 
-function StockRow({ item }: { item: StockItem }) {
+function StockRow({ item, aggregate }: { item: StockItem; aggregate: boolean }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [threshold, setThreshold] = useState(item.critical_threshold ?? '');
@@ -201,6 +202,11 @@ function StockRow({ item }: { item: StockItem }) {
           />
         )}
         {item.name}
+        {aggregate && item.tenant_name && (
+          <span className="ml-2 text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+            {item.tenant_name}
+          </span>
+        )}
       </td>
       <td className="py-2 px-3 font-mono text-xs text-brand-600 dark:text-slate-400">
         {item.code ?? '-'}

@@ -39,6 +39,7 @@ interface FixedAsset {
   status: string;
   location: string | null;
   serial_no: string | null;
+  tenant_name?: string | null;
 }
 
 interface AssetSummary {
@@ -234,9 +235,14 @@ export function FixedAssetsPage() {
                   >
                     <td className="py-2 px-3 font-mono text-xs">{a.code ?? '-'}</td>
                     <td className="py-2 px-3 font-medium">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Icon className="size-4 text-brand-400" />
                         <span className="text-brand-900 dark:text-slate-100">{a.name}</span>
+                        {active.aggregate && a.tenant_name && (
+                          <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                            {a.tenant_name}
+                          </span>
+                        )}
                       </div>
                       {a.serial_no && (
                         <p className="text-[10px] text-brand-400 font-mono">SN: {a.serial_no}</p>

@@ -15,6 +15,7 @@ interface Task {
   completed_at: string | null;
   is_active: boolean;
   created_at: string;
+  tenant_name?: string | null;
 }
 
 const PRIORITY_BADGE: Record<Task['priority'], string> = {
@@ -160,9 +161,16 @@ export function TasksPage() {
                 )}
               </button>
               <div className="flex-1 min-w-0">
-                <p className={`font-medium ${t.status === 'done' ? 'line-through text-brand-400' : 'text-brand-900'}`}>
-                  {t.title}
-                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className={`font-medium ${t.status === 'done' ? 'line-through text-brand-400' : 'text-brand-900'}`}>
+                    {t.title}
+                  </p>
+                  {active.aggregate && t.tenant_name && (
+                    <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                      {t.tenant_name}
+                    </span>
+                  )}
+                </div>
                 {t.description && (
                   <p className="text-xs text-brand-500 mt-0.5">{t.description}</p>
                 )}

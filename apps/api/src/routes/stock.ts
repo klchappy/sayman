@@ -5,10 +5,10 @@
  *   GET /v1/stock/critical           → kritik eşiğin altındakiler (kullanıcı tarafından set edilenler)
  *   PATCH /v1/stock/:id              → critical_threshold güncelle (manuel)
  */
-import { and, asc, eq, ilike, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, ilike, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { getDb, stockItems } from '@sayman/db';
+import { getDb, stockItems, tenants } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
@@ -30,8 +30,12 @@ stockRouter.get('/stock', requireAuth, requireTenantOrAggregate, async (req, res
 
     const where = and(...conditions);
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(stockItems),
+        tenant_name: tenants.name,
+      })
       .from(stockItems)
+      .leftJoin(tenants, eq(tenants.id, stockItems.tenant_id))
       .where(where)
       .orderBy(asc(stockItems.name))
       .limit(LIST_LIMITS.xl);
