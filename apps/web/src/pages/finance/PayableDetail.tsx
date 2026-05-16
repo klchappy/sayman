@@ -58,9 +58,7 @@ interface PayableDetail {
   transactions: Payment[];
 }
 
-function fmtTRY(v: string) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v));
-}
+import { fmtTRY } from '../../lib/formatting';
 
 export function PayableDetailPage() {
   const { id } = useParams<{ id: string }>();

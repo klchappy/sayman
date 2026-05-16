@@ -79,13 +79,7 @@ interface ConsolidatedSummary {
   }>;
 }
 
-function fmtTRY(v: number) {
-  return new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: 0,
-  }).format(v);
-}
+import { fmtTRYShort as fmtTRY } from '../lib/formatting';
 
 const PLAN_LABEL: Record<Plan, string> = {
   trial: 'Deneme',

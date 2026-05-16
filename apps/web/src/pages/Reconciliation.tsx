@@ -39,9 +39,7 @@ interface ReconcResponse {
   erp_movements_unmatched: MatchRow[];
 }
 
-function fmtTRY(v: number) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(v);
-}
+import { fmtTRY } from '../lib/formatting';
 
 export function ReconciliationPage() {
   const { id } = useParams<{ id: string }>();

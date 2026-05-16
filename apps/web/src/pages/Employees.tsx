@@ -17,6 +17,7 @@ import { SavedFilters } from '../components/SavedFilters';
 import { TruncatedListWarning } from '../components/TruncatedListWarning';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { fmtTRY } from '../lib/formatting';
 
 interface Employee {
   id: string;
@@ -33,11 +34,6 @@ interface Employee {
   email: string | null;
   phone: string | null;
   tenant_name?: string | null;
-}
-
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
 }
 
 export function EmployeesPage() {

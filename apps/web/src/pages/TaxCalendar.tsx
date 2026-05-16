@@ -16,6 +16,7 @@ import {
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { fmtTRY } from '../lib/formatting';
 
 interface TaxEvent {
   id: string;
@@ -53,10 +54,6 @@ const KIND_COLOR: Record<string, string> = {
   custom: 'bg-brand-100 text-brand-800 dark:bg-slate-800 dark:text-slate-300',
 };
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
-}
 
 function daysUntil(due: string): number {
   const d = new Date(due);

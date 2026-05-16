@@ -60,14 +60,7 @@ interface InboxData {
   };
 }
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: 0,
-  }).format(n);
-}
+import { fmtTRYShort as fmtTRY } from '../lib/formatting';
 
 export function InboxPage() {
   const me = useAuth((s) => s.me);

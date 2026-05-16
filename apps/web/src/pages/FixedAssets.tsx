@@ -74,10 +74,7 @@ const CATEGORY_ICON: Record<string, React.ComponentType<{ className?: string }>>
   other: Boxes,
 };
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
-}
+import { fmtTRY } from '../lib/formatting';
 
 export function FixedAssetsPage() {
   const active = useAuth((s) => s.active);

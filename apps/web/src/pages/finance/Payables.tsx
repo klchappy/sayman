@@ -55,10 +55,7 @@ interface SemanticHit {
   similarity: number;
 }
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
-}
+import { fmtTRY } from '../../lib/formatting';
 
 const STATUS_LABEL: Record<PayableStatus, string> = {
   draft: 'Taslak',

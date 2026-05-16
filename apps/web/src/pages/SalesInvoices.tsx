@@ -79,10 +79,7 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: 'bg-brand-100 text-brand-500',
 };
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
-}
+import { fmtTRY } from '../lib/formatting';
 
 export function SalesInvoicesPage() {
   const active = useAuth((s) => s.active);

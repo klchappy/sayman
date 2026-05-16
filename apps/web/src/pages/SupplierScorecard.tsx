@@ -71,13 +71,7 @@ interface SupplierDetail {
   }>;
 }
 
-function fmtTRY(v: number) {
-  return new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: 0,
-  }).format(v);
-}
+import { fmtTRYShort as fmtTRY } from '../lib/formatting';
 
 const PIE_COLORS = [
   '#0a2540',

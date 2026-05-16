@@ -28,9 +28,7 @@ interface ForecastResponse {
   meta: { lookback_months: number; projection_months: number };
 }
 
-function fmtTRY(v: number) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(v);
-}
+import { fmtTRYShort as fmtTRY } from '../lib/formatting';
 
 export function ForecastPage() {
   const active = useAuth((s) => s.active);

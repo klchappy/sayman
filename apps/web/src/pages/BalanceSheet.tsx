@@ -21,13 +21,7 @@ interface BalanceSheet {
   balanced: boolean;
 }
 
-function fmtTRY(v: number) {
-  return new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: 0,
-  }).format(v);
-}
+import { fmtTRYShort as fmtTRY } from '../lib/formatting';
 
 export function BalanceSheetPage() {
   const active = useAuth((s) => s.active);

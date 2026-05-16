@@ -32,10 +32,7 @@ interface StockItem {
   tenant_name?: string | null;
 }
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
-}
+import { fmtTRY } from '../lib/formatting';
 
 export function StockPage() {
   const active = useAuth((s) => s.active);

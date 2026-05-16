@@ -53,9 +53,7 @@ interface PnL {
   margin_pct: number;
 }
 
-function fmtTRY(v: number) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(v);
-}
+import { fmtTRYShort as fmtTRY } from '../lib/formatting';
 
 function thisMonth(): { from: string; to: string } {
   const now = new Date();

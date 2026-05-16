@@ -83,14 +83,7 @@ const TYPE_BADGE: Record<string, string> = {
   both: 'bg-brand-100 text-brand-700 dark:bg-slate-800 dark:text-slate-300',
 };
 
-function fmtTRY(v: number | string) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: 2,
-  }).format(n);
-}
+import { fmtTRY } from '../lib/formatting';
 
 export function CariListPage() {
   const [search, setSearch] = useState('');

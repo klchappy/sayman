@@ -67,14 +67,7 @@ interface TenantInfo {
   effective_modules: Module[];
 }
 
-function fmtTRY(v: number | string) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: 0,
-  }).format(n);
-}
+import { fmtTRYShort as fmtTRY } from '../lib/formatting';
 
 const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-blue-100 text-blue-700',

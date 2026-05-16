@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { fmtTRY } from '../lib/formatting';
 import { useConfirmBool } from '../components/ConfirmDialog';
 
 interface ApprovalRow {
@@ -53,10 +54,6 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: 'bg-brand-100 text-brand-700 dark:bg-slate-800 dark:text-slate-400',
 };
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
-}
 
 export function PaymentApprovalsPage() {
   const me = useAuth((s) => s.me);

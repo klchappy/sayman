@@ -65,10 +65,7 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
-}
+import { fmtTRY } from '../lib/formatting';
 
 function currentMonthPeriod(): string {
   const d = new Date();

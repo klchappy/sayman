@@ -17,6 +17,7 @@ import {
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { fmtTRY } from '../lib/formatting';
 
 interface PortalToken {
   id: string;
@@ -51,11 +52,6 @@ interface PortalData {
   }>;
   token_label: string | null;
   expires_at: string;
-}
-
-function fmtTRY(v: string | number) {
-  const n = typeof v === 'string' ? Number(v) : v;
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
 }
 
 // ---- MANAGEMENT PAGE (auth required) ----
