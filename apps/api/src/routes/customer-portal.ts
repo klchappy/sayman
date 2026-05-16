@@ -16,7 +16,7 @@ import {
   getDb,
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
@@ -31,7 +31,7 @@ function genPortalToken(): string {
 customerPortalRouter.get(
   '/cari/:id/portal-tokens',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -41,7 +41,7 @@ customerPortalRouter.get(
         .where(
           and(
             eq(cariAccounts.id, String(req.params.id ?? '')),
-            eq(cariAccounts.tenant_id, req.activeTenantId!),
+            tenantScope(req, cariAccounts.tenant_id),
           ),
         );
       if (!cari) throw new HttpError(404, 'Cari bulunamadı');

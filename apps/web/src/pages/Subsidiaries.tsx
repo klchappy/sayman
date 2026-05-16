@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 interface Subsidiary {
   id: string;
   tenant_id: string;
+  tenant_name?: string | null;
   name: string;
   code: string | null;
   description: string | null;
@@ -26,8 +27,8 @@ export function SubsidiariesPage() {
   const canEdit = ['super_admin', 'organization_admin', 'yonetici', 'muhasebeci'].includes(role ?? '');
 
   const q = useQuery({
-    queryKey: ['subsidiaries', active.orgSlug, active.tenantSlug],
-    enabled: !!active.tenantSlug,
+    queryKey: ['subsidiaries', active.orgSlug, active.tenantSlug, active.aggregate],
+    enabled: !!active.tenantSlug || active.aggregate === true,
     queryFn: async () => (await api.get<{ data: Subsidiary[] }>('/subsidiaries')).data.data,
   });
 
@@ -45,7 +46,7 @@ export function SubsidiariesPage() {
     },
   });
 
-  if (!active.tenantSlug) {
+  if (!active.tenantSlug && !active.aggregate) {
     return (
       <div className="p-10 max-w-3xl mx-auto text-center">
         <div className="card">
@@ -117,6 +118,7 @@ export function SubsidiariesPage() {
                 byParent={byParent}
                 level={0}
                 canEdit={canEdit}
+                showTenantBadge={active.aggregate === true}
                 onEdit={(sub) => setEditing(sub)}
                 onDelete={(id) => {
                   if (confirm('Bu yan şirket arşivlensin mi?')) del.mutate(id);
@@ -135,6 +137,7 @@ function SubsidiaryNode({
   byParent,
   level,
   canEdit,
+  showTenantBadge,
   onEdit,
   onDelete,
 }: {
@@ -142,6 +145,7 @@ function SubsidiaryNode({
   byParent: Record<string, Subsidiary[]>;
   level: number;
   canEdit: boolean;
+  showTenantBadge: boolean;
   onEdit: (s: Subsidiary) => void;
   onDelete: (id: string) => void;
 }) {
@@ -162,7 +166,14 @@ function SubsidiaryNode({
             style={{ color: node.color ?? '#6b7280' }}
           />
           <div>
-            <p className="font-medium text-brand-900">{node.name}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium text-brand-900">{node.name}</p>
+              {showTenantBadge && node.tenant_name && (
+                <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                  {node.tenant_name}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-brand-500">
               {node.code && <span className="font-mono mr-2">#{node.code}</span>}
               {node.description ?? ''}
@@ -196,6 +207,7 @@ function SubsidiaryNode({
               node={c}
               byParent={byParent}
               level={level + 1}
+              showTenantBadge={showTenantBadge}
               canEdit={canEdit}
               onEdit={onEdit}
               onDelete={onDelete}

@@ -8,6 +8,8 @@ import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface RegularPayment {
   id: string;
+  tenant_id?: string;
+  tenant_name?: string | null;
   kind: 'rent' | 'maintenance' | 'subscription' | 'lease' | 'other';
   title: string;
   monthly_amount: string;
@@ -127,7 +129,16 @@ export function RegularPaymentsPage() {
                   <td className="py-2 px-2">
                     <span className={`badge ${KIND_BADGE[r.kind]}`}>{KIND_LABEL[r.kind]}</span>
                   </td>
-                  <td className="py-2 px-2 font-medium text-brand-900">{r.title}</td>
+                  <td className="py-2 px-2 font-medium text-brand-900">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{r.title}</span>
+                      {active.aggregate && r.tenant_name && (
+                        <span className="text-[10px] uppercase tracking-wide bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">
+                          {r.tenant_name}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-2 px-2 font-mono text-right">{fmt(r.monthly_amount)}</td>
                   <td className="py-2 px-2 text-center text-brand-700">{r.payment_day}.</td>
                   <td className="py-2 px-2 text-xs text-brand-600">

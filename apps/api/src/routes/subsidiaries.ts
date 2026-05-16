@@ -6,12 +6,12 @@
  *   PATCH  /v1/subsidiaries/:id      → güncelle
  *   DELETE /v1/subsidiaries/:id      → soft delete
  */
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { getDb, subsidiaries } from '@sayman/db';
+import { getDb, subsidiaries, tenants } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 import { requirePerm } from '../middleware/permission';
 
@@ -36,14 +36,18 @@ export const subsidiariesRouter = Router();
 subsidiariesRouter.get(
   '/subsidiaries',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
       const rows = await db
-        .select()
+        .select({
+          ...getTableColumns(subsidiaries),
+          tenant_name: tenants.name,
+        })
         .from(subsidiaries)
-        .where(eq(subsidiaries.tenant_id, req.activeTenantId!))
+        .leftJoin(tenants, eq(tenants.id, subsidiaries.tenant_id))
+        .where(tenantScope(req, subsidiaries.tenant_id))
         .orderBy(asc(subsidiaries.name));
       res.json({ data: rows, count: rows.length });
     } catch (err) {

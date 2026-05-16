@@ -20,6 +20,8 @@ import { useConfirmBool } from '../components/ConfirmDialog';
 
 interface ApprovalRow {
   id: string;
+  tenant_id?: string;
+  tenant_name?: string | null;
   payable_id: string;
   payable_title: string | null;
   supplier_name: string | null;
@@ -149,12 +151,19 @@ export function PaymentApprovalsPage() {
               <div key={a.id} className="card">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="min-w-0 flex-1">
-                    <Link
-                      to={`/payables/${a.payable_id}`}
-                      className="font-medium text-brand-900 dark:text-slate-100 hover:text-brand-700"
-                    >
-                      {a.payable_title ?? '(fatura silinmiş)'}
-                    </Link>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        to={`/payables/${a.payable_id}`}
+                        className="font-medium text-brand-900 dark:text-slate-100 hover:text-brand-700"
+                      >
+                        {a.payable_title ?? '(fatura silinmiş)'}
+                      </Link>
+                      {active.aggregate && a.tenant_name && (
+                        <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                          {a.tenant_name}
+                        </span>
+                      )}
+                    </div>
                     {a.supplier_name && (
                       <p className="text-xs text-brand-500 dark:text-slate-400 mt-0.5">
                         {a.supplier_name}

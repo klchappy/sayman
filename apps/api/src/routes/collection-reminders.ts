@@ -7,15 +7,16 @@
  *   DELETE
  *   GET   /v1/collection-reminder-runs?invoice_id=... → gönderim history
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
   collectionReminderRules,
   collectionReminderRuns,
   getDb,
+  tenants,
 } from '@sayman/db';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const collectionRemindersRouter = Router();
@@ -23,14 +24,18 @@ export const collectionRemindersRouter = Router();
 collectionRemindersRouter.get(
   '/collection-reminder-rules',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
       const rows = await db
-        .select()
+        .select({
+          ...getTableColumns(collectionReminderRules),
+          tenant_name: tenants.name,
+        })
         .from(collectionReminderRules)
-        .where(eq(collectionReminderRules.tenant_id, req.activeTenantId!))
+        .leftJoin(tenants, eq(tenants.id, collectionReminderRules.tenant_id))
+        .where(tenantScope(req, collectionReminderRules.tenant_id))
         .orderBy(collectionReminderRules.days_after_due);
       res.json({ data: rows });
     } catch (err) {
@@ -141,11 +146,11 @@ collectionRemindersRouter.delete(
 collectionRemindersRouter.get(
   '/collection-reminder-runs',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
-      const conditions: any[] = [eq(collectionReminderRuns.tenant_id, req.activeTenantId!)];
+      const conditions: any[] = [tenantScope(req, collectionReminderRuns.tenant_id)];
       if (req.query.invoice_id) {
         conditions.push(
           eq(collectionReminderRuns.sales_invoice_id, String(req.query.invoice_id)),

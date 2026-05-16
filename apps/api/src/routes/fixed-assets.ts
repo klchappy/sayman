@@ -30,7 +30,7 @@ export const fixedAssetsRouter = Router();
 fixedAssetsRouter.get(
   '/fixed-assets/summary',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -43,10 +43,11 @@ fixedAssetsRouter.get(
         })
         .from(fixedAssets)
         .where(
-          and(eq(fixedAssets.tenant_id, req.activeTenantId!), eq(fixedAssets.is_active, true)),
+          and(tenantScope(req, fixedAssets.tenant_id), eq(fixedAssets.is_active, true)),
         );
 
-      // Kategori dağılımı
+      // Kategori dağılımı (aggregate-aware)
+      const tenantIdsForQuery = req.aggregateTenantIds ?? [req.activeTenantId!];
       const byCategory = await db.execute(sql`
         SELECT
           category,
@@ -54,7 +55,7 @@ fixedAssetsRouter.get(
           SUM(purchase_cost::numeric) AS total_cost,
           SUM(accumulated_depreciation::numeric) AS total_accumulated
         FROM fixed_assets
-        WHERE tenant_id = ${req.activeTenantId!}::uuid
+        WHERE tenant_id = ANY(${tenantIdsForQuery}::uuid[])
           AND is_active = true
           AND status = 'active'
         GROUP BY category
@@ -197,7 +198,7 @@ fixedAssetsRouter.post('/fixed-assets', requireAuth, requireTenant, async (req, 
 fixedAssetsRouter.get(
   '/fixed-assets/:id',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -207,7 +208,7 @@ fixedAssetsRouter.get(
         .where(
           and(
             eq(fixedAssets.id, String(req.params.id ?? '')),
-            eq(fixedAssets.tenant_id, req.activeTenantId!),
+            tenantScope(req, fixedAssets.tenant_id),
           ),
         );
       if (!row) throw new HttpError(404, 'Demirbaş bulunamadı');
@@ -388,7 +389,7 @@ fixedAssetsRouter.post(
 fixedAssetsRouter.get(
   '/fixed-assets/:id/schedule',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -398,7 +399,7 @@ fixedAssetsRouter.get(
         .where(
           and(
             eq(fixedAssets.id, String(req.params.id ?? '')),
-            eq(fixedAssets.tenant_id, req.activeTenantId!),
+            tenantScope(req, fixedAssets.tenant_id),
           ),
         );
       if (!a) throw new HttpError(404, 'Demirbaş bulunamadı');

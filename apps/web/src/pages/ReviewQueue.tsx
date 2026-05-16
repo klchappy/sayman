@@ -159,9 +159,14 @@ export function ReviewQueuePage() {
     qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
     qc.invalidateQueries({ queryKey: ['payables'] });
     qc.invalidateQueries({ queryKey: ['sales-invoices'] });
+    qc.invalidateQueries({ queryKey: ['sales-invoices-summary'] });
+    qc.invalidateQueries({ queryKey: ['payable-summary'] });
     qc.invalidateQueries({ queryKey: ['cari-list'] });
+    qc.invalidateQueries({ queryKey: ['cari-summary'] });
     qc.invalidateQueries({ queryKey: ['companies'] });
     qc.invalidateQueries({ queryKey: ['persons'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['inbox'] });
   };
 
   const approve = useMutation({

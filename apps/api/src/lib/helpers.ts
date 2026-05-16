@@ -178,6 +178,14 @@ export async function requireTenant(req: Request, _res: Response, next: NextFunc
     if (!user) throw new HttpError(401, 'Auth gerekli', 'NO_AUTH');
 
     const ctx = req.saymanContext;
+    // Aggregate mode (org-wide read) açıkken mutation engelle — kullanıcıya net mesaj
+    if (wantsAggregate(req) && !ctx?.tenantId) {
+      throw new HttpError(
+        400,
+        '"Tüm Şirketler" modunda işlem yapılamaz — önce sağ üstten bir şirket seç',
+        'AGGREGATE_MUTATION_BLOCKED',
+      );
+    }
     if (!ctx?.tenantId || !ctx?.organizationId) {
       throw new HttpError(400, 'Tenant context yok — header X-Sayman-Tenant + X-Sayman-Org veya subdomain', 'NO_TENANT');
     }

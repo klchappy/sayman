@@ -65,6 +65,24 @@ api.interceptors.request.use((config) => {
   } else {
     delete config.headers['X-Sayman-Aggregate'];
   }
+
+  // Aggregate mode'da mutation engelleme: tenant context'i yok, hangi tenant'a
+  // yazılacağı belirsiz. Kullanıcı önce şirket seçmeli.
+  if (
+    aggregate &&
+    config.method &&
+    ['post', 'patch', 'put', 'delete'].includes(config.method.toLowerCase())
+  ) {
+    const allowList = ['/auth/', '/users/me', '/support/', '/notifications/'];
+    const url = config.url ?? '';
+    if (!allowList.some((p) => url.includes(p))) {
+      return Promise.reject(
+        new Error(
+          '"Tüm Şirketler" modunda işlem yapılamaz — önce sağ üstten bir şirket seç.',
+        ),
+      );
+    }
+  }
   return config;
 });
 

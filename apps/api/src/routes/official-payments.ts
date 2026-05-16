@@ -1,10 +1,10 @@
 /**
  * /v1/official-payments — BAĞKUR/SSK/BES/İTO/vergi profilleri.
  */
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { getDb, officialPaymentPeriods, officialPaymentProfiles } from '@sayman/db';
+import { getDb, officialPaymentPeriods, officialPaymentProfiles, tenants } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
@@ -32,8 +32,12 @@ officialPaymentsRouter.get('/official-payments', requireAuth, requireTenantOrAgg
       eq(officialPaymentProfiles.is_active, true),
     );
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(officialPaymentProfiles),
+        tenant_name: tenants.name,
+      })
       .from(officialPaymentProfiles)
+      .leftJoin(tenants, eq(tenants.id, officialPaymentProfiles.tenant_id))
       .where(where)
       .orderBy(desc(officialPaymentProfiles.created_at))
       .limit(LIST_LIMITS.medium);
@@ -102,7 +106,7 @@ officialPaymentsRouter.delete('/official-payments/:id', requireAuth, requireTena
 officialPaymentsRouter.get(
   '/official-payments/:id/periods',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -112,7 +116,7 @@ officialPaymentsRouter.get(
         .where(
           and(
             eq(officialPaymentPeriods.profile_id, String(req.params.id ?? '')),
-            eq(officialPaymentPeriods.tenant_id, req.activeTenantId!),
+            tenantScope(req, officialPaymentPeriods.tenant_id),
           ),
         )
         .orderBy(asc(officialPaymentPeriods.due_date));

@@ -20,7 +20,7 @@ import {
 import { env, isConfigured } from '../config/env';
 import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 const recordSchema = z.object({
@@ -262,10 +262,11 @@ categoryFeedbackRouter.post(
 categoryFeedbackRouter.get(
   '/category-feedback/stats',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
+      const tenantIdsForQuery = req.aggregateTenantIds ?? [req.activeTenantId!];
       const rows = await db.execute(sql`
         SELECT
           suggested_category,
@@ -273,7 +274,7 @@ categoryFeedbackRouter.get(
           COUNT(*) AS count,
           MAX(created_at) AS last_seen
         FROM category_feedback
-        WHERE tenant_id = ${req.activeTenantId!}
+        WHERE tenant_id = ANY(${tenantIdsForQuery}::uuid[])
           AND suggested_category IS NOT NULL
           AND suggested_category != actual_category
         GROUP BY suggested_category, actual_category

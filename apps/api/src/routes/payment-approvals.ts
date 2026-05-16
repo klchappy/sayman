@@ -22,9 +22,10 @@ import {
   payableItems,
   paymentApprovals,
   paymentTransactions,
+  tenants,
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { HttpError, requireTenant } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
 
 export const paymentApprovalsRouter = Router();
@@ -94,7 +95,7 @@ paymentApprovalsRouter.post(
 paymentApprovalsRouter.get(
   '/payment-approvals',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -102,6 +103,8 @@ paymentApprovalsRouter.get(
       const rows = await db
         .select({
           id: paymentApprovals.id,
+          tenant_id: paymentApprovals.tenant_id,
+          tenant_name: tenants.name,
           payable_id: paymentApprovals.payable_id,
           payable_title: payableItems.title,
           supplier_name: payableItems.supplier_name,
@@ -120,9 +123,10 @@ paymentApprovalsRouter.get(
         })
         .from(paymentApprovals)
         .leftJoin(payableItems, eq(payableItems.id, paymentApprovals.payable_id))
+        .leftJoin(tenants, eq(tenants.id, paymentApprovals.tenant_id))
         .where(
           and(
-            eq(paymentApprovals.tenant_id, req.activeTenantId!),
+            tenantScope(req, paymentApprovals.tenant_id),
             eq(paymentApprovals.status, status),
           ),
         )

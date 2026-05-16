@@ -23,7 +23,7 @@ import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
 import { getAdapter } from '../lib/erp';
 import { decryptSecret } from '../lib/secret-box';
-import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
+import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope as tenantScopeHelper } from '../lib/helpers';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { requireAuth } from '../middleware/auth';
 
@@ -94,7 +94,7 @@ salesInvoicesRouter.get(
 salesInvoicesRouter.get(
   '/sales-invoices/summary',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -116,7 +116,7 @@ salesInvoicesRouter.get(
         .from(salesInvoices)
         .where(
           and(
-            eq(salesInvoices.tenant_id, req.activeTenantId!),
+            tenantScopeHelper(req, salesInvoices.tenant_id),
             eq(salesInvoices.is_active, true),
           ),
         );
@@ -188,7 +188,7 @@ salesInvoicesRouter.post('/sales-invoices', requireAuth, requireTenant, async (r
 salesInvoicesRouter.get(
   '/sales-invoices/:id',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -198,7 +198,7 @@ salesInvoicesRouter.get(
         .where(
           and(
             eq(salesInvoices.id, String(req.params.id ?? '')),
-            eq(salesInvoices.tenant_id, req.activeTenantId!),
+            tenantScopeHelper(req, salesInvoices.tenant_id),
           ),
         );
       if (!row) throw new HttpError(404, 'Satış faturası bulunamadı');

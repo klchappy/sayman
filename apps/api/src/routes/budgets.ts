@@ -449,7 +449,7 @@ budgetsRouter.post('/budgets/ai-suggest', requireAuth, requireTenant, async (req
 budgetsRouter.get(
   '/budgets/comparison',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -461,7 +461,7 @@ budgetsRouter.get(
         .from(budgets)
         .where(
           and(
-            eq(budgets.tenant_id, req.activeTenantId!),
+            tenantScope(req, budgets.tenant_id),
             eq(budgets.is_active, true),
             eq(budgets.period, currentPeriod),
           ),
@@ -491,7 +491,7 @@ budgetsRouter.get(
             .from(payableItems)
             .where(
               and(
-                eq(payableItems.tenant_id, req.activeTenantId!),
+                tenantScope(req, payableItems.tenant_id),
                 eq(payableItems.is_active, true),
                 inArray(payableItems.category, categories),
                 gte(payableItems.issue_date, range.from),

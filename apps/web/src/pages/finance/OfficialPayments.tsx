@@ -8,6 +8,8 @@ import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface OfficialProfile {
   id: string;
+  tenant_id?: string;
+  tenant_name?: string | null;
   payment_type:
     | 'BAGKUR'
     | 'SSK'
@@ -144,9 +146,16 @@ export function OfficialPaymentsPage() {
               {q.data.map((p) => (
                 <tr key={p.id} className="border-b border-brand-50 hover:bg-brand-50">
                   <td className="py-2 px-2">
-                    <span className={`badge ${TYPE_BADGE[p.payment_type]}`}>
-                      {TYPE_LABEL[p.payment_type]}
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`badge ${TYPE_BADGE[p.payment_type]}`}>
+                        {TYPE_LABEL[p.payment_type]}
+                      </span>
+                      {active.aggregate && p.tenant_name && (
+                        <span className="text-[10px] uppercase tracking-wide bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">
+                          {p.tenant_name}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2 px-2 text-brand-700">{FREQ_LABEL[p.frequency]}</td>
                   <td className="py-2 px-2 text-brand-700">{p.owner_type}</td>

@@ -29,6 +29,8 @@ import { useAuth } from '../lib/auth';
 
 interface ReminderRule {
   id: string;
+  tenant_id?: string;
+  tenant_name?: string | null;
   name: string;
   days_after_due: string;
   channel: 'email' | 'whatsapp' | 'telegram';
@@ -176,11 +178,16 @@ export function CollectionRemindersPage() {
                 return (
                   <div key={r.id} className="card">
                     <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Icon className="size-4 text-brand-500" />
                         <h3 className="font-semibold text-brand-900 dark:text-slate-100">
                           {r.name}
                         </h3>
+                        {active.aggregate && r.tenant_name && (
+                          <span className="text-[10px] uppercase tracking-wide bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                            {r.tenant_name}
+                          </span>
+                        )}
                         <span className="text-xs bg-brand-50 dark:bg-slate-800 text-brand-700 dark:text-slate-300 px-2 py-0.5 rounded">
                           {Number(r.days_after_due)} gün sonra · {CHANNEL_LABEL[r.channel]}
                         </span>

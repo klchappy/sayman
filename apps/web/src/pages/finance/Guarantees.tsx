@@ -8,6 +8,8 @@ import { useSubsidiaries } from '../../lib/use-subsidiaries';
 
 interface Guarantee {
   id: string;
+  tenant_id?: string;
+  tenant_name?: string | null;
   beneficiary_name: string;
   letter_no: string | null;
   amount: string;
@@ -121,7 +123,16 @@ export function GuaranteesPage() {
             <tbody>
               {q.data.map((g) => (
                 <tr key={g.id} className="border-b border-brand-50 hover:bg-brand-50">
-                  <td className="py-2 px-2 font-medium text-brand-900">{g.beneficiary_name}</td>
+                  <td className="py-2 px-2 font-medium text-brand-900">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{g.beneficiary_name}</span>
+                      {active.aggregate && g.tenant_name && (
+                        <span className="text-[10px] uppercase tracking-wide bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">
+                          {g.tenant_name}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-2 px-2 font-mono text-xs text-brand-600">
                     {g.letter_no ?? '-'}
                   </td>

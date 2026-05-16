@@ -1,10 +1,10 @@
 /**
  * /v1/guarantees — Teminat mektupları + komisyon periodları.
  */
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { getDb, guaranteeCommissionPeriods, guarantees } from '@sayman/db';
+import { getDb, guaranteeCommissionPeriods, guarantees, tenants } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
@@ -38,8 +38,12 @@ guaranteesRouter.get('/guarantees', requireAuth, requireTenantOrAggregate, async
       eq(guarantees.is_active, true),
     );
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(guarantees),
+        tenant_name: tenants.name,
+      })
       .from(guarantees)
+      .leftJoin(tenants, eq(tenants.id, guarantees.tenant_id))
       .where(where)
       .orderBy(desc(guarantees.expiry_date), desc(guarantees.created_at))
       .limit(LIST_LIMITS.medium);
@@ -108,7 +112,7 @@ guaranteesRouter.delete('/guarantees/:id', requireAuth, requireTenant, async (re
 guaranteesRouter.get(
   '/guarantees/:id/commission-periods',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -118,7 +122,7 @@ guaranteesRouter.get(
         .where(
           and(
             eq(guaranteeCommissionPeriods.guarantee_id, String(req.params.id ?? '')),
-            eq(guaranteeCommissionPeriods.tenant_id, req.activeTenantId!),
+            tenantScope(req, guaranteeCommissionPeriods.tenant_id),
           ),
         )
         .orderBy(asc(guaranteeCommissionPeriods.due_date));

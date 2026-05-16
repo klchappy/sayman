@@ -2,10 +2,10 @@
  * /v1/regular-payments — Kira ve düzenli ödeme sözleşmeleri (profile).
  * periods sub-resource: /v1/regular-payments/:id/periods
  */
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
-import { getDb, regularPaymentPeriods, regularPaymentProfiles } from '@sayman/db';
+import { getDb, regularPaymentPeriods, regularPaymentProfiles, tenants } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { requireAuth } from '../middleware/auth';
@@ -44,8 +44,12 @@ regularPaymentsRouter.get('/regular-payments', requireAuth, requireTenantOrAggre
       eq(regularPaymentProfiles.is_active, true),
     );
     const rows = await db
-      .select()
+      .select({
+        ...getTableColumns(regularPaymentProfiles),
+        tenant_name: tenants.name,
+      })
       .from(regularPaymentProfiles)
+      .leftJoin(tenants, eq(tenants.id, regularPaymentProfiles.tenant_id))
       .where(where)
       .orderBy(desc(regularPaymentProfiles.created_at))
       .limit(LIST_LIMITS.medium);
@@ -115,7 +119,7 @@ regularPaymentsRouter.delete('/regular-payments/:id', requireAuth, requireTenant
 regularPaymentsRouter.get(
   '/regular-payments/:id/periods',
   requireAuth,
-  requireTenant,
+  requireTenantOrAggregate,
   async (req, res, next) => {
     try {
       const db = getDb();
@@ -125,7 +129,7 @@ regularPaymentsRouter.get(
         .where(
           and(
             eq(regularPaymentPeriods.profile_id, String(req.params.id ?? '')),
-            eq(regularPaymentPeriods.tenant_id, req.activeTenantId!),
+            tenantScope(req, regularPaymentPeriods.tenant_id),
           ),
         )
         .orderBy(asc(regularPaymentPeriods.due_date));
