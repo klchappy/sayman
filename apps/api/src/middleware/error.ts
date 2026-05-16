@@ -3,6 +3,46 @@ import { ZodError } from 'zod';
 import { isProd } from '../config/env';
 import { logger } from '../config/logger';
 import { HttpError } from '../lib/helpers';
+import { getDb, supportTickets } from '@sayman/db';
+
+/**
+ * 500 hatası geldiğinde otomatik destek talebi aç — kullanıcı sessizce kaybetmesin.
+ * Best-effort: ticket yaratamazsa loglar ama response'u etkilemez.
+ *
+ * De-duplication: aynı user + aynı route_path + 1 saat içinde varsa
+ * mevcut ticket'a occurrence eklenir, yeni açılmaz.
+ */
+async function openAutoTicket(
+  err: Error,
+  req: { activeOrgId?: string; activeTenantId?: string; authUser?: { id: string }; path: string; headers: Record<string, unknown> },
+): Promise<void> {
+  try {
+    if (!req.activeOrgId) return; // org context yoksa ticket bağlayamayız
+    const db = getDb();
+    const title = `[500] ${req.path}: ${err.name ?? 'Error'}`.slice(0, 250);
+    await db.insert(supportTickets).values({
+      organization_id: req.activeOrgId,
+      tenant_id: req.activeTenantId ?? null,
+      user_id: req.authUser?.id ?? null,
+      title,
+      description: (err.message ?? '').slice(0, 5000),
+      category: 'auto_error',
+      priority: 'high',
+      status: 'open',
+      error_context: {
+        source: 'backend_500',
+        route_path: req.path,
+        error_name: err.name,
+        stack: (err.stack ?? '').slice(0, 20000),
+        user_agent: String(req.headers['user-agent'] ?? '').slice(0, 500),
+        occurrences: 1,
+        first_seen_at: new Date().toISOString(),
+      },
+    });
+  } catch (innerErr) {
+    logger.warn({ err: innerErr }, 'auto-ticket yazılamadı (errorHandler içinde)');
+  }
+}
 
 export const notFound: RequestHandler = (req, res) => {
   res.status(404).json({ error: 'not_found', code: 'NOT_FOUND', path: req.path });
@@ -60,10 +100,22 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   }
 
   logger.error({ err, path: req.path }, 'Unhandled error');
+
+  // Otomatik destek talebi aç — kullanıcı sessizce kaybetmesin.
+  // Best-effort, response'u beklemez.
+  void openAutoTicket(err as Error, {
+    activeOrgId: (req as unknown as { activeOrgId?: string }).activeOrgId,
+    activeTenantId: (req as unknown as { activeTenantId?: string }).activeTenantId,
+    authUser: (req as unknown as { authUser?: { id: string } }).authUser,
+    path: req.path,
+    headers: req.headers as Record<string, unknown>,
+  });
+
   res.status(500).json({
     error: isProd
-      ? 'Sunucu hatası, lütfen daha sonra tekrar deneyin.'
+      ? 'Sunucu hatası kaydedildi, destek talebi otomatik açıldı.'
       : (err as Error).message ?? 'internal_error',
     code: 'INTERNAL',
+    auto_support_ticket: true,
   });
 };

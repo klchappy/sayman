@@ -71,6 +71,7 @@ import { reportsBalanceRouter } from './reports-balance';
 import { riskScoreRouter } from './risk-score';
 import { savedSearchesRouter } from './saved-searches';
 import { reviewQueueRouter } from './review-queue';
+import { supportRouter } from './support';
 
 export const apiRouter = Router();
 
@@ -263,3 +264,6 @@ apiRouter.use(savedSearchesRouter);
 
 // Review queue (otomatik yaratılan kayıt doğrulama)
 apiRouter.use(reviewQueueRouter);
+
+// Destek talepleri (manuel + ErrorBoundary auto + 500 auto)
+apiRouter.use(supportRouter);

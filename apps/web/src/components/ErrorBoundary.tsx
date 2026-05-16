@@ -3,10 +3,12 @@
  *
  * Çöken bir component tüm UI'ı patlatmasın — graceful "Bir şeyler ters gitti"
  * ekranı + reload butonu. Sentry varsa otomatik raporlar.
+ * Ayrıca backend'e otomatik destek talebi açar (POST /support/tickets/auto-error).
  */
 import * as Sentry from '@sentry/react';
-import { AlertCircle, RotateCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RotateCw } from 'lucide-react';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { api } from '../lib/api';
 
 interface Props {
   children: ReactNode;
@@ -15,23 +17,55 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  ticketStatus: 'idle' | 'sending' | 'sent' | 'failed';
+  ticketId: string | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  override state: State = { hasError: false, error: null };
+  override state: State = {
+    hasError: false,
+    error: null,
+    ticketStatus: 'idle',
+    ticketId: null,
+  };
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, ticketStatus: 'idle', ticketId: null };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
     // Sentry varsa raporla
     Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
     console.error('[ErrorBoundary]', error, info);
+
+    // Backend'e otomatik destek talebi aç (best-effort)
+    this.setState({ ticketStatus: 'sending' });
+    api
+      .post<{ data: { id?: string; deduplicated?: boolean } }>('/support/tickets/auto-error', {
+        title: `Frontend crash: ${error.name}: ${error.message}`.slice(0, 250),
+        description: error.message,
+        error_context: {
+          url: window.location.href,
+          route_path: window.location.pathname,
+          stack: error.stack?.slice(0, 20000),
+          component_stack: info.componentStack?.slice(0, 20000),
+          user_agent: navigator.userAgent,
+          error_name: error.name,
+        },
+      })
+      .then((res) => {
+        this.setState({
+          ticketStatus: 'sent',
+          ticketId: res.data.data?.id ?? null,
+        });
+      })
+      .catch(() => {
+        this.setState({ ticketStatus: 'failed' });
+      });
   }
 
   reset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, ticketStatus: 'idle', ticketId: null });
   };
 
   override render() {
@@ -44,6 +78,26 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-brand-600 mb-4">
               Hata kaydedildi. Sayfayı yenileyerek devam edebilirsin.
             </p>
+
+            {/* Otomatik destek talebi durumu */}
+            {this.state.ticketStatus === 'sending' && (
+              <div className="mb-3 p-2 rounded bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300">
+                Destek talebi açılıyor…
+              </div>
+            )}
+            {this.state.ticketStatus === 'sent' && (
+              <div className="mb-3 p-2 rounded bg-emerald-50 dark:bg-emerald-900/20 text-xs text-emerald-700 dark:text-emerald-300 flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="size-3.5" />
+                Destek talebi otomatik açıldı. /destek sayfasından takip edebilirsin.
+              </div>
+            )}
+            {this.state.ticketStatus === 'failed' && (
+              <div className="mb-3 p-2 rounded bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
+                Destek talebi gönderilemedi (bağlantı yok olabilir). /destek sayfasından manuel
+                bildirebilirsin.
+              </div>
+            )}
+
             {this.state.error && (
               <details className="text-left mb-4 text-xs">
                 <summary className="cursor-pointer text-brand-500">Teknik detay</summary>

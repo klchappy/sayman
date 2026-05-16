@@ -107,6 +107,9 @@ const ImportPage = lazy(() =>
 const ReviewQueuePage = lazy(() =>
   import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueuePage })),
 );
+const SupportPage = lazy(() =>
+  import('./pages/Support').then((m) => ({ default: m.SupportPage })),
+);
 const InboundWebhooksPage = lazy(() =>
   import('./pages/InboundWebhooks').then((m) => ({ default: m.InboundWebhooksPage })),
 );
@@ -353,6 +356,14 @@ export default function App() {
           element={
             <Suspense fallback={<PageFallback />}>
               <ReviewQueuePage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/destek"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SupportPage />
             </Suspense>
           }
         />
