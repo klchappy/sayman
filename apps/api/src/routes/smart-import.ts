@@ -18,6 +18,7 @@ import JSZip from 'jszip';
 import multer from 'multer';
 import { createExtractorFromData } from 'node-unrar-js';
 import * as XLSX from 'xlsx';
+import { z } from 'zod';
 import {
   getDb,
   payableItems,
@@ -222,8 +223,12 @@ smartImportRouter.post(
       //      Bu sayede 30 MB ZIP'i commit'te tekrar upload etmeye gerek yok.
       let f: CachedFile;
       let fileHash: string;
-      const cacheKey =
-        typeof req.body?.cache_key === 'string' ? req.body.cache_key : undefined;
+      // cache_key: SHA256 hex string (64 char). Zod ile şekil doğrulaması — saldırgan
+      // rastgele string göndererek getCachedPreview'i sondajlayamaz.
+      const cacheKeyParse = z
+        .object({ cache_key: z.string().regex(/^[a-f0-9]{64}$/).optional() })
+        .safeParse(req.body ?? {});
+      const cacheKey = cacheKeyParse.success ? cacheKeyParse.data.cache_key : undefined;
 
       if (cacheKey) {
         const cached = getCachedPreview<CachedFile>(cacheKey, tenantId, userId);

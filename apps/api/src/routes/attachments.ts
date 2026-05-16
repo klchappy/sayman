@@ -87,14 +87,26 @@ attachmentsRouter.post(
   upload.single('file'),
   async (req, res, next) => {
     try {
-      const relatedTable = String(req.query.related_table ?? req.body.related_table ?? '');
-      const relatedId = String(req.query.related_id ?? req.body.related_id ?? '');
-      const description: string | null = (req.body.description ?? null) as string | null;
+      // Multipart form gönderildiği için body string olarak gelir; query veya
+      // body'den oku, zod ile validate et (sized + format).
+      const meta = z
+        .object({
+          related_table: z.string().min(1).max(64),
+          related_id: z.string().uuid(),
+          description: z.string().max(500).optional().nullable(),
+        })
+        .parse({
+          related_table: req.query.related_table ?? req.body.related_table ?? '',
+          related_id: req.query.related_id ?? req.body.related_id ?? '',
+          description: req.body.description ?? null,
+        });
+      const relatedTable = meta.related_table;
+      const relatedId = meta.related_id;
+      const description = meta.description ?? null;
 
       if (!ALLOWED_TABLES.has(relatedTable)) {
         throw new HttpError(400, `Geçersiz related_table: ${relatedTable}`, 'INVALID_TABLE');
       }
-      if (!relatedId) throw new HttpError(400, 'related_id gerekli', 'NO_ID');
       if (!req.file) throw new HttpError(400, 'Dosya gerekli (field name: file)', 'NO_FILE');
 
       const file = req.file;

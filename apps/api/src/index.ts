@@ -63,7 +63,19 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: '512kb' }));
+// Raw body captured for HMAC signature verification (whatsapp inbound).
+// Meta WhatsApp Business API imzayı raw bytes üzerinden hesaplar; JSON re-serialize
+// edilirse HMAC eşleşmez. Bu yüzden parse SIRASINDA buf'u sakla.
+app.use(
+  express.json({
+    limit: '512kb',
+    verify: (req, _res, buf) => {
+      if (req.url?.includes('/whatsapp/inbound')) {
+        (req as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      }
+    },
+  }),
+);
 app.use(
   pinoHttp({
     logger,

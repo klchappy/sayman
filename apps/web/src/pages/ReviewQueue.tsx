@@ -151,16 +151,29 @@ export function ReviewQueuePage() {
     },
   });
 
+  // Onay/red sonrası: review-queue + ilgili kayıtların ana listeleri + summary
+  // badge'leri de invalidate edilmeli, aksi halde kullanıcı eski sayı görür.
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['review-queue'] });
+    qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
+    qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
+    qc.invalidateQueries({ queryKey: ['payables'] });
+    qc.invalidateQueries({ queryKey: ['sales-invoices'] });
+    qc.invalidateQueries({ queryKey: ['cari-list'] });
+    qc.invalidateQueries({ queryKey: ['companies'] });
+    qc.invalidateQueries({ queryKey: ['persons'] });
+  };
+
   const approve = useMutation({
     mutationFn: async ({ type, id }: { type: string; id: string }) =>
       api.post(`/review-queue/${type}/${id}/approve`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }), // tüm scope variant'lar
+    onSuccess: invalidateAll,
   });
 
   const reject = useMutation({
     mutationFn: async ({ type, id }: { type: string; id: string }) =>
       api.delete(`/review-queue/${type}/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['review-queue'] }), // tüm scope variant'lar
+    onSuccess: invalidateAll,
   });
 
   // Bulk approve / reject — tüm seçili kayıtlar için tek API çağrısı
@@ -182,7 +195,7 @@ export function ReviewQueuePage() {
       return res.data.data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['review-queue'] });
+      invalidateAll();
       setSelected(new Set());
     },
   });
@@ -198,7 +211,7 @@ export function ReviewQueuePage() {
       return res.data.data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['review-queue'] });
+      invalidateAll();
       setSelected(new Set());
     },
   });

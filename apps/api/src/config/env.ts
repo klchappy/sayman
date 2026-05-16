@@ -100,6 +100,12 @@ const envSchema = z.object({
     z.string().min(8).optional(),
   ),
 
+  /** WhatsApp App Secret — POST /whatsapp/inbound için x-hub-signature-256 doğrulama */
+  WHATSAPP_APP_SECRET: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(8).optional(),
+  ),
+
   /** Upstash Redis — cluster-safe rate limit için (yoksa in-memory fallback) */
   UPSTASH_REDIS_REST_URL: z.preprocess(
     (v) => (v === '' ? undefined : v),

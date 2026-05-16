@@ -58,6 +58,7 @@ function fmtTRY(v: string | number) {
 
 export function PaymentApprovalsPage() {
   const me = useAuth((s) => s.me);
+  const active = useAuth((s) => s.active);
   const qc = useQueryClient();
   const confirmBool = useConfirmBool();
   const [tab, setTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
@@ -65,16 +66,23 @@ export function PaymentApprovalsPage() {
   const [reason, setReason] = useState('');
 
   const q = useQuery({
-    queryKey: ['payment-approvals', tab],
+    queryKey: ['payment-approvals', active.tenantSlug, active.aggregate, tab],
     queryFn: async () => {
       const res = await api.get<{ data: ApprovalRow[] }>(`/payment-approvals?status=${tab}`);
       return res.data.data;
     },
+    enabled: !!active.tenantSlug || active.aggregate === true,
   });
 
   const approve = useMutation({
     mutationFn: async (id: string) => api.post(`/payment-approvals/${id}/approve`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payment-approvals'] }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['payment-approvals'] });
+      // Onaylanan payment payable detail'i etkiler → cache temizle
+      qc.invalidateQueries({ queryKey: ['payable'] });
+      qc.invalidateQueries({ queryKey: ['payables'] });
+      void id;
+    },
   });
 
   const reject = useMutation({
@@ -82,6 +90,8 @@ export function PaymentApprovalsPage() {
       api.post(`/payment-approvals/${id}/reject`, { reason }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payment-approvals'] });
+      qc.invalidateQueries({ queryKey: ['payable'] });
+      qc.invalidateQueries({ queryKey: ['payables'] });
       setRejectModal(null);
       setReason('');
     },

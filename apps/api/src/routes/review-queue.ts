@@ -780,28 +780,32 @@ reviewQueueRouter.post(
         .where(and(eq(companies.id, target_id), eq(companies.organization_id, orgId)));
       if (!source || !target) throw new HttpError(404, 'Şirket bulunamadı');
 
-      // payable_items.company_id'i taşı — SADECE AKTİF TENANT kapsamında
-      const moved = await db
-        .update(payableItems)
-        .set({ company_id: target.id, supplier_name: target.name, updated_at: new Date() })
-        .where(
-          and(
-            eq(payableItems.company_id, sourceId),
-            eq(payableItems.tenant_id, tenantId),
-          ),
-        )
-        .returning({ id: payableItems.id });
+      // Merge atomik: payable taşı + remaining count + conditional delete
+      // tek transaction'da yapılmalı. Aksi halde count ile delete arasında
+      // başka bir process source company'e yeni payable yazabilir → orphan.
+      const { moved, remainingCount } = await db.transaction(async (tx) => {
+        const movedRows = await tx
+          .update(payableItems)
+          .set({ company_id: target.id, supplier_name: target.name, updated_at: new Date() })
+          .where(
+            and(
+              eq(payableItems.company_id, sourceId),
+              eq(payableItems.tenant_id, tenantId),
+            ),
+          )
+          .returning({ id: payableItems.id });
 
-      // Source şirketi sadece bu tenant referansı kaldıysa ve başka tenant'a bağlı payable kalmadıysa sil
-      const [remaining] = await db
-        .select({ cnt: sql<string>`COUNT(*)` })
-        .from(payableItems)
-        .where(eq(payableItems.company_id, sourceId));
-      const remainingCount = Number(remaining?.cnt ?? 0);
+        const [remaining] = await tx
+          .select({ cnt: sql<string>`COUNT(*)` })
+          .from(payableItems)
+          .where(eq(payableItems.company_id, sourceId));
+        const rc = Number(remaining?.cnt ?? 0);
 
-      if (remainingCount === 0) {
-        await db.delete(companies).where(eq(companies.id, sourceId));
-      }
+        if (rc === 0) {
+          await tx.delete(companies).where(eq(companies.id, sourceId));
+        }
+        return { moved: movedRows, remainingCount: rc };
+      });
 
       await auditFromRequest(req, {
         organization_id: orgId,

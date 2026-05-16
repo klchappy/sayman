@@ -12,9 +12,10 @@
  *   3. Verify token: WHATSAPP_VERIFY_TOKEN env değeri ile aynı
  *   4. Subscribe: messages, message_status
  */
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
-import { env, isConfigured } from '../config/env';
+import { env, isConfigured, isProd } from '../config/env';
 import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireOrg } from '../lib/helpers';
@@ -23,14 +24,53 @@ import { requireAuth } from '../middleware/auth';
 
 export const whatsappRouter = Router();
 
-whatsappRouter.get('/whatsapp/status', requireAuth, requireOrg, async (_req, res) => {
-  res.json({
-    data: {
-      configured: isConfigured.whatsapp,
-      has_verify_token: Boolean(env.WHATSAPP_VERIFY_TOKEN),
-      phone_number_id: env.WHATSAPP_PHONE_NUMBER_ID ?? null,
-    },
-  });
+/**
+ * Meta WhatsApp imza doğrulaması — x-hub-signature-256 header'ı.
+ * Production'da WHATSAPP_APP_SECRET zorunlu; geliştirme ortamında secret
+ * yapılandırılmadıysa atlanır (uyarı log'u ile).
+ */
+function verifyWhatsappSignature(
+  rawBody: Buffer | undefined,
+  signatureHeader: string | undefined,
+): { ok: boolean; reason?: string } {
+  if (!env.WHATSAPP_APP_SECRET) {
+    if (isProd) return { ok: false, reason: 'app_secret_not_configured' };
+    logger.warn('WHATSAPP_APP_SECRET yok — dev modda imza dogrulama atlandi');
+    return { ok: true };
+  }
+  if (!rawBody) return { ok: false, reason: 'no_raw_body' };
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
+    return { ok: false, reason: 'missing_header' };
+  }
+  const provided = signatureHeader.slice(7);
+  const expected = crypto
+    .createHmac('sha256', env.WHATSAPP_APP_SECRET)
+    .update(rawBody)
+    .digest('hex');
+  try {
+    const a = Buffer.from(provided, 'hex');
+    const b = Buffer.from(expected, 'hex');
+    if (a.length !== b.length) return { ok: false, reason: 'length_mismatch' };
+    if (!crypto.timingSafeEqual(a, b)) return { ok: false, reason: 'sig_mismatch' };
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'compare_failed' };
+  }
+}
+
+whatsappRouter.get('/whatsapp/status', requireAuth, requireOrg, async (_req, res, next) => {
+  try {
+    res.json({
+      data: {
+        configured: isConfigured.whatsapp,
+        has_verify_token: Boolean(env.WHATSAPP_VERIFY_TOKEN),
+        has_app_secret: Boolean(env.WHATSAPP_APP_SECRET),
+        phone_number_id: env.WHATSAPP_PHONE_NUMBER_ID ?? null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Meta GET verify (hub.mode=subscribe + hub.verify_token + hub.challenge)
@@ -45,8 +85,17 @@ whatsappRouter.get('/whatsapp/inbound', (req, res) => {
   res.status(403).send('forbidden');
 });
 
-// Meta POST inbound — log only (MVP)
+// Meta POST inbound — signature verified
 whatsappRouter.post('/whatsapp/inbound', async (req, res) => {
+  // İmza doğrula — saldırgan sahte mesaj POST'layamasın
+  const sig = req.headers['x-hub-signature-256'];
+  const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
+  const verify = verifyWhatsappSignature(rawBody, typeof sig === 'string' ? sig : undefined);
+  if (!verify.ok) {
+    logger.warn({ reason: verify.reason }, 'whatsapp inbound rejected — invalid signature');
+    res.status(403).send('forbidden');
+    return;
+  }
   try {
     const messages = parseWhatsAppInbound(req.body);
     for (const m of messages) {

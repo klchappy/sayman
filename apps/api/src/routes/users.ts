@@ -135,17 +135,21 @@ usersRouter.get(
 // GET /v1/users/me/permissions — mevcut user'ın izinleri (UI guard için)
 // ---------------------------------------------------------------------------
 
-usersRouter.get('/users/me/permissions', requireAuth, requireOrg, async (req, res) => {
-  const role = (req.effectiveRole ?? null) as Role | null;
-  const set = role ? ROLE_PERMISSIONS[role] : null;
-  res.json({
-    data: {
-      role,
-      role_label: role ? ROLE_LABELS[role] : null,
-      permissions: set ? [...set] : [],
-      all_permissions: [...PERMISSIONS],
-    },
-  });
+usersRouter.get('/users/me/permissions', requireAuth, requireOrg, async (req, res, next) => {
+  try {
+    const role = (req.effectiveRole ?? null) as Role | null;
+    const set = role ? ROLE_PERMISSIONS[role] : null;
+    res.json({
+      data: {
+        role,
+        role_label: role ? ROLE_LABELS[role] : null,
+        permissions: set ? [...set] : [],
+        all_permissions: [...PERMISSIONS],
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -144,51 +144,52 @@ async function generateOfficialPayments(): Promise<number> {
 
   for (const p of profiles) {
     const freqM = FREQ_MONTHS[p.frequency] ?? 1;
-
-    // Son period_label'i bul, oradan ilerle
-    const [lastPeriod] = await db
-      .select()
-      .from(officialPaymentPeriods)
-      .where(eq(officialPaymentPeriods.profile_id, p.id))
-      .orderBy(desc(officialPaymentPeriods.period_label))
-      .limit(1);
-
-    let cursor: Date;
-    if (lastPeriod) {
-      const lastDate = new Date(lastPeriod.period_label + '-01T00:00:00Z');
-      cursor = addMonths(lastDate, freqM);
-    } else {
-      cursor = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-    }
-
-    while (cursor <= endDate) {
-      const periodLabel = dateToYM(cursor);
-      const dueDate = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), 15)); // ayın 15'i default
-
-      const [existing] = await db
-        .select({ id: officialPaymentPeriods.id })
+    // Tek profilin tüm period'ları atomik — cron crash'ında yarım kalmasın
+    await db.transaction(async (tx) => {
+      const [lastPeriod] = await tx
+        .select()
         .from(officialPaymentPeriods)
-        .where(
-          and(
-            eq(officialPaymentPeriods.profile_id, p.id),
-            eq(officialPaymentPeriods.period_label, periodLabel),
-          ),
-        );
+        .where(eq(officialPaymentPeriods.profile_id, p.id))
+        .orderBy(desc(officialPaymentPeriods.period_label))
+        .limit(1);
 
-      if (!existing) {
-        await db.insert(officialPaymentPeriods).values({
-          tenant_id: p.tenant_id,
-          profile_id: p.id,
-          period_label: periodLabel,
-          due_date: dueDate.toISOString().slice(0, 10),
-          amount: p.typical_amount ?? '0',
-          status: 'pending',
-        });
-        created++;
+      let cursor: Date;
+      if (lastPeriod) {
+        const lastDate = new Date(lastPeriod.period_label + '-01T00:00:00Z');
+        cursor = addMonths(lastDate, freqM);
+      } else {
+        cursor = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
       }
 
-      cursor = addMonths(cursor, freqM);
-    }
+      while (cursor <= endDate) {
+        const periodLabel = dateToYM(cursor);
+        const dueDate = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), 15));
+
+        const [existing] = await tx
+          .select({ id: officialPaymentPeriods.id })
+          .from(officialPaymentPeriods)
+          .where(
+            and(
+              eq(officialPaymentPeriods.profile_id, p.id),
+              eq(officialPaymentPeriods.period_label, periodLabel),
+            ),
+          );
+
+        if (!existing) {
+          await tx.insert(officialPaymentPeriods).values({
+            tenant_id: p.tenant_id,
+            profile_id: p.id,
+            period_label: periodLabel,
+            due_date: dueDate.toISOString().slice(0, 10),
+            amount: p.typical_amount ?? '0',
+            status: 'pending',
+          });
+          created++;
+        }
+
+        cursor = addMonths(cursor, freqM);
+      }
+    });
   }
 
   return created;

@@ -27,6 +27,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { SavedFilters } from '../components/SavedFilters';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 interface CariRow {
   id: string;
@@ -94,9 +95,10 @@ function fmtTRY(v: number | string) {
 export function CariListPage() {
   const [search, setSearch] = useState('');
   const [type, setType] = useState<'all' | 'customer' | 'supplier'>('all');
+  const active = useAuth((s) => s.active);
 
   const q = useQuery({
-    queryKey: ['cari-list', type, search],
+    queryKey: ['cari-list', active.tenantSlug, active.aggregate, type, search],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (type !== 'all') params.set('type', type);
@@ -104,6 +106,7 @@ export function CariListPage() {
       const res = await api.get<{ data: CariRow[] }>(`/cari?${params}`);
       return res.data.data;
     },
+    enabled: !!active.tenantSlug || active.aggregate === true,
   });
 
   return (
@@ -260,10 +263,11 @@ export function CariDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 100;
+  const active = useAuth((s) => s.active);
 
   const q = useQuery({
-    queryKey: ['cari-detail', id],
-    enabled: !!id,
+    queryKey: ['cari-detail', active.tenantSlug, active.aggregate, id],
+    enabled: !!id && (!!active.tenantSlug || active.aggregate === true),
     queryFn: async () => {
       const res = await api.get<{ data: CariDetail }>(`/cari/${id}`);
       return res.data.data;
@@ -271,8 +275,8 @@ export function CariDetailPage() {
   });
 
   const movements = useQuery({
-    queryKey: ['cari-movements', id, page],
-    enabled: !!id,
+    queryKey: ['cari-movements', active.tenantSlug, active.aggregate, id, page],
+    enabled: !!id && (!!active.tenantSlug || active.aggregate === true),
     queryFn: async () => {
       const res = await api.get<{ data: Movement[] }>(
         `/cari/${id}/movements?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`,

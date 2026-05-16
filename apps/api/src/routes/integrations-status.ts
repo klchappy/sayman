@@ -28,7 +28,8 @@ integrationsStatusRouter.get(
   '/integrations/status',
   requireAuth,
   requireOrg,
-  async (_req, res) => {
+  async (_req, res, next) => {
+    try {
     const integrations: IntegrationStatus[] = [
       {
         key: 'resend',
@@ -148,5 +149,8 @@ integrationsStatusRouter.get(
     ];
 
     res.json({ data: integrations, meta: { env_has_db: Boolean(env.DATABASE_URL) } });
+    } catch (err) {
+      next(err);
+    }
   },
 );

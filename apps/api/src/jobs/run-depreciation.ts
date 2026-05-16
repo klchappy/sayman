@@ -93,8 +93,19 @@ export async function runDepreciation(): Promise<DepreciationRunResult> {
       const bookValue = Number(a.purchase_cost) - newAccumulated;
 
       // Entry + asset update atomik — concurrent depreciation job çalışırsa
-      // accumulated_depreciation tutarsızlaşmasın
+      // accumulated_depreciation tutarsızlaşmasın. Existing check de tx
+      // içinde — iki paralel job aynı period için yarış edemesin.
       await db.transaction(async (tx) => {
+        const dupCheck = await tx
+          .select({ id: depreciationEntries.id })
+          .from(depreciationEntries)
+          .where(
+            and(
+              eq(depreciationEntries.asset_id, a.id),
+              eq(depreciationEntries.period, period),
+            ),
+          );
+        if (dupCheck.length > 0) return; // başka instance araya girmiş
         await tx.insert(depreciationEntries).values({
           tenant_id: a.tenant_id,
           asset_id: a.id,

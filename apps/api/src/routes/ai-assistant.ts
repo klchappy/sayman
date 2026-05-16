@@ -304,6 +304,10 @@ aiAssistantRouter.post('/ai/ask', requireAuth, requireOrg, async (req, res, next
   }
 });
 
-aiAssistantRouter.get('/ai/status', requireAuth, async (_req, res) => {
-  res.json({ data: { configured: isConfigured.ai } });
+aiAssistantRouter.get('/ai/status', requireAuth, async (_req, res, next) => {
+  try {
+    res.json({ data: { configured: isConfigured.ai } });
+  } catch (err) {
+    next(err);
+  }
 });

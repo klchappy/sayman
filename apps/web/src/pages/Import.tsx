@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, CheckCircle2, FileUp, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { Dropzone } from '../components/Dropzone';
@@ -117,6 +118,7 @@ interface SmartImportResult {
 function SmartImportSection() {
   const active = useAuth((s) => s.active);
   const isAdmin = useAuth((s) => s.isAdmin());
+  const qc = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<SmartPreview | null>(null);
   const [imported, setImported] = useState<SmartImportResult | null>(null);
@@ -194,6 +196,17 @@ function SmartImportSection() {
       setImported(res.data.data);
       setPreview(null);
       setStage('idle');
+
+      // Smart Import yeni payable + (varsa) yeni company yarattı; tüm ilgili
+      // cache'leri invalidate et — kullanıcı Faturalar/Cari/Review Queue'ya
+      // gidince güncel veriyi görsün.
+      qc.invalidateQueries({ queryKey: ['review-queue'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
+      qc.invalidateQueries({ queryKey: ['payables'] });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['cari-list'] });
+      qc.invalidateQueries({ queryKey: ['inbox'] });
     } catch (e) {
       const err = e as { response?: { data?: { error?: string; message?: string } } };
       setError(err.response?.data?.message ?? err.response?.data?.error ?? (e as Error).message);

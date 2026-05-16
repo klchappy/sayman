@@ -83,6 +83,8 @@ export function PayableDetailPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payable', id] });
       qc.invalidateQueries({ queryKey: ['payables'] });
+      qc.invalidateQueries({ queryKey: ['inbox'] }); // ödendi → overdue/yaklaşan kaybolur
+      qc.invalidateQueries({ queryKey: ['cari-list'] }); // bakiye değişir
       setShowForm(false);
     },
   });

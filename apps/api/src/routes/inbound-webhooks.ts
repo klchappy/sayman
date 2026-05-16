@@ -69,8 +69,11 @@ inboundWebhooksRouter.post('/inbound/:slug', async (req, res, next) => {
       return;
     }
 
-    // Idempotency: caller X-Idempotency-Key gönderirse duplicate delivery DB seviyesinde yakalanır
-    const idempotencyKey = String(req.headers['x-idempotency-key'] ?? '').slice(0, 128) || null;
+    // Idempotency: caller X-Idempotency-Key gönderirse bunu kullanırız; aksi
+    // halde HMAC imzasını idempotency key olarak kullanırız — aynı body ile
+    // gelen 2. çağrı duplicate sayılır (zaten imza geçti, yani aynı içerik).
+    const callerKey = String(req.headers['x-idempotency-key'] ?? '').slice(0, 128);
+    const idempotencyKey = callerKey || `sig:${expected.slice(0, 60)}`;
     if (idempotencyKey) {
       const [existing] = await db
         .select({ id: inboundWebhookEvents.id, created_record_id: inboundWebhookEvents.created_record_id })
