@@ -796,6 +796,21 @@ smartImportRouter.post(
         // Auto-supplier + bulk insert artık tek transaction'da — kısmi
         // başarı (örn. yarıda supplier yaratıldı ama insert'e geçemedi)
         // olamaz, hep ya tamam ya hiç.
+        // Smart Import payable kayıtlarını HER ZAMAN review queue'ya düşür —
+        // XML path'ında olduğu gibi (tutarlılık). CSV bulk auto-import güvenilir
+        // değildir; tek tek onaylanmalı. Kullanıcı isterse onay queue'sundan
+        // toplu onaylar. Bu sayede 'CSV yüklediğim faturalar nerde?' kafa
+        // karışıklığı da Onay Bekleyenler'e tek noktaya odaklanır.
+        if (detected === 'payables') {
+          for (const row of validatedRows) {
+            (row as Record<string, unknown>).needs_review = true;
+            (row as Record<string, unknown>).auto_created_source = 'smart_import_csv';
+          }
+        }
+
+        // Auto-supplier + bulk insert artık tek transaction'da — kısmi
+        // başarı (örn. yarıda supplier yaratıldı ama insert'e geçemedi)
+        // olamaz, hep ya tamam ya hiç.
         const db = getDb();
         let newSuppliers = 0;
         const insertedIds = await db.transaction(async (tx) => {
