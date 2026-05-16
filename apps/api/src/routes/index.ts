@@ -74,6 +74,7 @@ import { reviewQueueRouter } from './review-queue';
 import { supportRouter } from './support';
 import { archiveRouter } from './archive';
 import { reportsConsolidatedRouter } from './reports-consolidated';
+import { referenceDataRouter } from './reference-data';
 
 export const apiRouter = Router();
 
@@ -275,3 +276,6 @@ apiRouter.use(archiveRouter);
 
 // Konsolide raporlar (cross-tenant P&L + Bilanço) — admin
 apiRouter.use(reportsConsolidatedRouter);
+
+// Sistem-geneli referans veri (Türkiye bankaları, resmi kurumlar, devlet kurumları)
+apiRouter.use(referenceDataRouter);

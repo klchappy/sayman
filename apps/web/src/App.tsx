@@ -141,6 +141,7 @@ const ArchivePage = lazy(() => import('./pages/Archive').then((m) => ({ default:
 const ConsolidatedReportsPage = lazy(() =>
   import('./pages/ConsolidatedReports').then((m) => ({ default: m.ConsolidatedReportsPage })),
 );
+const ReferencePage = lazy(() => import('./pages/Reference').then((m) => ({ default: m.ReferencePage })));
 const BanksPage = lazy(() =>
   import('./pages/master-data/Banks').then((m) => ({ default: m.BanksPage })),
 );
@@ -384,6 +385,14 @@ export default function App() {
           element={
             <Suspense fallback={<PageFallback />}>
               <ConsolidatedReportsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/referans"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <ReferencePage />
             </Suspense>
           }
         />
