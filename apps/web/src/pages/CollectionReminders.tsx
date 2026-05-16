@@ -112,6 +112,15 @@ export function CollectionRemindersPage() {
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) =>
       api.patch(`/collection-reminder-rules/${id}`, { is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collection-rules'] }),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Güncelleme başarısız',
+      );
+    },
   });
 
   if (!active.tenantSlug && !active.aggregate) {

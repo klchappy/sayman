@@ -76,6 +76,16 @@ export function PaymentApprovalsPage() {
     enabled: !!active.tenantSlug || active.aggregate === true,
   });
 
+  const showMutationError = (e: unknown) => {
+    const err = e as { response?: { data?: { error?: string; message?: string } }; message?: string };
+    alert(
+      err.response?.data?.message ??
+        err.response?.data?.error ??
+        err.message ??
+        'İşlem başarısız',
+    );
+  };
+
   const approve = useMutation({
     mutationFn: async (id: string) => api.post(`/payment-approvals/${id}/approve`),
     onSuccess: (_data, id) => {
@@ -85,6 +95,7 @@ export function PaymentApprovalsPage() {
       qc.invalidateQueries({ queryKey: ['payables'] });
       void id;
     },
+    onError: showMutationError,
   });
 
   const reject = useMutation({
@@ -97,11 +108,13 @@ export function PaymentApprovalsPage() {
       setRejectModal(null);
       setReason('');
     },
+    onError: showMutationError,
   });
 
   const cancel = useMutation({
     mutationFn: async (id: string) => api.post(`/payment-approvals/${id}/cancel`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payment-approvals'] }),
+    onError: showMutationError,
   });
 
   return (

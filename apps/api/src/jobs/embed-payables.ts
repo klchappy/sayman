@@ -3,13 +3,7 @@
  * embeddings'i olmayan payable_items'a OpenAI ile vektör üretir
  * (text-embedding-3-small, dim=1024).
  *
- * Maliyet: $0.02/1M token. 10K satır ≈ $0.001.
  * Idempotent: ON CONFLICT (payable_id) UPDATE.
- *
- * NOT: Önceden Voyage AI kullanılıyordu. Migration sonrası model alanı
- * 'voyage-3-lite' olan eski kayıtlar farklı vector space'te — re-embed gerek.
- * Manuel temizlik: DELETE FROM payable_embeddings WHERE model LIKE 'voyage%';
- * Sonra bu cron eksikleri tamamlar.
  */
 import { sql } from 'drizzle-orm';
 import { getDb } from '@sayman/db';

@@ -1,18 +1,12 @@
 /**
  * /v1/search/semantic — OpenAI embeddings (text-embedding-3-small 1024d) + pgvector cosine similarity.
  *
- * NOT: Bu özellik OPENAI_API_KEY env yapılandırıldığında aktif olur. Yoksa 503.
- * Önceden Voyage AI kullanılıyordu; provider değişikliği sonrası eski vektörler
- * (model LIKE 'voyage%') artık karşılaştırılamaz, re-embed gerekir.
+ * OPENAI_API_KEY env'de YA DA UI'dan org-level kayıt edilmişse aktif.
  *
- *   GET /v1/search/semantic?q=...&limit=10
- *     → fatura listesi (en yakın anlam)
+ *   GET /v1/search/semantic?q=...&limit=10  → fatura listesi (en yakın anlam)
+ *   POST /v1/search/embed-pending           → embedding'i olmayan faturaları işle (admin)
  *
- *   POST /v1/search/embed-pending
- *     → henüz embedding'i olmayan tüm fatura için OpenAI'ye istek + DB'ye yaz
- *     (admin only)
- *
- * Maliyet uyarısı: 10K fatura ≈ $0.001 (text-embedding-3-small). Yine de admin tetiklesin.
+ * Maliyet uyarısı: 10K fatura ≈ $0.001. Yine de admin tetiklesin.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Router } from 'express';

@@ -77,14 +77,21 @@ export function TaxCalendarPage() {
     },
   });
 
+  const showErr = (e: unknown) => {
+    const err = e as { response?: { data?: { error?: string; message?: string } }; message?: string };
+    alert(err.response?.data?.message ?? err.response?.data?.error ?? err.message ?? 'İşlem başarısız');
+  };
+
   const regen = useMutation({
     mutationFn: async () => api.post('/tax-calendar/regenerate'),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tax-calendar'] }),
+    onError: showErr,
   });
 
   const complete = useMutation({
     mutationFn: async (id: string) => api.post(`/tax-calendar/${id}/complete`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tax-calendar'] }),
+    onError: showErr,
   });
 
   if (!active.tenantSlug && !active.aggregate) {

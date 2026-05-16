@@ -60,20 +60,55 @@ paymentApprovalsRouter.post(
         );
       if (!p) throw new HttpError(404, 'Fatura bulunamadı');
 
-      const [row] = await db
-        .insert(paymentApprovals)
-        .values({
-          tenant_id: req.activeTenantId!,
-          payable_id: body.payable_id,
-          requested_by_user_id: req.authUser!.id,
-          amount: body.amount,
-          currency: body.currency,
-          method: body.method,
-          reference_no: body.reference_no ?? null,
-          paid_at: body.paid_at,
-          note: body.note ?? null,
-        })
-        .returning();
+      // Önerinin propose'unu + payable.status='waiting_approval' güncellemesini
+      // tek transaction içinde yap → liste sayfasında derhal "onay bekliyor"
+      // rozeti görünür, çift öneri girilemez.
+      const row = await db.transaction(async (trx) => {
+        // Aynı payable için zaten pending bir öneri varsa engelle
+        const [existing] = await trx
+          .select({ id: paymentApprovals.id })
+          .from(paymentApprovals)
+          .where(
+            and(
+              eq(paymentApprovals.payable_id, body.payable_id),
+              eq(paymentApprovals.tenant_id, req.activeTenantId!),
+              eq(paymentApprovals.status, 'pending'),
+            ),
+          );
+        if (existing) {
+          throw new HttpError(
+            409,
+            'Bu fatura için zaten bekleyen bir ödeme önerisi var',
+            'DUPLICATE_APPROVAL',
+          );
+        }
+
+        const [newRow] = await trx
+          .insert(paymentApprovals)
+          .values({
+            tenant_id: req.activeTenantId!,
+            payable_id: body.payable_id,
+            requested_by_user_id: req.authUser!.id,
+            amount: body.amount,
+            currency: body.currency,
+            method: body.method,
+            reference_no: body.reference_no ?? null,
+            paid_at: body.paid_at,
+            note: body.note ?? null,
+          })
+          .returning();
+
+        // Payable.status → waiting_approval (UI'da rozet)
+        // paid/cancelled/archived olanlar zaten engellenmiş olmalı ama defansif kontrol
+        if (!['paid', 'cancelled', 'archived'].includes(p.status)) {
+          await trx
+            .update(payableItems)
+            .set({ status: 'waiting_approval', updated_at: new Date() })
+            .where(eq(payableItems.id, body.payable_id));
+        }
+
+        return newRow;
+      });
 
       await auditFromRequest(req, {
         organization_id: req.activeOrgId!,
@@ -247,15 +282,30 @@ paymentApprovalsRouter.post(
       if (!appr) throw new HttpError(404, 'Onay bulunamadı');
       if (appr.status !== 'pending') throw new HttpError(400, 'Zaten karar verilmiş');
 
-      await db
-        .update(paymentApprovals)
-        .set({
-          status: 'rejected',
-          approver_user_id: req.authUser!.id,
-          decision_reason: reason,
-          decided_at: new Date(),
-        })
-        .where(eq(paymentApprovals.id, appr.id));
+      // Reject + payable.status geri çek (waiting_approval → pending)
+      await db.transaction(async (trx) => {
+        await trx
+          .update(paymentApprovals)
+          .set({
+            status: 'rejected',
+            approver_user_id: req.authUser!.id,
+            decision_reason: reason,
+            decided_at: new Date(),
+          })
+          .where(eq(paymentApprovals.id, appr.id));
+
+        // Payable hâlâ waiting_approval ise pending'e geri al
+        const [pa] = await trx
+          .select({ status: payableItems.status })
+          .from(payableItems)
+          .where(eq(payableItems.id, appr.payable_id));
+        if (pa?.status === 'waiting_approval') {
+          await trx
+            .update(payableItems)
+            .set({ status: 'pending', updated_at: new Date() })
+            .where(eq(payableItems.id, appr.payable_id));
+        }
+      });
 
       await auditFromRequest(req, {
         organization_id: req.activeOrgId!,
@@ -296,10 +346,24 @@ paymentApprovalsRouter.post(
       }
       if (appr.status !== 'pending') throw new HttpError(400, 'Zaten karar verilmiş');
 
-      await db
-        .update(paymentApprovals)
-        .set({ status: 'cancelled', decided_at: new Date() })
-        .where(eq(paymentApprovals.id, appr.id));
+      // Cancel + payable.status geri çek
+      await db.transaction(async (trx) => {
+        await trx
+          .update(paymentApprovals)
+          .set({ status: 'cancelled', decided_at: new Date() })
+          .where(eq(paymentApprovals.id, appr.id));
+
+        const [pa] = await trx
+          .select({ status: payableItems.status })
+          .from(payableItems)
+          .where(eq(payableItems.id, appr.payable_id));
+        if (pa?.status === 'waiting_approval') {
+          await trx
+            .update(payableItems)
+            .set({ status: 'pending', updated_at: new Date() })
+            .where(eq(payableItems.id, appr.payable_id));
+        }
+      });
 
       await auditFromRequest(req, {
         organization_id: req.activeOrgId!,

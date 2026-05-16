@@ -475,6 +475,15 @@ function AISummaryWidget() {
       await api.post('/ai/summary/regenerate');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-summary-today'] }),
+    onError: (e) => {
+      const err = e as { response?: { data?: { error?: string; message?: string } } };
+      alert(
+        err.response?.data?.message ??
+          err.response?.data?.error ??
+          (e as Error).message ??
+          'Özet yenileme başarısız',
+      );
+    },
   });
 
   return (

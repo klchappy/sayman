@@ -13,8 +13,10 @@
  *   4. Subscribe: messages, message_status
  */
 import crypto from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
+import { getDb } from '@sayman/db';
 import { env, isConfigured, isProd } from '../config/env';
 import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
@@ -98,11 +100,69 @@ whatsappRouter.post('/whatsapp/inbound', async (req, res) => {
   }
   try {
     const messages = parseWhatsAppInbound(req.body);
+    const db = getDb();
+
     for (const m of messages) {
       logger.info(
         { from: m.from, text: m.text.slice(0, 100), ts: m.timestamp },
         'whatsapp inbound message',
       );
+
+      // Notification yarat — WhatsApp configured tüm org'ların admin/yönetici
+      // kullanıcılarına. Dedupe: aynı message_id 2. defa gelirse insert yok.
+      try {
+        const orgsWithWa = await db.execute(sql`
+          SELECT DISTINCT organization_id
+          FROM integration_credentials
+          WHERE integration_key = 'whatsapp' AND is_active = true
+        `);
+        const orgs = ((orgsWithWa.rows ?? orgsWithWa) as Array<{ organization_id: string }>).map(
+          (r) => r.organization_id,
+        );
+
+        if (orgs.length === 0) {
+          // env'de yapılandırılmış da olabilir → tüm org adminlerine fan-out
+          // (tek prod tenant senaryosunda makul)
+          const allOrgs = await db.execute(sql`SELECT id FROM organizations LIMIT 100`);
+          orgs.push(
+            ...((allOrgs.rows ?? allOrgs) as Array<{ id: string }>).map((r) => r.id),
+          );
+        }
+
+        for (const orgId of orgs) {
+          const admins = await db.execute(sql`
+            SELECT user_id FROM user_organization_roles
+            WHERE organization_id = ${orgId}::uuid
+              AND role IN ('super_admin', 'organization_admin', 'yonetici')
+          `);
+          const adminIds = ((admins.rows ?? admins) as Array<{ user_id: string }>).map(
+            (r) => r.user_id,
+          );
+
+          for (const userId of adminIds) {
+            const dedupeKey = `whatsapp_inbound:${m.message_id}:${userId}`;
+            await db
+              .execute(sql`
+                INSERT INTO notifications
+                  (user_id, tenant_id, title, body, category, priority, related_table, related_id, action_url, dedupe_key, metadata)
+                VALUES (
+                  ${userId}::uuid, NULL,
+                  ${'WhatsApp: ' + m.from},
+                  ${m.text.slice(0, 500)},
+                  'system'::notification_category, 'info'::notification_priority,
+                  'whatsapp_inbound', NULL, '/integrations',
+                  ${dedupeKey}, ${JSON.stringify({ from: m.from, message_id: m.message_id, ts: m.timestamp })}::jsonb
+                )
+                ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
+              `)
+              .catch((err) => {
+                logger.warn({ err, userId }, 'whatsapp notification insert failed');
+              });
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'whatsapp inbound notification fan-out failed');
+      }
     }
     res.status(200).json({ received: messages.length });
   } catch (err) {

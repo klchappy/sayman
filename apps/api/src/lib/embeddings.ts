@@ -4,19 +4,8 @@
  * Env yoksa (OPENAI_API_KEY): no-op, kullanıcı dostu hata
  * Env varsa: text-embedding-3-small `dimensions=1024` ile metin → vektör
  *
- * OpenAI:
- *   - https://platform.openai.com/docs/guides/embeddings
- *   - text-embedding-3-small: 1536d native, ?dimensions=1024 ile küçültülür
- *   - Türkçe destekli (multilingual)
- *
- * Maliyet: $0.02 / 1M token (text-embedding-3-small). 10000 fatura ≈ $0.001.
- *
- * NOT: Önceden Voyage AI (voyage-3-lite) kullanılıyordu. DB pgvector kolonu
- * vector(1024) — aynı boyut korunur. Provider değiştiği için eski Voyage
- * embeddings (model='voyage-3-lite') karşılaştırılamaz, temizlenip yeniden
- * embed edilmeli. payable_embeddings tablosunda model='voyage-3-lite' olanlar
- * cron tarafından (jobs/embed-payables.ts) re-embed edilmeli VEYA elle:
- *   DELETE FROM payable_embeddings WHERE model LIKE 'voyage%';
+ * Maliyet: $0.02 / 1M token. 10000 fatura ≈ $0.001.
+ * Türkçe multilingual destek.
  */
 import { env } from '../config/env';
 import { logger } from '../config/logger';

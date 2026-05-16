@@ -294,6 +294,8 @@ function CheckRow({ check, aggregate }: { check: Check; aggregate: boolean }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['checks'] });
       qc.invalidateQueries({ queryKey: ['checks-summary'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['inbox'] });
       setActionOpen(false);
       setShowReturn(false);
       setReturnReason('');

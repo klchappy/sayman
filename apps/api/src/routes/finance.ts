@@ -25,6 +25,7 @@ import {
 import { requireAuth } from '../middleware/auth';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
+import { APPROVAL_THRESHOLD_TRY } from './payment-approvals';
 
 // --- /v1/payables -----------------------------------------------------------
 
@@ -323,6 +324,18 @@ paymentsRouter.post('/payments', requireAuth, requireTenant, async (req, res, ne
   try {
     const body = createPaymentSchema.parse(req.body);
     const db = getDb();
+
+    // Yüksek tutarlı ödeme: APPROVAL_THRESHOLD_TRY ≥ 50.000 TRY → direkt ödeme
+    // yapılamaz, payment_approvals üzerinden gitmek zorunlu (segregation of
+    // duties + audit). Frontend bypass edilirse backend reddet.
+    const amountNum = Number(body.amount);
+    if (Number.isFinite(amountNum) && amountNum >= APPROVAL_THRESHOLD_TRY) {
+      throw new HttpError(
+        403,
+        `${APPROVAL_THRESHOLD_TRY.toLocaleString('tr-TR')} TRY üzeri ödemeler için onay süreci gerekli — Ödeme Onayları'ndan öneri oluştur`,
+        'APPROVAL_REQUIRED',
+      );
+    }
 
     const tx = await db.transaction(async (trx) => {
       // SELECT FOR UPDATE — concurrent payment'larda lost update'i engelle.
