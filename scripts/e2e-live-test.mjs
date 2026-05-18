@@ -1,5 +1,7 @@
 // Sayman canlı API E2E test runner
-const API = 'https://api.sayman.deploi.net/v1';
+const API = process.env.SAYMAN_API_URL ?? 'https://api.sayman.deploi.net/v1';
+const EMAIL = process.env.SAYMAN_TEST_EMAIL ?? 'kaanklc498@gmail.com';
+const PASSWORD = process.env.SAYMAN_TEST_PASSWORD ?? 'Test12345';
 const log = (...a) => console.log(...a);
 const results = [];
 const pass = (id, name, ok, note = '') => {
@@ -11,7 +13,7 @@ async function main() {
   // ===== Auth =====
   const lr = await fetch(API + '/auth/local/sign-in', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier: 'kaanklc498@gmail.com', password: 'Test12345' }),
+    body: JSON.stringify({ identifier: EMAIL, password: PASSWORD }),
   });
   const token = (await lr.json()).access_token;
   pass('AUTH', 'login', lr.status === 200 && !!token);
@@ -188,6 +190,11 @@ async function main() {
   const failed = results.filter((r) => r.status === 'FAIL').length;
   log(`Total: ${results.length}  -  PASS: ${passed}  -  FAIL: ${failed}`);
   log(`Score: ${Math.round((passed / results.length) * 100)}%`);
+  // CI için exit code: en az 1 FAIL varsa exit(1)
+  if (failed > 0) process.exit(1);
 }
 
-main().catch((e) => console.error('ERR:', e.message, e.stack));
+main().catch((e) => {
+  console.error('ERR:', e.message, e.stack);
+  process.exit(1);
+});
