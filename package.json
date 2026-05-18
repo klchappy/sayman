@@ -12,6 +12,7 @@
     "db:migrate": "pnpm --filter @sayman/db migrate",
     "db:seed": "pnpm --filter @sayman/db seed",
     "db:studio": "pnpm --filter @sayman/db studio",
+    "smoke:prod:e2e": "node scripts/prod-smoke-e2e.mjs",
     "format": "prettier -w \"**/*.{ts,tsx,json,md}\""
   },
   "engines": {
