@@ -20,6 +20,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSubsidiaries } from '../../lib/use-subsidiaries';
 import { AuditHistoryButton } from '../../components/AuditHistoryButton';
+import { ExportButton } from '../../components/ExportButton';
 import { PendingReviewBanner, PendingReviewEmptyHint } from '../../components/PendingReviewBanner';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import { QuickInvoiceUploadButton } from '../../components/QuickInvoiceUploadButton';
@@ -172,6 +173,7 @@ export function PayablesPage() {
             <FileSpreadsheet className="size-4" />
             Excel
           </button>
+          <ExportButton type="pdf-monthly" label="Aylık Özet PDF" />
           <QuickInvoiceUploadButton label="Dosya Yükle" />
           <button
             onClick={() => setShowForm(true)}

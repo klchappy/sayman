@@ -25,7 +25,7 @@ import {
   tenants,
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
-import { resolveOrCreateCompany } from '../lib/auto-create-party';
+import { bulkResolveOrCreateCompanies, resolveOrCreateCompany } from '../lib/auto-create-party';
 import { logger } from '../config/logger';
 import { HttpError, requireTenant } from '../lib/helpers';
 import { requireAuth } from '../middleware/auth';
@@ -920,24 +920,44 @@ smartImportRouter.post(
         const insertFailures: Array<{ row_index: number; row: any; error: string }> = [];
         const insertedIds = await db.transaction(async (tx) => {
           if (detected === 'payables') {
-            for (const row of validatedRows) {
-              const r = row as Record<string, unknown>;
-              const supplierName = r.supplier_name as string | null;
-              if (supplierName && typeof supplierName === 'string') {
+            // N+1 fix: tek bulk prefetch + bulk insert (eski: N satır × 3 query).
+            // 500 satır × 3 query × ~50ms = 75s → ~300ms.
+            const supplierHints = validatedRows
+              .map((row, idx) => {
+                const r = row as Record<string, unknown>;
+                const name = r.supplier_name as string | null;
+                return name && typeof name === 'string' && name.trim().length >= 2
+                  ? { idx, name, hint: { name, tax_number: null, source: 'csv_import' as const } }
+                  : null;
+              })
+              .filter(Boolean) as Array<{ idx: number; name: string; hint: any }>;
+
+            try {
+              const resolved = await bulkResolveOrCreateCompanies(
+                orgId,
+                supplierHints.map((s) => s.hint),
+                tx,
+              );
+              // Map index → result back to original rows
+              for (let i = 0; i < supplierHints.length; i++) {
+                const r = resolved.get(i);
+                const s = supplierHints[i];
+                if (r && s) {
+                  if (r.is_new) newSuppliers++;
+                  (validatedRows[s.idx] as Record<string, unknown>).company_id = r.id;
+                }
+              }
+            } catch (err) {
+              // Bulk fail olursa fallback: tek tek dene
+              for (const s of supplierHints) {
                 try {
-                  const sup = await resolveOrCreateCompany(
-                    orgId,
-                    { name: supplierName, tax_number: null, source: 'csv_import' },
-                    tx,
-                  );
+                  const sup = await resolveOrCreateCompany(orgId, s.hint, tx);
                   if (sup.is_new) newSuppliers++;
-                  (row as Record<string, unknown>).company_id = sup.id;
-                } catch (err) {
-                  // Önceden bu hata sessizce yutuluyordu, kullanıcı tedarikçi
-                  // eşleşmesinin neden eksik olduğunu göremiyordu.
-                  const msg = err instanceof Error ? err.message : String(err);
-                  supplierFailures.push({ supplier_name: supplierName, error: msg });
-                  logger.warn({ err, supplierName }, 'csv import auto-supplier failed');
+                  (validatedRows[s.idx] as Record<string, unknown>).company_id = sup.id;
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : String(e);
+                  supplierFailures.push({ supplier_name: s.name, error: msg });
+                  logger.warn({ err: e, supplierName: s.name }, 'csv import auto-supplier failed');
                 }
               }
             }

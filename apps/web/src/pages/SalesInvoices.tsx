@@ -23,6 +23,7 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AuditHistoryButton } from '../components/AuditHistoryButton';
+import { ExportButton } from '../components/ExportButton';
 import { PendingReviewBanner, PendingReviewEmptyHint } from '../components/PendingReviewBanner';
 import { ProvenanceBadge } from '../components/ProvenanceBadge';
 import { QuickInvoiceUploadButton } from '../components/QuickInvoiceUploadButton';
@@ -138,6 +139,7 @@ export function SalesInvoicesPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <SavedFilters module="sales-invoices" currentFilters={{}} onApply={() => {}} />
           <AICollectionStrategyButton />
+          <ExportButton resource="sales-invoices" label="Excel" />
           <QuickInvoiceUploadButton label="Dosya Yükle" />
           <button
             onClick={() => setShowForm(true)}

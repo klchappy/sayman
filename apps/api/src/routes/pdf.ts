@@ -222,3 +222,102 @@ pdfRouter.get('/pdf/guarantee/:id', requireAuth, requireTenantOrAggregate, async
     next(err);
   }
 });
+
+/**
+ * /pdf/monthly-summary?period=YYYY-MM
+ * Tenant'ın aylık özet raporu.
+ */
+pdfRouter.get('/pdf/monthly-summary', requireAuth, requireTenantOrAggregate, async (req, res, next) => {
+  try {
+    const { sql } = await import('drizzle-orm');
+    const period = String(req.query.period ?? new Date().toISOString().slice(0, 7));
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      throw new HttpError(400, 'period YYYY-MM formatında olmalı', 'INVALID_PERIOD');
+    }
+    const [year, month] = period.split('-').map(Number);
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+
+    const db = getDb();
+    const tenantId = req.activeTenantId;
+    if (!tenantId) throw new HttpError(400, 'Tenant context gerekli');
+
+    const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, tenantId));
+    if (!tenant) throw new HttpError(404, 'Tenant bulunamadı');
+
+    const monthlyPayables = await db.execute(sql`
+      SELECT
+        COUNT(*)::int AS count,
+        COALESCE(SUM(amount::numeric), 0) AS total,
+        COALESCE(SUM(paid_amount::numeric), 0) AS paid,
+        COUNT(*) FILTER (WHERE status = 'overdue')::int AS overdue
+      FROM payable_items
+      WHERE tenant_id = ${tenantId}::uuid
+        AND is_active = true
+        AND needs_review = false
+        AND issue_date >= ${monthStart}::date
+        AND issue_date < ${nextMonth}::date
+    `);
+    const statsRow = ((monthlyPayables as { rows?: any[] }).rows ?? (monthlyPayables as any))[0] ?? { count: 0, total: 0, paid: 0, overdue: 0 };
+
+    const topPayables = await db
+      .select({
+        title: payableItems.title,
+        supplier_name: payableItems.supplier_name,
+        amount: payableItems.amount,
+        due_date: payableItems.due_date,
+        status: payableItems.status,
+      })
+      .from(payableItems)
+      .where(
+        and(
+          eq(payableItems.tenant_id, tenantId),
+          eq(payableItems.is_active, true),
+          eq(payableItems.needs_review, false),
+          sql`${payableItems.issue_date} >= ${monthStart}::date`,
+          sql`${payableItems.issue_date} < ${nextMonth}::date`,
+        ),
+      )
+      .orderBy(sql`${payableItems.amount}::numeric DESC`)
+      .limit(10);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="ozet-${period}.pdf"`);
+
+    const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
+    doc.pipe(res);
+
+    setAiMetadata(doc, {
+      title: `Aylık Özet ${period}`,
+      docType: 'monthly_summary',
+      tenant: tenant.name,
+      structured: { period, count: Number(statsRow.count), total: Number(statsRow.total), paid: Number(statsRow.paid), overdue: Number(statsRow.overdue) },
+    });
+
+    drawPdfHeader(doc, { title: `Aylık Özet — ${period}`, tenantName: tenant.name });
+
+    drawSectionTitle(doc, 'Özet Rakamlar');
+    drawKV(doc, 'Fatura Sayısı', String(statsRow.count));
+    drawKV(doc, 'Toplam Tutar', fmtTRY(statsRow.total));
+    drawKV(doc, 'Ödenen', fmtTRY(statsRow.paid));
+    drawKV(doc, 'Kalan', fmtTRY(Number(statsRow.total) - Number(statsRow.paid)));
+    drawKV(doc, 'Geciken Fatura', String(statsRow.overdue));
+
+    doc.moveDown(1);
+    drawSectionTitle(doc, 'En Yüksek 10 Fatura');
+    doc.fontSize(9);
+    topPayables.forEach((p, i) => {
+      const line = `${i + 1}. ${p.title.slice(0, 50)} — ${p.supplier_name ?? '-'} — ${fmtTRY(p.amount)} (${p.due_date ?? '-'}, ${p.status})`;
+      doc.fillColor('#1f2937').text(line);
+    });
+
+    if (topPayables.length === 0) {
+      doc.fillColor('#9ca3af').text('Bu dönemde fatura yok.');
+    }
+
+    drawPdfFooter(doc);
+    doc.end();
+  } catch (err) {
+    next(err);
+  }
+});

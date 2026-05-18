@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { ExportButton } from '../components/ExportButton';
 import { SavedFilters } from '../components/SavedFilters';
 import { TruncatedListWarning } from '../components/TruncatedListWarning';
 import { api } from '../lib/api';
@@ -101,6 +102,7 @@ export function EmployeesPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <SavedFilters module="employees" currentFilters={{}} onApply={() => {}} />
+          <ExportButton resource="employees" label="Excel" />
           <button
             onClick={() => setShowForm(true)}
             className="bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"

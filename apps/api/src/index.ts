@@ -35,10 +35,26 @@ app.use(
         frameAncestors: ["'none'"],
       },
     },
+    // HSTS: 2 yıl + subdomains + preload (production'da gözlemlenmiş)
+    strictTransportSecurity: {
+      maxAge: 63072000,
+      includeSubDomains: true,
+      preload: true,
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   }),
 );
+
+// Permissions-Policy — API JSON döner, tarayıcı feature'larına ihtiyaç yok.
+// Üçüncü taraf iframe enjekte edilse bile kamera/mikro/jeolokasyon erişemesin.
+app.use((_req, res, next) => {
+  res.setHeader(
+    'Permissions-Policy',
+    'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()',
+  );
+  next();
+});
 
 app.use(
   cors({

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2, UserCircle } from 'lucide-react';
 import { useState } from 'react';
+import { ExportButton } from '../../components/ExportButton';
 import { PendingReviewBanner, PendingReviewEmptyHint } from '../../components/PendingReviewBanner';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -74,15 +75,18 @@ export function PersonsPage() {
           <p className="text-xs uppercase tracking-wider text-brand-500 mb-1">Master Data</p>
           <h1 className="text-2xl font-semibold text-brand-900">Şahıslar</h1>
         </div>
-        {canEdit && (
-          <button
-            onClick={() => setEditing('new')}
-            className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
-          >
-            <Plus className="size-4" />
-            Yeni Şahıs
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportButton resource="persons" label="Excel" />
+          {canEdit && (
+            <button
+              onClick={() => setEditing('new')}
+              className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+            >
+              <Plus className="size-4" />
+              Yeni Şahıs
+            </button>
+          )}
+        </div>
       </header>
 
       {editing && (

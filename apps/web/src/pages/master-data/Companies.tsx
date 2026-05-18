@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { SECTOR_LABELS, SECTORS, type Sector } from '@sayman/shared';
+import { ExportButton } from '../../components/ExportButton';
 import { PendingReviewBanner, PendingReviewEmptyHint } from '../../components/PendingReviewBanner';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -67,15 +68,18 @@ export function CompaniesPage() {
           <p className="text-xs uppercase tracking-wider text-brand-500 mb-1">Master Data</p>
           <h1 className="text-2xl font-semibold text-brand-900">Şirketler</h1>
         </div>
-        {canEdit && (
-          <button
-            onClick={() => setEditing('new')}
-            className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
-          >
-            <Plus className="size-4" />
-            Yeni Şirket
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportButton resource="companies" label="Excel" />
+          {canEdit && (
+            <button
+              onClick={() => setEditing('new')}
+              className="flex items-center gap-2 bg-brand-900 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm"
+            >
+              <Plus className="size-4" />
+              Yeni Şirket
+            </button>
+          )}
+        </div>
       </header>
 
       {editing && (

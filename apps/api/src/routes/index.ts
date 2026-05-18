@@ -20,6 +20,7 @@ import { officialPaymentsRouter } from './official-payments';
 import { guaranteesRouter } from './guarantees';
 import { usersRouter } from './users';
 import { jobsRouter } from './jobs';
+import { exportsRouter } from './exports';
 import { dashboardRouter } from './dashboard';
 import { subsidiariesRouter } from './subsidiaries';
 import { searchRouter } from './search';
@@ -114,6 +115,7 @@ apiRouter.use(usersRouter);
 
 // Cron manuel tetik (super_admin)
 apiRouter.use(jobsRouter);
+apiRouter.use(exportsRouter);
 
 // Dashboard KPI aggregation (tenant-scope)
 apiRouter.use(dashboardRouter);
