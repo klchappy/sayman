@@ -7,7 +7,7 @@
  * PATCH  /v1/tenants/:id              → güncelle (name, sector, active_modules)
  * DELETE /v1/tenants/:id              → soft delete (is_active=false)
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -71,6 +71,11 @@ const ALLOWED_WRITE_ROLES = new Set([
   'organization_admin',
   'yonetici',
 ]);
+
+function cleanTaxNumber(value: string | null | undefined): string | null {
+  const cleaned = value ? value.replace(/[^0-9]/g, '') : '';
+  return cleaned || null;
+}
 
 // --- GET /tenants/me --------------------------------------------------------
 
@@ -163,17 +168,29 @@ tenantsRouter.post('/tenants', requireAuth, requireOrg, async (req, res, next) =
     const activeModules =
       body.active_modules ?? [...SECTOR_DEFAULT_MODULES[body.sector]];
 
-    const [row] = await db
+    const taxNumber = cleanTaxNumber(body.tax_number);
+
+    let [row] = await db
       .insert(tenants)
       .values({
         organization_id: req.activeOrgId!,
         slug: finalSlug,
         name: body.name,
         sector: body.sector,
-        tax_number: body.tax_number ? body.tax_number.replace(/[^0-9]/g, '') : null,
+        tax_number: taxNumber,
         active_modules: activeModules,
       })
       .returning();
+
+    if (row && row.tax_number !== taxNumber) {
+      const updated = await db.execute(sql`
+        UPDATE tenants
+        SET tax_number = ${taxNumber}, updated_at = now()
+        WHERE id = ${row.id}::uuid
+        RETURNING *
+      `);
+      row = ((updated.rows ?? updated) as typeof row[])[0] ?? row;
+    }
 
     await auditFromRequest(req, {
       organization_id: req.activeOrgId!,
@@ -213,11 +230,26 @@ tenantsRouter.patch('/tenants/:id', requireAuth, requireOrg, async (req, res, ne
       );
     if (!existing) throw new HttpError(404, 'Tenant bulunamadı', 'NOT_FOUND');
 
-    const [row] = await db
+    const taxNumberProvided = Object.prototype.hasOwnProperty.call(body, 'tax_number');
+    const taxNumber = taxNumberProvided ? cleanTaxNumber(body.tax_number) : undefined;
+    const patch = { ...body, updated_at: new Date() };
+    if (taxNumberProvided) patch.tax_number = taxNumber ?? null;
+
+    let [row] = await db
       .update(tenants)
-      .set({ ...body, updated_at: new Date() })
+      .set(patch)
       .where(eq(tenants.id, existing.id))
       .returning();
+
+    if (row && taxNumberProvided && row.tax_number !== (taxNumber ?? null)) {
+      const updated = await db.execute(sql`
+        UPDATE tenants
+        SET tax_number = ${taxNumber ?? null}, updated_at = now()
+        WHERE id = ${existing.id}::uuid
+        RETURNING *
+      `);
+      row = ((updated.rows ?? updated) as typeof row[])[0] ?? row;
+    }
 
     await auditFromRequest(req, {
       organization_id: req.activeOrgId!,
