@@ -111,6 +111,9 @@ export function OCRPage() {
       }
       const worker = await createWorker('eng', 1, {
         workerPath: tesseractWorkerPath,
+        workerBlobURL: false,
+        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v7.0.0',
+        langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int',
         logger: (m) => {
           if (m.status === 'recognizing text') setProgress(m.progress);
         },
