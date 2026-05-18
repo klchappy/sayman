@@ -13,7 +13,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
 const COOLIFY_URL = 'https://coolify.deploi.net';
-const COOLIFY_TOKEN = '5|650S5qWM3oruHBy54CxK25KiWbjFi6YqYlZ3gBT4dcb54316';
 const API_UUID = 'xdy5msb04a8pq8iyz21n0lnf';
 const WEB_UUID = 'h13pbw7v6ffepm2ak0y2msmp';
 const PROD_CLIENT_URL = 'https://sayman.deploi.net';
@@ -29,6 +28,12 @@ const env = Object.fromEntries(
       return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
     }),
 );
+
+const COOLIFY_TOKEN = process.env.COOLIFY_TOKEN ?? env.COOLIFY_TOKEN;
+if (!COOLIFY_TOKEN) {
+  console.error('COOLIFY_TOKEN gerekli. .env veya process env içine ekle.');
+  process.exit(1);
+}
 
 async function bulkEnvs(appUuid, envObj) {
   const data = Object.entries(envObj)
