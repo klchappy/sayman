@@ -7,6 +7,13 @@ import { z } from 'zod';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadDotenv({ path: path.resolve(__dirname, '../../../../.env') });
 
+const plainEmailRe = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+const displayEmailRe = /^.+<([^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)>$/;
+const emailFromSchema = z.string().refine(
+  (value) => plainEmailRe.test(value.trim()) || displayEmailRe.test(value.trim()),
+  'EMAIL_FROM must be an email address or display-name format like "Sayman <noreply@example.com>"',
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(4300),
@@ -56,7 +63,7 @@ const envSchema = z.object({
   /** Gönderen adresi — Resend'de verify edilmiş domain'den. Örn: noreply@sayman.deploi.net */
   EMAIL_FROM: z.preprocess(
     (v) => (v === '' ? undefined : v),
-    z.string().email().optional(),
+    emailFromSchema.optional(),
   ),
 
   /** Telegram Bot API token — @BotFather'dan alınır (örn: 123456:ABC...) */
