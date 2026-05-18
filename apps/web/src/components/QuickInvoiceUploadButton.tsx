@@ -24,6 +24,11 @@ interface SmartImportResp {
     failed?: number;
     new_suppliers?: number;
     xml_count?: number;
+    // Yeni alanlar (audit #9 + #12 sonrası):
+    insert_failed?: number;
+    insert_failures?: Array<{ row_index: number; row: any; error: string }>;
+    supplier_failed?: number;
+    supplier_failures?: Array<{ supplier_name: string; error: string }>;
   };
 }
 
@@ -167,6 +172,31 @@ function UploadResultToast({
         </div>
       )}
 
+      {/* Insert failures detayı (audit #9) */}
+      {(result.insert_failed ?? 0) > 0 && (
+        <FailuresAccordion
+          title={`${result.insert_failed} satır DB'ye yazılamadı`}
+          tone="red"
+          items={(result.insert_failures ?? []).map((f) => ({
+            label: `Satır ${f.row_index + 1}`,
+            detail: f.error,
+          }))}
+        />
+      )}
+
+      {/* Supplier auto-create failures (audit #12) */}
+      {(result.supplier_failed ?? 0) > 0 && (
+        <FailuresAccordion
+          title={`${result.supplier_failed} tedarikçi eşleştirilemedi`}
+          tone="amber"
+          subtitle="Faturalar kaydedildi ancak company_id boş. Onay Bekleyenler'de manuel bağlanabilir."
+          items={(result.supplier_failures ?? []).map((f) => ({
+            label: f.supplier_name,
+            detail: f.error,
+          }))}
+        />
+      )}
+
       <div className="flex gap-2">
         <Link
           to="/review-queue?type=payable&scope=org"
@@ -182,6 +212,69 @@ function UploadResultToast({
           Kapat
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Genişletilebilir hata listesi — smart-import sırasında oluşan kısmi
+ * başarısızlıkları (insert failures, supplier auto-create failures) detaylı
+ * gösterir. Default kapalı, "Detay göster" ile açılır.
+ */
+function FailuresAccordion({
+  title,
+  subtitle,
+  tone,
+  items,
+}: {
+  title: string;
+  subtitle?: string;
+  tone: 'red' | 'amber';
+  items: Array<{ label: string; detail: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const colors =
+    tone === 'red'
+      ? {
+          bg: 'bg-red-50 dark:bg-red-900/20',
+          border: 'border-red-200 dark:border-red-800',
+          text: 'text-red-800 dark:text-red-300',
+          icon: '❌',
+        }
+      : {
+          bg: 'bg-amber-50 dark:bg-amber-900/20',
+          border: 'border-amber-200 dark:border-amber-800',
+          text: 'text-amber-800 dark:text-amber-300',
+          icon: '⚠️',
+        };
+
+  return (
+    <div className={`text-[11px] ${colors.bg} border ${colors.border} rounded p-2 mb-3 ${colors.text}`}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-between w-full text-left"
+      >
+        <span className="font-medium">
+          {colors.icon} {title}
+        </span>
+        <span className="text-[10px] underline">{open ? 'Gizle' : 'Detay göster'}</span>
+      </button>
+      {subtitle && <p className="text-[10px] mt-1 opacity-80">{subtitle}</p>}
+      {open && items.length > 0 && (
+        <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+          {items.slice(0, 20).map((it, i) => (
+            <li key={i} className="border-t border-current/10 pt-1">
+              <p className="font-medium font-mono">{it.label}</p>
+              <p className="opacity-90 break-words">{it.detail}</p>
+            </li>
+          ))}
+          {items.length > 20 && (
+            <li className="text-[10px] italic opacity-70 pt-1">
+              ... ve {items.length - 20} daha (toplam {items.length})
+            </li>
+          )}
+        </ul>
+      )}
     </div>
   );
 }

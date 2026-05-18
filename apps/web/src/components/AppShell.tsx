@@ -63,6 +63,8 @@ interface NavItem {
   end?: boolean;
   requires?: Module; // sektör modülü adı — aktif tenant'ta yoksa hide
   group?: string;
+  /** Sadece super_admin için görünür (admin paneli linkleri). */
+  superAdminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -218,6 +220,13 @@ const navItems: NavItem[] = [
   { to: '/audit', label: 'Denetim Kayıtları', icon: Activity, group: 'Sistem' },
   { to: '/security', label: 'Güvenlik', icon: Shield, group: 'Sistem' },
   { to: '/integrations', label: 'Entegrasyonlar', icon: Plug, group: 'Sistem' },
+  {
+    to: '/admin/health',
+    label: 'Sistem Sağlığı',
+    icon: Activity,
+    group: 'Yönetici',
+    superAdminOnly: true,
+  },
 ];
 
 interface TenantInfo {
@@ -270,13 +279,20 @@ export function AppShell() {
   });
   const reviewBadge = reviewSummary.data?.total ?? 0;
 
+  // Super-admin tespit: aktif org'da rol super_admin mi?
+  const isSuperAdmin = me?.organizations.some(
+    (o) => o.slug === active.orgSlug && o.role === 'super_admin',
+  );
+
   /**
    * Item görünür mü?
+   *   - superAdminOnly + super_admin değilse → gizle
    *   - requires yok → her zaman göster
    *   - tenant seçili değil + requires var → göster (master data, dashboard için yumuşak)
    *   - requires var + module aktif tenant'ta yok → gizle
    */
   function isVisible(item: NavItem): boolean {
+    if (item.superAdminOnly && !isSuperAdmin) return false;
     if (!item.requires) return true;
     if (!active.tenantSlug) return true; // tenant seçilmemişse hepsi gözüksün
     return activeModules.has(item.requires);

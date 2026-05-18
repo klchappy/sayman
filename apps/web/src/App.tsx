@@ -136,6 +136,9 @@ const SubsidiariesPage = lazy(() =>
 const TenantsManagementPage = lazy(() =>
   import('./pages/TenantsManagement').then((m) => ({ default: m.TenantsManagementPage })),
 );
+const SystemHealthPage = lazy(() =>
+  import('./pages/admin/SystemHealth').then((m) => ({ default: m.SystemHealthPage })),
+);
 const UsersPage = lazy(() => import('./pages/Users').then((m) => ({ default: m.UsersPage })));
 const ArchivePage = lazy(() => import('./pages/Archive').then((m) => ({ default: m.ArchivePage })));
 const ConsolidatedReportsPage = lazy(() =>
@@ -429,6 +432,14 @@ export default function App() {
           }
         />
 
+        <Route
+          path="/admin/health"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SystemHealthPage />
+            </Suspense>
+          }
+        />
         <Route
           path="/security"
           element={
