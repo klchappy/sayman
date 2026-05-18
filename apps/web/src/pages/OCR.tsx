@@ -25,6 +25,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createWorker, type Worker as TesseractWorker } from 'tesseract.js';
+import tesseractWorkerPath from 'tesseract.js/dist/worker.min.js?url';
 import { api } from '../lib/api';
 
 type Stage = 'idle' | 'preview' | 'ocr_running' | 'ocr_done' | 'analyzing';
@@ -108,7 +109,8 @@ export function OCRPage() {
         await workerRef.current.terminate().catch(() => undefined);
         workerRef.current = null;
       }
-      const worker = await createWorker(['tur', 'eng'], 1, {
+      const worker = await createWorker('eng', 1, {
+        workerPath: tesseractWorkerPath,
         logger: (m) => {
           if (m.status === 'recognizing text') setProgress(m.progress);
         },
