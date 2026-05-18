@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Plus, Repeat } from 'lucide-react';
+import { Paperclip, Plus, Repeat, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { AttachmentModal } from '../../components/AttachmentModal';
 import { api } from '../../lib/api';
@@ -37,6 +37,7 @@ import { fmtTRY as fmt } from '../../lib/formatting';
 
 export function SubscriptionsPage() {
   const active = useAuth((s) => s.active);
+  const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [attachmentFor, setAttachmentFor] = useState<{ id: string; title: string } | null>(null);
 
@@ -47,6 +48,13 @@ export function SubscriptionsPage() {
       const res = await api.get<{ data: Subscription[] }>('/subscriptions');
       return res.data.data;
     },
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/subscriptions/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['subscriptions'] }),
   });
 
   if (!active.tenantSlug && !active.aggregate) {
@@ -143,15 +151,30 @@ export function SubscriptionsPage() {
                     </span>
                   </td>
                   <td className="py-2 px-2 text-right">
-                    <button
-                      onClick={() =>
-                        setAttachmentFor({ id: s.id, title: s.package_name ?? 'Abonelik' })
-                      }
-                      className="text-brand-600 hover:bg-brand-50 p-1.5 rounded"
-                      title="Eklentiler"
-                    >
-                      <Paperclip className="size-4" />
-                    </button>
+                    <div className="inline-flex gap-1">
+                      <button
+                        onClick={() =>
+                          setAttachmentFor({ id: s.id, title: s.package_name ?? 'Abonelik' })
+                        }
+                        className="text-brand-600 hover:bg-brand-50 p-1.5 rounded"
+                        title="Eklentiler"
+                      >
+                        <Paperclip className="size-4" />
+                      </button>
+                      {!active.aggregate && (
+                        <button
+                          onClick={() => {
+                            const title = s.package_name ?? s.subscription_no ?? 'Abonelik';
+                            if (confirm(`"${title}" aboneliği silinsin mi?`)) remove.mutate(s.id);
+                          }}
+                          disabled={remove.isPending}
+                          className="text-red-600 hover:bg-red-50 p-1.5 rounded disabled:opacity-50"
+                          title="Sil"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
