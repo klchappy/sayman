@@ -46,7 +46,7 @@ reviewQueueRouter.get(
     try {
       const db = getDb();
       const orgId = req.activeOrgId!;
-      const tenantId = req.activeTenantId ?? null;
+      const tenantId = req.activeTenantId ?? req.saymanContext?.tenantId ?? null;
 
       // scope: 'tenant' (default, sadece aktif tenant) veya 'org' (tüm org'daki tenant'lar)
       // Smart Import alıcı VKN'ye göre faturayı başka tenant'a route edebilir; bu yüzden
@@ -119,7 +119,7 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
               ? 'persons'
               : rawTypeFilter;
     const orgId = req.activeOrgId!;
-    const tenantId = req.activeTenantId ?? null;
+    const tenantId = req.activeTenantId ?? req.saymanContext?.tenantId ?? null;
     // scope=org → org'daki tüm tenant'larda ara (Smart Import auto-routing
     // başka tenant'a yazmış olabilir, kullanıcı kayıp fatura sanmasın)
     const scope = String(req.query.scope ?? 'tenant');
