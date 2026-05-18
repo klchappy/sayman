@@ -13,6 +13,7 @@ import { Router } from 'express';
 import * as XLSX from 'xlsx';
 import { cariAccounts, cariMovements, erpConnections, getDb } from '@sayman/db';
 import { HttpError, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
+import { ilikePattern } from '../lib/sql-escape';
 import { requireAuth } from '../middleware/auth';
 
 export const cariRouter = Router();
@@ -25,7 +26,7 @@ cariRouter.get('/cari', requireAuth, requireTenantOrAggregate, async (req, res, 
       conditions.push(eq(cariAccounts.account_type, String(req.query.type)));
     }
     if (req.query.search) {
-      const s = `%${String(req.query.search)}%`;
+      const s = ilikePattern(String(req.query.search));
       conditions.push(
         sql`(${cariAccounts.name} ILIKE ${s} OR ${cariAccounts.code} ILIKE ${s} OR ${cariAccounts.tax_id} ILIKE ${s})`,
       );

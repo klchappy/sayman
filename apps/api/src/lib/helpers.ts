@@ -53,9 +53,29 @@ export async function requireOrg(req: Request, _res: Response, next: NextFunctio
       );
     if (!orgRole) throw new HttpError(403, 'Bu organization\'da yetkin yok', 'NOT_MEMBER');
 
+    // Tenant context VAR ise: per-tenant deny override kontrolü uygula.
+    // (inbox, review-queue/summary gibi requireOrg kullanan ama tenant-scoped veri
+    // dönen endpoint'ler için kritik — eskiden deny edilen tenant'ın verisi yine
+    // gözüküyordu.)
+    let effective: string = orgRole.role;
+    if (ctx.tenantId) {
+      const [override] = await db
+        .select()
+        .from(userTenantOverrides)
+        .where(
+          sql`${userTenantOverrides.user_id} = ${user.id} AND ${userTenantOverrides.tenant_id} = ${ctx.tenantId}`,
+        );
+      effective = (override?.value as string | undefined) ?? orgRole.role;
+      if (effective === 'deny') {
+        throw new HttpError(403, 'Bu tenant erişimi kapalı', 'TENANT_DENIED');
+      }
+      req.activeTenantId = ctx.tenantId;
+      req.activeTenantSlug = ctx.tenantSlug ?? undefined;
+    }
+
     req.activeOrgId = ctx.organizationId;
     req.activeOrgSlug = ctx.orgSlug ?? undefined;
-    req.effectiveRole = orgRole.role;
+    req.effectiveRole = effective as typeof orgRole.role;
     next();
   } catch (err) {
     next(err);

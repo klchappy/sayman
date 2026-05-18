@@ -19,6 +19,7 @@ import {
   referenceGovernmentAgencies,
   referenceInstitutions,
 } from '@sayman/db';
+import { ilikePattern } from '../lib/sql-escape';
 import { requireAuth } from '../middleware/auth';
 
 export const referenceDataRouter = Router();
@@ -40,7 +41,7 @@ referenceDataRouter.get('/reference/banks', requireAuth, async (req, res, next) 
       conditions.push(eq(referenceBanks.is_state_bank, true));
     }
     if (req.query.search) {
-      const s = `%${String(req.query.search)}%`;
+      const s = ilikePattern(String(req.query.search));
       conditions.push(
         or(
           ilike(referenceBanks.name, s),
@@ -92,7 +93,7 @@ referenceDataRouter.get('/reference/institutions', requireAuth, async (req, res,
       conditions.push(eq(referenceInstitutions.category, String(req.query.category)));
     }
     if (req.query.search) {
-      const s = `%${String(req.query.search)}%`;
+      const s = ilikePattern(String(req.query.search));
       conditions.push(
         or(
           ilike(referenceInstitutions.name, s),
@@ -126,7 +127,7 @@ referenceDataRouter.get('/reference/government-agencies', requireAuth, async (re
       conditions.push(eq(referenceGovernmentAgencies.agency_type, String(req.query.type)));
     }
     if (req.query.search) {
-      const s = `%${String(req.query.search)}%`;
+      const s = ilikePattern(String(req.query.search));
       conditions.push(
         or(
           ilike(referenceGovernmentAgencies.name, s),

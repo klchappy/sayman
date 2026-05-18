@@ -9,6 +9,7 @@
 import cron from 'node-cron';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { trackJobRun } from './job-run-tracker';
 import { runBudgetAlerts } from './budget-alerts';
 import { runCheckDueAlerts } from './check-due-alerts';
 import { runDepreciation } from './run-depreciation';
@@ -42,8 +43,8 @@ export type JobName =
   | 'send-collection-reminders'
   | 'run-depreciation';
 
-export async function runJob(name: JobName): Promise<unknown> {
-  logger.info({ job: name }, 'manual job run');
+// Her cron'u job_runs tablosuna kaydediyor — admin /v1/jobs/runs ile geçmişi görür.
+async function runJobImpl(name: JobName): Promise<unknown> {
   switch (name) {
     case 'generate-periods':
       return runGeneratePeriods();
@@ -76,6 +77,15 @@ export async function runJob(name: JobName): Promise<unknown> {
   }
 }
 
+export async function runJob(name: JobName): Promise<unknown> {
+  logger.info({ job: name }, 'manual job run');
+  return trackJobRun(name, async () => {
+    const result = await runJobImpl(name);
+    // Result obje değilse {} ile sarmalayalım (job_runs.result jsonb)
+    return result && typeof result === 'object' ? (result as Record<string, unknown>) : { value: result };
+  });
+}
+
 let started = false;
 
 export function startCronJobs() {
@@ -88,130 +98,40 @@ export function startCronJobs() {
     return;
   }
 
-  // Daily 03:00 TR — period auto-generation
-  cron.schedule(
-    '0 3 * * *',
-    () => {
-      runGeneratePeriods().catch((err) => logger.error({ err }, 'generate-periods crashed'));
-    },
-    { timezone: TZ },
-  );
+  // Helper: cron schedule + tracked runner. trackJobRun her çalıştırmayı job_runs
+  // tablosuna kaydeder, admin /v1/jobs/runs üzerinden geçmişi görebilir.
+  const schedule = (jobName: JobName, expr: string) =>
+    cron.schedule(
+      expr,
+      () => {
+        runJob(jobName).catch((err) => logger.error({ err, job: jobName }, `${jobName} crashed`));
+      },
+      { timezone: TZ },
+    );
 
-  // Daily 09:00 TR — reminders (mail)
-  cron.schedule(
-    '0 9 * * *',
-    () => {
-      runSendReminders().catch((err) => logger.error({ err }, 'send-reminders crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Hourly :05 — status sweep
-  cron.schedule(
-    '5 * * * *',
-    () => {
-      runUpdateStatuses().catch((err) => logger.error({ err }, 'update-statuses crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Weekday 16:00 TR — TCMB FX rate fetch (Cumartesi/Pazar XML yok ama job graceful)
-  cron.schedule(
-    '0 16 * * *',
-    () => {
-      runFetchFxRates().catch((err) => logger.error({ err }, 'fetch-fx-rates crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Every minute — webhook delivery worker (kuyruktan POST + retry)
-  cron.schedule(
-    '* * * * *',
-    () => {
-      runDeliverWebhooks().catch((err) => logger.error({ err }, 'deliver-webhooks crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Daily 10:00 TR — anomali tespiti
-  cron.schedule(
-    '0 10 * * *',
-    () => {
-      runDetectAnomalies().catch((err) => logger.error({ err }, 'detect-anomalies crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Daily 07:00 TR — günlük AI özet üret (dashboard widget + Telegram'a yolla)
+  schedule('generate-periods', '0 3 * * *');        // Daily 03:00 TR
+  schedule('send-reminders', '0 9 * * *');          // Daily 09:00 TR
+  schedule('update-statuses', '5 * * * *');         // Hourly :05
+  schedule('fetch-fx-rates', '0 16 * * *');         // Daily 16:00 TR
+  schedule('deliver-webhooks', '* * * * *');        // Every minute
+  schedule('detect-anomalies', '0 10 * * *');       // Daily 10:00 TR
+  // generate-ai-summary cron'da sendTelegram=true ile çağrılır (manuel runJob default false)
   cron.schedule(
     '0 7 * * *',
     () => {
-      runGenerateAiSummary({ sendTelegram: true }).catch((err) =>
-        logger.error({ err }, 'generate-ai-summary crashed'),
-      );
+      trackJobRun('generate-ai-summary', async () => {
+        const r = await runGenerateAiSummary({ sendTelegram: true });
+        return r as unknown as Record<string, unknown>;
+      }).catch((err) => logger.error({ err, job: 'generate-ai-summary' }, 'generate-ai-summary crashed'));
     },
     { timezone: TZ },
   );
-
-  // Hourly :30 — semantic search için bekleyen payable'lara embedding üret
-  cron.schedule(
-    '30 * * * *',
-    () => {
-      runEmbedPayables().catch((err) => logger.error({ err }, 'embed-payables crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Hourly :45 — ERP bağlantılarını sync et (sync_interval_hours dolanlar)
-  cron.schedule(
-    '45 * * * *',
-    () => {
-      runSyncErpConnections().catch((err) =>
-        logger.error({ err }, 'sync-erp-connections crashed'),
-      );
-    },
-    { timezone: TZ },
-  );
-
-  // Her ayın 1'i 02:00 TR — Türk vergi takvimi gelecek 90 günün event'leri
-  cron.schedule(
-    '0 2 1 * *',
-    () => {
-      runGenerateTaxCalendar().catch((err) =>
-        logger.error({ err }, 'generate-tax-calendar crashed'),
-      );
-    },
-    { timezone: TZ },
-  );
-
-  // Her gün 08:00 TR — bütçe aşılma kontrolü
-  cron.schedule(
-    '0 8 * * *',
-    () => {
-      runBudgetAlerts().catch((err) => logger.error({ err }, 'budget-alerts crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Her gün 09:30 TR — çek/senet vade yakınında uyarı
-  cron.schedule(
-    '30 9 * * *',
-    () => {
-      runCheckDueAlerts().catch((err) => logger.error({ err }, 'check-due-alerts crashed'));
-    },
-    { timezone: TZ },
-  );
-
-  // Her gün 10:00 TR — geciken alacaklılara tahsilat hatırlatma
-  cron.schedule(
-    '0 10 * * *',
-    () => {
-      runSendCollectionReminders().catch((err) =>
-        logger.error({ err }, 'send-collection-reminders crashed'),
-      );
-    },
-    { timezone: TZ },
-  );
+  schedule('embed-payables', '30 * * * *');         // Hourly :30
+  schedule('sync-erp-connections', '45 * * * *');   // Hourly :45
+  schedule('generate-tax-calendar', '0 2 1 * *');   // Her ayın 1'i 02:00 TR
+  schedule('budget-alerts', '0 8 * * *');           // Daily 08:00 TR
+  schedule('check-due-alerts', '30 9 * * *');       // Daily 09:30 TR
+  schedule('send-collection-reminders', '0 10 * * *'); // Daily 10:00 TR
 
   // Her ayın 1'i 03:30 TR — demirbaş amortisman entry'leri (önceki ay)
   cron.schedule(

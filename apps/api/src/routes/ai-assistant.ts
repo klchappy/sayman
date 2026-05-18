@@ -24,6 +24,7 @@ import { auditFromRequest } from '../lib/audit';
 import { HttpError, requireOrg } from '../lib/helpers';
 import { getCredentialField } from '../lib/integration-credentials';
 import { consumeRateLimit } from '../lib/rate-limit';
+import { ilikePattern } from '../lib/sql-escape';
 import { requireAuth } from '../middleware/auth';
 
 export const aiAssistantRouter = Router();
@@ -177,7 +178,7 @@ async function runTool(
     if (input.category) conditions.push(eq(payableItems.category, String(input.category)));
     if (input.supplier_name_contains) {
       conditions.push(
-        sql`f_unaccent(${payableItems.supplier_name}) ILIKE f_unaccent(${'%' + String(input.supplier_name_contains) + '%'})`,
+        sql`f_unaccent(${payableItems.supplier_name}) ILIKE f_unaccent(${ilikePattern(String(input.supplier_name_contains))})`,
       );
     }
     const limit = Math.min(Number(input.limit ?? 20), 100);

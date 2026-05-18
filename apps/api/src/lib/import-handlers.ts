@@ -24,6 +24,7 @@ import {
   regularPaymentProfiles,
   subscriptions,
 } from '@sayman/db';
+import { bulkInsertWithFallback } from './bulk-insert';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]).default('*');
 
@@ -208,6 +209,12 @@ export interface ImportContext {
   tenantId?: string;
   /** Opsiyonel transaction handle — varsa insert bu tx içinde yapılır. */
   db?: DbOrTx;
+  /**
+   * Handler bu listeye fail eden satırları push eder.
+   * Bulk insert all-or-nothing fail ederse satır satır retry yapılır,
+   * her satırın hata mesajı buraya yazılır.
+   */
+  failedRows?: Array<{ row_index: number; row: any; error: string }>;
 }
 
 export interface ImportConfig {
@@ -223,46 +230,55 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
     scope: 'org',
     schema: personsRowSchema,
     description: 'Şahıs master data (org-scope, share_scope ile tenant filtrelenir)',
-    insert: async (rows, { orgId, db: dbOrTx }) => {
+    insert: async (rows, { orgId, db: dbOrTx, failedRows }) => {
       const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
-      const inserted = await db
-        .insert(persons)
-        .values(rows.map((r) => ({ organization_id: orgId, ...r })))
-        .returning({ id: persons.id });
-      return inserted.map((x) => x.id);
+      const prepared = rows.map((r) => ({ organization_id: orgId, ...r }));
+      const result = await bulkInsertWithFallback({
+        rows: prepared,
+        insertAll: (rs) => db.insert(persons).values(rs).returning({ id: persons.id }),
+        insertOne: (r) => db.insert(persons).values(r).returning({ id: persons.id }),
+      });
+      if (failedRows) failedRows.push(...result.failed);
+      return result.inserted;
     },
   },
   companies: {
     scope: 'org',
     schema: companiesRowSchema,
     description: 'Şirket master data (org-scope)',
-    insert: async (rows, { orgId, db: dbOrTx }) => {
+    insert: async (rows, { orgId, db: dbOrTx, failedRows }) => {
       const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
-      const inserted = await db
-        .insert(companies)
-        .values(rows.map((r) => ({ organization_id: orgId, ...r })))
-        .returning({ id: companies.id });
-      return inserted.map((x) => x.id);
+      const prepared = rows.map((r) => ({ organization_id: orgId, ...r }));
+      const result = await bulkInsertWithFallback({
+        rows: prepared,
+        insertAll: (rs) => db.insert(companies).values(rs).returning({ id: companies.id }),
+        insertOne: (r) => db.insert(companies).values(r).returning({ id: companies.id }),
+      });
+      if (failedRows) failedRows.push(...result.failed);
+      return result.inserted;
     },
   },
   properties: {
     scope: 'org',
     schema: propertiesRowSchema,
     description: 'Mülk master data (org-scope)',
-    insert: async (rows, { orgId, db: dbOrTx }) => {
+    insert: async (rows, { orgId, db: dbOrTx, failedRows }) => {
       const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
-      const inserted = await db
-        .insert(properties)
-        .values(rows.map((r) => ({ organization_id: orgId, ...r })))
-        .returning({ id: properties.id });
-      return inserted.map((x) => x.id);
+      const prepared = rows.map((r) => ({ organization_id: orgId, ...r }));
+      const result = await bulkInsertWithFallback({
+        rows: prepared,
+        insertAll: (rs) => db.insert(properties).values(rs).returning({ id: properties.id }),
+        insertOne: (r) => db.insert(properties).values(r).returning({ id: properties.id }),
+      });
+      if (failedRows) failedRows.push(...result.failed);
+      return result.inserted;
     },
   },
   payables: {
     scope: 'tenant',
     schema: payablesRowSchema,
     description: 'Fatura/borç kayıtları (tenant-scope) — supplier_name otomatik şirketle eşleşir',
-    insert: async (rows, { orgId, tenantId, db: dbOrTx }) => {
+    insert: async (rows, { orgId, tenantId, db: dbOrTx, failedRows }) => {
       const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
       // Auto-match: supplier_name → company_id + auto-categorize
@@ -281,28 +297,29 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
           return { ...r, company_id, category };
         }),
       );
-      const inserted = await db
-        .insert(payableItems)
-        .values(matched.map((r) => ({ tenant_id: tenantId, ...r })))
-        .returning({ id: payableItems.id });
-      return inserted.map((x) => x.id);
+      const prepared = matched.map((r) => ({ tenant_id: tenantId, ...r }));
+      const result = await bulkInsertWithFallback({
+        rows: prepared,
+        insertAll: (rs) => db.insert(payableItems).values(rs).returning({ id: payableItems.id }),
+        insertOne: (r) => db.insert(payableItems).values(r).returning({ id: payableItems.id }),
+      });
+      if (failedRows) failedRows.push(...result.failed);
+      return result.inserted;
     },
   },
   subscriptions: {
     scope: 'tenant',
     schema: subscriptionsRowSchema,
     description: 'Abonelik & taahhüt (tenant-scope) — institution/company otomatik eşleşir',
-    insert: async (rows, { orgId, tenantId, db: dbOrTx }) => {
+    insert: async (rows, { orgId, tenantId, db: dbOrTx, failedRows }) => {
       const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
-      // Auto-match: package_name içerebileceği institution adı (TT, CK, vb.)
       const matched = await Promise.all(
         rows.map(async (r) => {
           let institution_id: string | null = null;
           if (r.package_name) {
             institution_id = await matchInstitutionByName(orgId, r.package_name);
             if (!institution_id) {
-              // Paket içinde ilk kelime de denenebilir (örn. "Türk Telekom Fiber" → "Türk Telekom")
               const firstWord = r.package_name.split(' ').slice(0, 2).join(' ');
               if (firstWord !== r.package_name) {
                 institution_id = await matchInstitutionByName(orgId, firstWord);
@@ -312,38 +329,42 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
           return { ...r, institution_id };
         }),
       );
-      const inserted = await db
-        .insert(subscriptions)
-        .values(matched.map((r) => ({ tenant_id: tenantId, ...r })))
-        .returning({ id: subscriptions.id });
-      return inserted.map((x) => x.id);
+      const prepared = matched.map((r) => ({ tenant_id: tenantId, ...r }));
+      const result = await bulkInsertWithFallback({
+        rows: prepared,
+        insertAll: (rs) => db.insert(subscriptions).values(rs).returning({ id: subscriptions.id }),
+        insertOne: (r) => db.insert(subscriptions).values(r).returning({ id: subscriptions.id }),
+      });
+      if (failedRows) failedRows.push(...result.failed);
+      return result.inserted;
     },
   },
   'regular-payments': {
     scope: 'tenant',
     schema: regularPaymentsRowSchema,
     description: 'Kira/leasing/bakım sözleşmeleri (tenant-scope)',
-    insert: async (rows, { tenantId, db: dbOrTx }) => {
+    insert: async (rows, { tenantId, db: dbOrTx, failedRows }) => {
       const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
-      const inserted = await db
-        .insert(regularPaymentProfiles)
-        .values(rows.map((r) => ({ tenant_id: tenantId, ...r })))
-        .returning({ id: regularPaymentProfiles.id });
-      return inserted.map((x) => x.id);
+      const prepared = rows.map((r) => ({ tenant_id: tenantId, ...r }));
+      const result = await bulkInsertWithFallback({
+        rows: prepared,
+        insertAll: (rs) => db.insert(regularPaymentProfiles).values(rs).returning({ id: regularPaymentProfiles.id }),
+        insertOne: (r) => db.insert(regularPaymentProfiles).values(r).returning({ id: regularPaymentProfiles.id }),
+      });
+      if (failedRows) failedRows.push(...result.failed);
+      return result.inserted;
     },
   },
   guarantees: {
     scope: 'tenant',
     schema: guaranteesRowSchema,
     description: 'Teminat mektupları (tenant-scope) — beneficiary/bank otomatik eşleşir',
-    insert: async (rows, { orgId, tenantId, db: dbOrTx }) => {
+    insert: async (rows, { orgId, tenantId, db: dbOrTx, failedRows }) => {
       const db = (dbOrTx ?? getDb()) as ReturnType<typeof getDb>;
       if (!tenantId) throw new Error('tenant context required');
       const matched = await Promise.all(
         rows.map(async (r) => {
-          // beneficiary_name → issuer_company_id (kendi şirket olduğu varsayım) veya bırak
-          // bank_name → bank_id
           let bank_id: string | null = null;
           if (r.bank_name) {
             bank_id = await matchBankByName(orgId, r.bank_name);
@@ -352,11 +373,14 @@ export const IMPORT_HANDLERS: Record<string, ImportConfig> = {
           return { ...rest, bank_id };
         }),
       );
-      const inserted = await db
-        .insert(guarantees)
-        .values(matched.map((r) => ({ tenant_id: tenantId, ...r })))
-        .returning({ id: guarantees.id });
-      return inserted.map((x) => x.id);
+      const prepared = matched.map((r) => ({ tenant_id: tenantId, ...r }));
+      const result = await bulkInsertWithFallback({
+        rows: prepared,
+        insertAll: (rs) => db.insert(guarantees).values(rs).returning({ id: guarantees.id }),
+        insertOne: (r) => db.insert(guarantees).values(r).returning({ id: guarantees.id }),
+      });
+      if (failedRows) failedRows.push(...result.failed);
+      return result.inserted;
     },
   },
 };

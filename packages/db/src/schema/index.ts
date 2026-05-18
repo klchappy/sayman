@@ -43,3 +43,4 @@ export * from './saved-searches';
 export * from './integration-credentials';
 export * from './support-tickets';
 export * from './reference-data';
+export * from './job-runs';

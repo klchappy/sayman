@@ -28,8 +28,18 @@ export interface SendEmailParams {
 }
 
 export interface SendEmailResult {
-  delivered: 'email' | 'fallback_link';
+  /**
+   * - 'email'         → Resend kabul etti, mesaj kuyruğa girdi
+   * - 'no_gateway'    → Hiç Resend kurulmamış (env+org credential yok) → fallback_link göster
+   * - 'failed'        → Resend kuruldu ama gönderim başarısız (network, 4xx/5xx, vs.)
+   *                     → operasyonel uyarı gerekli, retry düşünülmeli
+   * - 'fallback_link' → BACKWARDS-COMPAT alias: 'no_gateway' anlamına gelir.
+   *                     Yeni callers 'no_gateway' kullansın.
+   */
+  delivered: 'email' | 'no_gateway' | 'failed' | 'fallback_link';
   message_id?: string;
+  /** delivered='failed' ise hata mesajı/detayı */
+  error?: string;
 }
 
 async function resolveResendCreds(
@@ -61,7 +71,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       { to: params.to, subject: params.subject, tag: params.tag },
       'Email gateway not configured (resend credentials yok) — fallback mode',
     );
-    return { delivered: 'fallback_link' };
+    return { delivered: 'no_gateway' };
   }
 
   try {
@@ -87,14 +97,15 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
         { status: res.status, body: errorText, to: params.to },
         'Resend send failed',
       );
-      return { delivered: 'fallback_link' };
+      return { delivered: 'failed', error: `HTTP ${res.status}: ${errorText.slice(0, 200)}` };
     }
 
     const data = (await res.json()) as { id?: string };
     return { delivered: 'email', message_id: data.id };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     logger.error({ err, to: params.to }, 'Resend network error');
-    return { delivered: 'fallback_link' };
+    return { delivered: 'failed', error: 'network: ' + msg };
   }
 }
 

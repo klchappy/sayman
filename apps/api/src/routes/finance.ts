@@ -25,6 +25,7 @@ import {
 import { requireAuth } from '../middleware/auth';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
+import { escapeIlike } from '../lib/sql-escape';
 import { restoreHandler } from '../lib/restore';
 import { APPROVAL_THRESHOLD_TRY } from './payment-approvals';
 
@@ -147,7 +148,7 @@ payablesRouter.post('/payables', requireAuth, requireTenant, async (req, res, ne
     // Auto-match: company_id yoksa supplier_name veya title üzerinden şirkete eşle
     let companyId = body.company_id ?? null;
     if (!companyId && (body.supplier_name || body.title)) {
-      const lookupName = body.supplier_name ?? body.title;
+      const lookupName = escapeIlike(body.supplier_name ?? body.title);
       const [match] = await db
         .select({ id: companies.id })
         .from(companies)

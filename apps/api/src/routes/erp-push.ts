@@ -15,7 +15,7 @@
  *   POST /v1/erp/connections/:id/push-pending              → tüm bekleyenleri push et
  *   GET  /v1/erp/connections/:id/push-status               → push istatistikleri
  */
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { Router } from 'express';
 import {
   erpConnections,
@@ -405,6 +405,67 @@ erpPushRouter.get(
       };
 
       res.json({ data: stats });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * /v1/erp/connections/:id/push-failures
+ * ERP push'u başarısız olan tüm payable'ları detaylı listele.
+ * Önceden push-status sadece sayı döndürüyordu — kullanıcı hangi fatura niye
+ * push edemediğini göremiyordu (her satırın `erp_push_error` alanı vardı ama
+ * UI'ya servis edilmiyordu).
+ */
+erpPushRouter.get(
+  '/erp/connections/:id/push-failures',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      const [conn] = await db
+        .select({ id: erpConnections.id, tenant_id: erpConnections.tenant_id })
+        .from(erpConnections)
+        .where(
+          and(
+            eq(erpConnections.id, String(req.params.id ?? '')),
+            eq(erpConnections.organization_id, req.activeOrgId!),
+          ),
+        );
+      if (!conn) throw new HttpError(404, 'Bağlantı bulunamadı');
+      if (!conn.tenant_id) {
+        res.json({ data: [], count: 0 });
+        return;
+      }
+
+      const limit = Math.min(Number(req.query.limit ?? 100), 500);
+      const failures = await db
+        .select({
+          id: payableItems.id,
+          title: payableItems.title,
+          invoice_number: payableItems.invoice_number,
+          supplier_name: payableItems.supplier_name,
+          amount: payableItems.amount,
+          issue_date: payableItems.issue_date,
+          erp_push_status: payableItems.erp_push_status,
+          erp_push_error: payableItems.erp_push_error,
+          erp_pushed_at: payableItems.erp_pushed_at,
+          updated_at: payableItems.updated_at,
+        })
+        .from(payableItems)
+        .where(
+          and(
+            eq(payableItems.tenant_id, conn.tenant_id),
+            eq(payableItems.is_active, true),
+            eq(payableItems.erp_push_status, 'failed'),
+          ),
+        )
+        .orderBy(desc(payableItems.updated_at))
+        .limit(limit);
+
+      res.json({ data: failures, count: failures.length, limit });
     } catch (err) {
       next(err);
     }

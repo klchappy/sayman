@@ -12,6 +12,7 @@
  */
 import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { companies, getDb } from '@sayman/db';
+import { escapeIlike } from './sql-escape';
 
 export interface PartyHint {
   name: string;
@@ -59,13 +60,15 @@ export async function resolveOrCreateCompany(
   }
 
   // 2. Ad ile bulanık eşleşme (case-insensitive)
+  // NOT: ilike(col, name) — name içindeki % ve _ wildcard'ları literal hale getir
+  // ki "Foo%Bar" gibi şirket adları "FooXBar"a yanlışlıkla eşleşmesin.
   const [byName] = await db
     .select({ id: companies.id })
     .from(companies)
     .where(
       and(
         eq(companies.organization_id, organizationId),
-        ilike(companies.name, name),
+        ilike(companies.name, escapeIlike(name)),
       ),
     )
     .limit(1);

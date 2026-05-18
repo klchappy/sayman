@@ -133,6 +133,12 @@ export async function createNotificationForAdmins(input: CreateNotifInput): Prom
           })
           .where(eq(notifications.id, result[0]!.id));
         if (mailResult.delivered === 'email') mail_sent++;
+        else if (mailResult.delivered === 'failed') {
+          logger.error(
+            { to: admin.email, error: mailResult.error, notif_id: result[0]!.id },
+            'notification email send failed (operational alert)',
+          );
+        }
 
         // Telegram (chat_id varsa)
         if (admin.telegram_chat_id) {

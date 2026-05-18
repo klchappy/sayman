@@ -620,6 +620,8 @@ smartImportRouter.post(
           invoice_number?: string;
           payable_id?: string;
           supplier_new?: boolean;
+          supplier_failed?: boolean;
+          supplier_error?: string;
           error?: string;
         }> = [];
 
@@ -659,6 +661,7 @@ smartImportRouter.post(
             }
 
             let supplier = null;
+            let supplierFailedErr: string | null = null;
             if (parsed.supplier_name) {
               try {
                 supplier = await resolveOrCreateCompany(orgId, {
@@ -666,7 +669,11 @@ smartImportRouter.post(
                   tax_number: parsed.supplier_tax_number,
                   source: 'efatura',
                 });
-              } catch {}
+              } catch (err) {
+                // Eskiden bu hata sessizce yutuluyordu — kullanıcı tedarikçi eşleşmesinin
+                // neden olmadığını göremiyordu.
+                supplierFailedErr = err instanceof Error ? err.message : String(err);
+              }
             }
 
             try {
@@ -712,6 +719,9 @@ smartImportRouter.post(
                 invoice_number: parsed.invoice_number,
                 payable_id: created?.id,
                 supplier_new: supplier?.is_new ?? false,
+                ...(supplierFailedErr
+                  ? { supplier_failed: true, supplier_error: supplierFailedErr }
+                  : {}),
               });
             } catch (insertErr) {
               if ((insertErr as { code?: string }).code === '23505') {
@@ -761,6 +771,7 @@ smartImportRouter.post(
         });
 
         const truncatedCount = Math.max(0, xmlFiles.length - ZIP_BATCH_LIMIT);
+        const supplierFailedCount = results.filter((r) => r.supplier_failed).length;
         res.json({
           data: {
             type: archiveType,
@@ -774,10 +785,11 @@ smartImportRouter.post(
             duplicates,
             failed,
             new_suppliers: newSuppliers,
+            supplier_failed: supplierFailedCount,
             results: results.slice(0, 200),
             message: truncatedCount > 0
-              ? `${success} fatura aktarıldı, ${duplicates} mükerrer, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi` : ''}. UYARI: ${truncatedCount} XML işlenmedi (batch limiti ${ZIP_BATCH_LIMIT}). Geri kalanlar için yeni bir ZIP yükle.`
-              : `${success} fatura aktarıldı, ${duplicates} mükerrer atlandı, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi oluşturuldu` : ''}.`,
+              ? `${success} fatura aktarıldı, ${duplicates} mükerrer, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi` : ''}${supplierFailedCount > 0 ? `, ${supplierFailedCount} tedarikçi eşleştirilemedi` : ''}. UYARI: ${truncatedCount} XML işlenmedi (batch limiti ${ZIP_BATCH_LIMIT}). Geri kalanlar için yeni bir ZIP yükle.`
+              : `${success} fatura aktarıldı, ${duplicates} mükerrer atlandı, ${failed} hata${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi oluşturuldu` : ''}${supplierFailedCount > 0 ? `, ${supplierFailedCount} tedarikçi eşleştirilemedi (kayıt yine de oluşturuldu)` : ''}.`,
           },
         });
         return;
@@ -904,6 +916,8 @@ smartImportRouter.post(
         // olamaz, hep ya tamam ya hiç.
         const db = getDb();
         let newSuppliers = 0;
+        const supplierFailures: Array<{ supplier_name: string; error: string }> = [];
+        const insertFailures: Array<{ row_index: number; row: any; error: string }> = [];
         const insertedIds = await db.transaction(async (tx) => {
           if (detected === 'payables') {
             for (const row of validatedRows) {
@@ -919,7 +933,11 @@ smartImportRouter.post(
                   if (sup.is_new) newSuppliers++;
                   (row as Record<string, unknown>).company_id = sup.id;
                 } catch (err) {
-                  logger.warn({ err }, 'csv import auto-supplier failed');
+                  // Önceden bu hata sessizce yutuluyordu, kullanıcı tedarikçi
+                  // eşleşmesinin neden eksik olduğunu göremiyordu.
+                  const msg = err instanceof Error ? err.message : String(err);
+                  supplierFailures.push({ supplier_name: supplierName, error: msg });
+                  logger.warn({ err, supplierName }, 'csv import auto-supplier failed');
                 }
               }
             }
@@ -929,6 +947,7 @@ smartImportRouter.post(
             orgId,
             tenantId: handler.scope === 'tenant' ? tenantId : undefined,
             db: tx,
+            failedRows: insertFailures,
           });
         });
 
@@ -942,6 +961,7 @@ smartImportRouter.post(
             resource: detected,
             inserted: insertedIds.length,
             new_suppliers: newSuppliers,
+            supplier_failed: supplierFailures.length,
           },
         });
 
@@ -957,8 +977,15 @@ smartImportRouter.post(
             inserted: insertedIds.length,
             inserted_ids: insertedIds,
             new_suppliers: newSuppliers,
+            supplier_failed: supplierFailures.length,
+            supplier_failures: supplierFailures.slice(0, 20),
+            // Bulk insert all-or-nothing'den row-by-row fallback'e geçti — başarısız
+            // satırlar artık ayrı listede dönüyor (eskiden tüm batch fail eder, kullanıcı
+            // hangi satırın patladığını göremezdi).
+            insert_failed: insertFailures.length,
+            insert_failures: insertFailures.slice(0, 20),
             errors: errors.slice(0, 20),
-            message: `${insertedIds.length} kayıt eklendi${errors.length > 0 ? `, ${errors.length} hatalı satır atlandı` : ''}${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi (doğrulama bekliyor)` : ''}.`,
+            message: `${insertedIds.length} kayıt eklendi${errors.length > 0 ? `, ${errors.length} doğrulamayı geçemedi` : ''}${insertFailures.length > 0 ? `, ${insertFailures.length} satır DB'ye yazılamadı` : ''}${newSuppliers > 0 ? `, ${newSuppliers} yeni tedarikçi (doğrulama bekliyor)` : ''}${supplierFailures.length > 0 ? `, ${supplierFailures.length} tedarikçi eşleştirilemedi` : ''}.`,
           },
         });
         return;

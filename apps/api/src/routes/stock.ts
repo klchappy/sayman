@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { getDb, stockItems, tenants } from '@sayman/db';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
+import { ilikePattern } from '../lib/sql-escape';
 import { requireAuth } from '../middleware/auth';
 
 export const stockRouter = Router();
@@ -20,7 +21,7 @@ stockRouter.get('/stock', requireAuth, requireTenantOrAggregate, async (req, res
     const db = getDb();
     const conditions: any[] = [tenantScope(req, stockItems.tenant_id)];
     if (req.query.search) {
-      const s = `%${String(req.query.search)}%`;
+      const s = ilikePattern(String(req.query.search));
       conditions.push(or(ilike(stockItems.name, s), ilike(stockItems.code, s)));
     }
     if (String(req.query.low_only ?? '') === 'true') {
