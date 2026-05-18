@@ -22,6 +22,7 @@ import { logger } from '../config/logger';
 import { auditFromRequest } from '../lib/audit';
 import { generateText } from '../lib/ai-providers';
 import { HttpError, requireTenant, requireTenantOrAggregate } from '../lib/helpers';
+import { uuidArray } from '../lib/sql-utils';
 import { requireAuth } from '../middleware/auth';
 
 const recordSchema = z.object({
@@ -257,7 +258,7 @@ categoryFeedbackRouter.get(
           COUNT(*) AS count,
           MAX(created_at) AS last_seen
         FROM category_feedback
-        WHERE tenant_id = ANY(${tenantIdsForQuery}::uuid[])
+        WHERE tenant_id = ANY(${uuidArray(tenantIdsForQuery)})
           AND suggested_category IS NOT NULL
           AND suggested_category != actual_category
         GROUP BY suggested_category, actual_category

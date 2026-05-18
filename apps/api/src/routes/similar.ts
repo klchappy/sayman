@@ -15,6 +15,7 @@ import { and, eq, ne, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { getDb, payableItems } from '@sayman/db';
 import { HttpError, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
+import { uuidArray } from '../lib/sql-utils';
 import { requireAuth } from '../middleware/auth';
 
 export const similarRouter = Router();
@@ -39,7 +40,7 @@ similarRouter.get('/similar/payable/:id', requireAuth, requireTenantOrAggregate,
 
     // Aggregate-aware tenant filter for raw SQL: tek tenant tek id, aggregate çoklu liste
     const tenantFilter = req.aggregateTenantIds
-      ? sql`p.tenant_id = ANY(${req.aggregateTenantIds}::uuid[])`
+      ? sql`p.tenant_id = ANY(${uuidArray(req.aggregateTenantIds)})`
       : sql`p.tenant_id = ${req.activeTenantId!}::uuid`;
 
     // Scored similar query

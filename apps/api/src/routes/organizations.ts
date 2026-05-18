@@ -22,6 +22,7 @@ import {
 } from '@sayman/db';
 import { auditFromRequest } from '../lib/audit';
 import { HttpError } from '../lib/helpers';
+import { uuidArray } from '../lib/sql-utils';
 import { requireAuth } from '../middleware/auth';
 
 export const organizationsRouter = Router();
@@ -118,6 +119,7 @@ organizationsRouter.get(
       // Tenant listesi
       const tList = await db.select().from(tenants).where(eq(tenants.organization_id, org.id));
       const tenantIds = tList.map((t) => t.id);
+      const tenantIdArray = uuidArray(tenantIds);
       const tenantNameMap = new Map(tList.map((t) => [t.id, t.name]));
 
       if (tenantIds.length === 0) {
@@ -154,7 +156,7 @@ organizationsRouter.get(
         .from(payableItems)
         .where(
           and(
-            sql`${payableItems.tenant_id} = ANY(${tenantIds})`,
+            sql`${payableItems.tenant_id} = ANY(${tenantIdArray})`,
             eq(payableItems.is_active, true),
           ),
         )
@@ -170,7 +172,7 @@ organizationsRouter.get(
         .from(subscriptions)
         .where(
           and(
-            sql`${subscriptions.tenant_id} = ANY(${tenantIds})`,
+            sql`${subscriptions.tenant_id} = ANY(${tenantIdArray})`,
             eq(subscriptions.is_active, true),
           ),
         )
@@ -185,7 +187,7 @@ organizationsRouter.get(
         })
         .from(guarantees)
         .where(
-          and(sql`${guarantees.tenant_id} = ANY(${tenantIds})`, eq(guarantees.is_active, true)),
+          and(sql`${guarantees.tenant_id} = ANY(${tenantIdArray})`, eq(guarantees.is_active, true)),
         )
         .groupBy(guarantees.tenant_id);
 

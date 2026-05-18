@@ -16,6 +16,7 @@ import { sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { getDb } from '@sayman/db';
 import { HttpError, requireTenantOrAggregate } from '../lib/helpers';
+import { uuidArray } from '../lib/sql-utils';
 import { requireAuth } from '../middleware/auth';
 
 export const reportsConsolidatedRouter = Router();
@@ -60,6 +61,7 @@ reportsConsolidatedRouter.get(
       const db = getDb();
       // Aggregate ise tüm tenant'lar, tek tenant ise sadece o
       const tenantIds = req.aggregateTenantIds ?? [req.activeTenantId!];
+      const tenantIdArray = uuidArray(tenantIds);
 
       // Per-tenant breakdown
       const perTenant = await db.execute(sql`
@@ -96,7 +98,7 @@ reportsConsolidatedRouter.get(
           WHERE tenant_id = t.id
             AND period BETWEEN ${fromYm} AND ${toYm}
         ) dep ON true
-        WHERE t.id = ANY(${tenantIds}::uuid[])
+        WHERE t.id = ANY(${tenantIdArray})
           AND t.is_active = true
         ORDER BY t.name ASC
       `);
@@ -117,7 +119,7 @@ reportsConsolidatedRouter.get(
         WITH months AS (
           SELECT to_char(issue_date, 'YYYY-MM') AS ym, SUM(amount::numeric) AS revenue, 0 AS expenses
           FROM sales_invoices
-          WHERE tenant_id = ANY(${tenantIds}::uuid[])
+          WHERE tenant_id = ANY(${tenantIdArray})
             AND is_active = true
             AND status != 'cancelled'
             AND needs_review = false
@@ -126,7 +128,7 @@ reportsConsolidatedRouter.get(
           UNION ALL
           SELECT to_char(issue_date, 'YYYY-MM') AS ym, 0 AS revenue, SUM(amount::numeric) AS expenses
           FROM payable_items
-          WHERE tenant_id = ANY(${tenantIds}::uuid[])
+          WHERE tenant_id = ANY(${tenantIdArray})
             AND is_active = true
             AND needs_review = false
             AND issue_date BETWEEN ${from} AND ${to}
@@ -145,7 +147,7 @@ reportsConsolidatedRouter.get(
           COUNT(*) AS count,
           SUM(amount::numeric) AS total
         FROM payable_items
-        WHERE tenant_id = ANY(${tenantIds}::uuid[])
+        WHERE tenant_id = ANY(${tenantIdArray})
           AND is_active = true
           AND needs_review = false
           AND issue_date BETWEEN ${from} AND ${to}
@@ -238,6 +240,7 @@ reportsConsolidatedRouter.get(
 
       const db = getDb();
       const tenantIds = req.aggregateTenantIds ?? [req.activeTenantId!];
+      const tenantIdArray = uuidArray(tenantIds);
 
       const perTenant = await db.execute(sql`
         SELECT
@@ -273,7 +276,7 @@ reportsConsolidatedRouter.get(
             AND needs_review = false
             AND (issue_date IS NULL OR issue_date <= ${asOf})
         ) ap ON true
-        WHERE t.id = ANY(${tenantIds}::uuid[])
+        WHERE t.id = ANY(${tenantIdArray})
           AND t.is_active = true
         ORDER BY t.name ASC
       `);

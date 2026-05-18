@@ -14,6 +14,7 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { getDb, organizations, payableItems, tenants } from '@sayman/db';
 import { logger } from '../config/logger';
+import { uuidArray } from '../lib/sql-utils';
 import { createNotificationForAdmins, todayISO } from './helpers';
 
 export interface AnomalyResult {
@@ -49,6 +50,7 @@ export async function runDetectAnomalies(): Promise<AnomalyResult> {
       .where(eq(tenants.organization_id, org.id));
     const tenantIds = tList.map((t) => t.id);
     if (tenantIds.length === 0) continue;
+    const tenantIdArray = uuidArray(tenantIds);
 
     // --- Kural 1: Yüksek tutarlı kayıt (ortalamanın 2 katı üstünde) ---
     // Son 6 ay ortalama VS son 30 gün eklenen kayıtlar
@@ -59,7 +61,7 @@ export async function runDetectAnomalies(): Promise<AnomalyResult> {
                AVG(amount::numeric) AS avg_amount,
                COUNT(*) AS sample_count
         FROM payable_items
-        WHERE tenant_id = ANY(${tenantIds}::uuid[])
+        WHERE tenant_id = ANY(${tenantIdArray})
           AND is_active = true
           AND created_at > NOW() - INTERVAL '6 months'
           AND created_at < NOW() - INTERVAL '30 days'
@@ -73,7 +75,7 @@ export async function runDetectAnomalies(): Promise<AnomalyResult> {
       JOIN supplier_avg sa
         ON (p.supplier_name IS NOT DISTINCT FROM sa.supplier_name
             AND p.company_id IS NOT DISTINCT FROM sa.company_id)
-      WHERE p.tenant_id = ANY(${tenantIds}::uuid[])
+      WHERE p.tenant_id = ANY(${tenantIdArray})
         AND p.is_active = true
         AND p.created_at > NOW() - INTERVAL '30 days'
         AND p.amount::numeric > sa.avg_amount * ${AMOUNT_THRESHOLD_RATIO}
@@ -114,7 +116,7 @@ export async function runDetectAnomalies(): Promise<AnomalyResult> {
       .from(payableItems)
       .where(
         and(
-          sql`${payableItems.tenant_id} = ANY(${tenantIds}::uuid[])`,
+          sql`${payableItems.tenant_id} = ANY(${tenantIdArray})`,
           eq(payableItems.is_active, true),
           eq(payableItems.status, 'overdue'),
           gte(payableItems.amount, String(OVERDUE_AMOUNT_THRESHOLD)),
@@ -147,7 +149,7 @@ export async function runDetectAnomalies(): Promise<AnomalyResult> {
         MAX(id) AS last_id,
         MIN(tenant_id) AS tenant_id
       FROM payable_items
-      WHERE tenant_id = ANY(${tenantIds}::uuid[])
+      WHERE tenant_id = ANY(${tenantIdArray})
         AND is_active = true
         AND created_at > NOW() - INTERVAL '${sql.raw(String(DUPLICATE_WINDOW_DAYS))} days'
         AND (supplier_name IS NOT NULL OR company_id IS NOT NULL)

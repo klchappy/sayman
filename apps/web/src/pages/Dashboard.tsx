@@ -151,7 +151,7 @@ export function DashboardPage() {
           <PendingReviewDashboardWidget />
 
           {/* === AI Summary Widget === */}
-          <AISummaryWidget />
+          {!active.aggregate && <AISummaryWidget />}
 
           {/* === KPI Cards === */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -184,7 +184,7 @@ export function DashboardPage() {
           </div>
 
           {/* === Forecast Widget === */}
-          {has('finance') && <ForecastWidget />}
+          {has('finance') && !active.aggregate && <ForecastWidget />}
 
           {/* === Alacak KPI Widget === */}
           {has('finance') && <SalesKpiWidget />}

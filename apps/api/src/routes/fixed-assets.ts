@@ -24,6 +24,7 @@ import { buildSchedule, calculateMonthlyDepreciation } from '../lib/depreciation
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope } from '../lib/helpers';
 import { LIST_LIMITS, countTotal, listMeta } from '../lib/list-meta';
 import { restoreHandler } from '../lib/restore';
+import { uuidArray } from '../lib/sql-utils';
 import { requireAuth } from '../middleware/auth';
 
 export const fixedAssetsRouter = Router();
@@ -56,7 +57,7 @@ fixedAssetsRouter.get(
           SUM(purchase_cost::numeric) AS total_cost,
           SUM(accumulated_depreciation::numeric) AS total_accumulated
         FROM fixed_assets
-        WHERE tenant_id = ANY(${tenantIdsForQuery}::uuid[])
+        WHERE tenant_id = ANY(${uuidArray(tenantIdsForQuery)})
           AND is_active = true
           AND status = 'active'
         GROUP BY category
