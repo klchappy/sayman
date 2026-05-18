@@ -5,6 +5,21 @@ import { isConfigured } from '../config/env';
 
 export const healthRouter = Router();
 
+const buildInfo = {
+  commit:
+    process.env.SOURCE_COMMIT ??
+    process.env.COOLIFY_GIT_COMMIT_SHA ??
+    process.env.GIT_COMMIT ??
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    null,
+  branch:
+    process.env.SOURCE_BRANCH ??
+    process.env.COOLIFY_GIT_BRANCH ??
+    process.env.GIT_BRANCH ??
+    process.env.VERCEL_GIT_COMMIT_REF ??
+    null,
+};
+
 healthRouter.get('/health', async (_req, res) => {
   let db = 'unknown';
   try {
@@ -19,6 +34,7 @@ healthRouter.get('/health', async (_req, res) => {
     status: 'ok',
     db,
     ts: new Date().toISOString(),
+    build: buildInfo,
     integrations: isConfigured,
     cron: {
       tz: 'Europe/Istanbul',
