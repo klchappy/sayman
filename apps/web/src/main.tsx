@@ -21,8 +21,17 @@ if (sentryDsn) {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      // 60s stale (eski: 30s) — çoğu liste real-time değil
+      staleTime: 60_000,
+      // 30dk gc (eski: 5dk default) — kullanıcı geri gelince anlık render
+      gcTime: 30 * 60_000,
       refetchOnWindowFocus: false,
+      // Network hata durumunda 2 retry (eski default: 3) — daha hızlı feedback
+      retry: 2,
+    },
+    mutations: {
+      // Mutation default retry kapalı (idempotent olmayanlar için tehlikeli)
+      retry: false,
     },
   },
 });

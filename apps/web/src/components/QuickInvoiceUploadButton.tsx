@@ -58,9 +58,7 @@ export function QuickInvoiceUploadButton({
       qc.invalidateQueries({ queryKey: ['payables'] });
       qc.invalidateQueries({ queryKey: ['sales-invoices'] });
       qc.invalidateQueries({ queryKey: ['review-queue'] });
-      qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
-      qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
-      qc.invalidateQueries({ queryKey: ['review-queue-summary-empty'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary'] });
       qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
       qc.invalidateQueries({ queryKey: ['sales-summary'] });
       qc.invalidateQueries({ queryKey: ['payable-summary'] });

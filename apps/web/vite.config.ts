@@ -24,12 +24,17 @@ export default defineConfig(({ mode }) => {
       // Sayfaların kendi lazy chunk'ları zaten App.tsx React.lazy ile ayrılıyor.
       rollupOptions: {
         output: {
+          // Vendor splits — initial bundle'ı düşür, hot path cache hit oranını yükselt.
           manualChunks: {
             'vendor-react': ['react', 'react-dom', 'react-router-dom'],
             'vendor-query': ['@tanstack/react-query', 'zustand'],
             'vendor-charts': ['recharts'],
             'vendor-icons': ['lucide-react'],
-            'vendor-utils': ['axios', '@supabase/supabase-js'],
+            'vendor-axios': ['axios'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-sentry': ['@sentry/react'],
+            // xlsx ~500KB; sadece import edilen sayfalarda chunk olarak yüklenir
+            'vendor-xlsx': ['xlsx'],
           },
         },
       },

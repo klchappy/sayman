@@ -253,6 +253,13 @@
       "when": 1778795000000,
       "tag": "0035_job_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1778796000000,
+      "tag": "0036_perf_indexes",
+      "breakpoints": true
     }
   ]
 }

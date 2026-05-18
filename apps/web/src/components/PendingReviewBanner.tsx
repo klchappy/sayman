@@ -42,21 +42,35 @@ const TYPE_CONFIG: Record<
   persons: { entity: 'kişi', verb: 'doğrulama bekliyor', reviewType: 'person', icon: '👤' },
 };
 
-export function PendingReviewBanner({ type }: { type: ReviewType }) {
-  const active = useAuth((s) => s.active);
-  const cfg = TYPE_CONFIG[type];
+/**
+ * Tek shared hook — banner, dashboard widget, empty hint, sidebar badge
+ * hepsi aynı queryKey'i kullansın ki:
+ *   - 30s'de 4 ayrı /review-queue/summary call yapılmasın (eskiden 4 farklı
+ *     queryKey root: -banner, -shell, -empty + sidebar)
+ *   - Cache invalidation tek noktadan tetiklensin (bir mutation tüm widget'ları
+ *     anında günceller)
+ *
+ * AppShell sidebar de bu queryKey'i kullanır.
+ */
+export const REVIEW_QUEUE_SUMMARY_KEY = ['review-queue-summary'] as const;
 
-  const q = useQuery({
-    queryKey: ['review-queue-summary-banner', active.tenantSlug, active.orgSlug],
+function useReviewQueueSummary() {
+  const active = useAuth((s) => s.active);
+  return useQuery({
+    queryKey: [...REVIEW_QUEUE_SUMMARY_KEY, active.orgSlug, active.tenantSlug],
     enabled: !!active.orgSlug,
     queryFn: async () => {
-      // scope=org → Smart Import alıcı VKN'ye göre faturayı başka tenant'a route
-      // edebilir, kullanıcı aktif tenant'tayken org'daki tüm review-bekleyenleri görsün
       const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary?scope=org');
       return res.data.data;
     },
-    refetchInterval: 30000,
+    refetchInterval: 60_000, // 30s → 60s (review queue real-time değil)
+    staleTime: 30_000,
   });
+}
+
+export function PendingReviewBanner({ type }: { type: ReviewType }) {
+  const cfg = TYPE_CONFIG[type];
+  const q = useReviewQueueSummary();
 
   const count = q.data?.[type] ?? 0;
   if (count === 0) return null;
@@ -94,17 +108,7 @@ export function PendingReviewBanner({ type }: { type: ReviewType }) {
  * tek bir kartta listeler. Toplam 0 ise hiç görünmez.
  */
 export function PendingReviewDashboardWidget() {
-  const active = useAuth((s) => s.active);
-
-  const q = useQuery({
-    queryKey: ['review-queue-summary-shell', active.tenantSlug, active.orgSlug],
-    enabled: !!active.orgSlug,
-    queryFn: async () => {
-      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary?scope=org');
-      return res.data.data;
-    },
-    refetchInterval: 30000,
-  });
+  const q = useReviewQueueSummary();
 
   const s = q.data;
   if (!s || s.total === 0) return null;
@@ -169,20 +173,8 @@ export function PendingReviewDashboardWidget() {
  * kayıt varsa kullanıcıya yönlendirme yapar. Empty state'in altına eklenir.
  */
 export function PendingReviewEmptyHint({ type }: { type: ReviewType }) {
-  const active = useAuth((s) => s.active);
   const cfg = TYPE_CONFIG[type];
-
-  const q = useQuery({
-    queryKey: ['review-queue-summary-empty', active.tenantSlug, active.orgSlug],
-    enabled: !!active.orgSlug,
-    queryFn: async () => {
-      // scope=org → Smart Import auto-routing başka tenant'a yazmış olabilir.
-      // Banner ve dashboard widget ile aynı scope kullan, count tutarsızlığı olmasın.
-      const res = await api.get<{ data: ReviewSummary }>('/review-queue/summary?scope=org');
-      return res.data.data;
-    },
-    refetchInterval: 30000,
-  });
+  const q = useReviewQueueSummary();
 
   const count = q.data?.[type] ?? 0;
   if (count === 0) return null;

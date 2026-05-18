@@ -265,17 +265,17 @@ export function AppShell() {
   const activeTenant = tenantsQuery.data?.find((t) => t.slug === active.tenantSlug);
   const activeModules = new Set(activeTenant?.effective_modules ?? []);
 
-  // Onay bekleyen sayısı — sol menüde badge için
+  // Onay bekleyen sayısı — sol menüde badge için (banner/widget/empty hint
+  // ile aynı queryKey root: review-queue-summary). 4 ayrı endpoint hit yerine 1.
   const reviewSummary = useQuery({
-    queryKey: ['review-queue-summary-shell', active.tenantSlug, active.orgSlug],
+    queryKey: ['review-queue-summary', active.orgSlug, active.tenantSlug],
     enabled: !!active.orgSlug,
     queryFn: async () => {
-      // scope=org → Smart Import alıcı VKN'ye göre faturayı başka tenant'a route
-      // edebildiği için badge org-wide bakmalı; aksi halde kullanıcı "fatura yok" sanır.
       const res = await api.get<{ data: { total: number; payables: number; sales_invoices: number; companies: number; persons: number } }>('/review-queue/summary?scope=org');
       return res.data.data;
     },
-    refetchInterval: 30000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
   const reviewBadge = reviewSummary.data?.total ?? 0;
 

@@ -174,9 +174,7 @@ export function ReviewQueuePage() {
   // badge'leri de invalidate edilmeli, aksi halde kullanıcı eski sayı görür.
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['review-queue'] });
-    qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
-    qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
-    qc.invalidateQueries({ queryKey: ['review-queue-summary-empty'] });
+    qc.invalidateQueries({ queryKey: ['review-queue-summary'] });
     qc.invalidateQueries({ queryKey: ['payables'] });
     qc.invalidateQueries({ queryKey: ['sales-invoices'] });
     qc.invalidateQueries({ queryKey: ['sales-invoices-summary'] });

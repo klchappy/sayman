@@ -201,9 +201,7 @@ function SmartImportSection() {
       // cache'leri invalidate et — kullanıcı Faturalar/Cari/Review Queue'ya
       // gidince güncel veriyi görsün.
       qc.invalidateQueries({ queryKey: ['review-queue'] });
-      qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
-      qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
-      qc.invalidateQueries({ queryKey: ['review-queue-summary-empty'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary'] });
       qc.invalidateQueries({ queryKey: ['payables'] });
       qc.invalidateQueries({ queryKey: ['payable-summary'] });
       qc.invalidateQueries({ queryKey: ['sales-invoices'] });
