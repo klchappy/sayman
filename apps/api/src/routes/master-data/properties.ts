@@ -80,6 +80,18 @@ propertiesRouter.post('/properties', requireAuth, requireOrg, async (req, res, n
   }
 });
 
+// Single-record where: org + share_scope (tenant context varsa) — cross-tenant leak korumalı
+function singleRecordWhere(req: any) {
+  let where = and(
+    eq(properties.id, String(req.params.id ?? '')),
+    eq(properties.organization_id, req.activeOrgId!),
+  );
+  if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
+    where = and(where, shareScopeWhereSQL(req.saymanContext.tenantSlug)) as typeof where;
+  }
+  return where;
+}
+
 propertiesRouter.patch('/properties/:id', requireAuth, requireOrg, async (req, res, next) => {
   try {
     const body = updateSchema.parse(req.body);
@@ -87,12 +99,7 @@ propertiesRouter.patch('/properties/:id', requireAuth, requireOrg, async (req, r
     const [row] = await db
       .update(properties)
       .set({ ...body, updated_at: new Date() })
-      .where(
-        and(
-          eq(properties.id, String(req.params.id ?? '')),
-          eq(properties.organization_id, req.activeOrgId!),
-        ),
-      )
+      .where(singleRecordWhere(req))
       .returning();
     if (!row) throw new HttpError(404, 'Mülk bulunamadı');
 
@@ -118,12 +125,7 @@ propertiesRouter.delete('/properties/:id', requireAuth, requireOrg, async (req, 
     const [row] = await db
       .update(properties)
       .set({ is_active: false, updated_at: new Date() })
-      .where(
-        and(
-          eq(properties.id, String(req.params.id ?? '')),
-          eq(properties.organization_id, req.activeOrgId!),
-        ),
-      )
+      .where(singleRecordWhere(req))
       .returning();
     if (!row) throw new HttpError(404, 'Mülk bulunamadı');
 

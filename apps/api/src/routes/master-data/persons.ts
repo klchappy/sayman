@@ -82,20 +82,25 @@ personsRouter.post('/persons', requireAuth, requireOrg, async (req, res, next) =
   }
 });
 
+// Single-record where: org + share_scope (tenant context varsa) — cross-tenant leak korumalı
+function singleRecordWhere(req: any, includeActiveFilter = true) {
+  const base = [
+    eq(persons.id, String(req.params.id ?? '')),
+    eq(persons.organization_id, req.activeOrgId!),
+  ];
+  if (includeActiveFilter) base.push(eq(persons.is_active, true));
+  let where = and(...base);
+  if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
+    where = and(where, shareScopeWhereSQL(req.saymanContext.tenantSlug)) as typeof where;
+  }
+  return where;
+}
+
 // GET single
 personsRouter.get('/persons/:id', requireAuth, requireOrg, async (req, res, next) => {
   try {
     const db = getDb();
-    const [row] = await db
-      .select()
-      .from(persons)
-      .where(
-        and(
-          eq(persons.id, String(req.params.id ?? '')),
-          eq(persons.organization_id, req.activeOrgId!),
-          eq(persons.is_active, true),
-        ),
-      );
+    const [row] = await db.select().from(persons).where(singleRecordWhere(req));
     if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
     res.json({ data: row });
   } catch (err) {
@@ -111,7 +116,7 @@ personsRouter.patch('/persons/:id', requireAuth, requireOrg, async (req, res, ne
     const [row] = await db
       .update(persons)
       .set({ ...body, updated_at: new Date() })
-      .where(and(eq(persons.id, String(req.params.id ?? '')), eq(persons.organization_id, req.activeOrgId!)))
+      .where(singleRecordWhere(req, false))
       .returning();
     if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
 
@@ -138,7 +143,7 @@ personsRouter.delete('/persons/:id', requireAuth, requireOrg, async (req, res, n
     const [row] = await db
       .update(persons)
       .set({ is_active: false, updated_at: new Date() })
-      .where(and(eq(persons.id, String(req.params.id ?? '')), eq(persons.organization_id, req.activeOrgId!)))
+      .where(singleRecordWhere(req, false))
       .returning();
     if (!row) throw new HttpError(404, 'Şahıs bulunamadı');
 

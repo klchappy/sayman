@@ -75,19 +75,26 @@ companiesRouter.post('/companies', requireAuth, requireOrg, async (req, res, nex
   }
 });
 
+// Single-record where: org + share_scope (tenant context varsa)
+// LIST'te share_scope filter var ama GET/PATCH/DELETE :id'de yoktu —
+// kullanıcı UUID iterasyonu ile başka tenant'ın master-data'sına erişebiliyordu.
+function singleRecordWhere(req: any, includeActiveFilter = true) {
+  const base = [
+    eq(companies.id, String(req.params.id ?? '')),
+    eq(companies.organization_id, req.activeOrgId!),
+  ];
+  if (includeActiveFilter) base.push(eq(companies.is_active, true));
+  let where = and(...base);
+  if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
+    where = and(where, shareScopeWhereSQL(req.saymanContext.tenantSlug)) as typeof where;
+  }
+  return where;
+}
+
 companiesRouter.get('/companies/:id', requireAuth, requireOrg, async (req, res, next) => {
   try {
     const db = getDb();
-    const [row] = await db
-      .select()
-      .from(companies)
-      .where(
-        and(
-          eq(companies.id, String(req.params.id ?? '')),
-          eq(companies.organization_id, req.activeOrgId!),
-          eq(companies.is_active, true),
-        ),
-      );
+    const [row] = await db.select().from(companies).where(singleRecordWhere(req));
     if (!row) throw new HttpError(404, 'Şirket bulunamadı');
     res.json({ data: row });
   } catch (err) {
@@ -102,7 +109,7 @@ companiesRouter.patch('/companies/:id', requireAuth, requireOrg, async (req, res
     const [row] = await db
       .update(companies)
       .set({ ...body, updated_at: new Date() })
-      .where(and(eq(companies.id, String(req.params.id ?? '')), eq(companies.organization_id, req.activeOrgId!)))
+      .where(singleRecordWhere(req, false))
       .returning();
     if (!row) throw new HttpError(404, 'Şirket bulunamadı');
 
@@ -128,7 +135,7 @@ companiesRouter.delete('/companies/:id', requireAuth, requireOrg, async (req, re
     const [row] = await db
       .update(companies)
       .set({ is_active: false, updated_at: new Date() })
-      .where(and(eq(companies.id, String(req.params.id ?? '')), eq(companies.organization_id, req.activeOrgId!)))
+      .where(singleRecordWhere(req, false))
       .returning();
     if (!row) throw new HttpError(404, 'Şirket bulunamadı');
 

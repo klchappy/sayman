@@ -115,6 +115,10 @@ inboxRouter.get('/inbox', requireAuth, requireOrg, async (req, res, next) => {
       : [];
 
     // 4. Bana atanmış açık görevler
+    // CRITICAL: tasks tablosunda organization_id yok, sadece tenant_id var. Sadece userId
+    // filtresi multi-org consultant'larda cross-org leak yapıyordu (başka org'a ait
+    // görevler de gözüküyordu). Aktif org'a ait tenant'ların subquery'siyle sınırlandırıldı.
+    const orgId = req.activeOrgId!;
     const assignedTasks = await db
       .select({
         id: tasks.id,
@@ -126,7 +130,11 @@ inboxRouter.get('/inbox', requireAuth, requireOrg, async (req, res, next) => {
       .from(tasks)
       .where(
         and(
+          tenantId
+            ? eq(tasks.tenant_id, tenantId)
+            : sql`${tasks.tenant_id} IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid)`,
           eq(tasks.assigned_to, userId),
+          eq(tasks.is_active, true),
           ne(tasks.status, 'done'),
           ne(tasks.status, 'cancelled'),
         ),

@@ -60,11 +60,13 @@ inboundWebhooksRouter.post('/inbound/:slug', async (req, res, next) => {
       return;
     }
 
-    // HMAC doğrula
+    // HMAC doğrula — constant-time compare (timing attack korumalı)
     const rawBody = JSON.stringify(req.body ?? {});
     const sig = String(req.headers['x-sayman-inbound-signature'] ?? '').replace(/^sha256=/, '');
     const expected = crypto.createHmac('sha256', ep.secret).update(rawBody).digest('hex');
-    if (sig !== expected) {
+    const sigBuf = Buffer.from(sig, 'hex');
+    const expectedBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       res.status(401).json({ error: 'invalid_signature' });
       return;
     }
