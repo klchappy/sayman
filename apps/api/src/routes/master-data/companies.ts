@@ -8,6 +8,7 @@ import { getDb, companies } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
 import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg, shareScopeWhereSQL } from '../../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../../lib/list-meta';
 import { restoreHandler } from '../../lib/restore';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]);
@@ -32,8 +33,15 @@ companiesRouter.get('/companies', requireAuth, requireOrg, async (req, res, next
     if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
       where = and(where, shareScopeWhereSQL(req.saymanContext.tenantSlug)) as typeof where;
     }
-    const rows = await db.select().from(companies).where(where).orderBy(desc(companies.created_at));
-    res.json({ data: rows, count: rows.length });
+    const limit = Math.min(Number(req.query.limit ?? LIST_LIMITS.large), LIST_LIMITS.xl);
+    const rows = await db
+      .select()
+      .from(companies)
+      .where(where)
+      .orderBy(desc(companies.created_at))
+      .limit(limit);
+    const total = await countTotal(companies, where);
+    res.json({ data: rows, ...listMeta(rows, total, limit) });
   } catch (err) {
     next(err);
   }

@@ -22,7 +22,7 @@ import {
   User,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useConfirmBool } from '../components/ConfirmDialog';
 import { api } from '../lib/api';
 
@@ -73,6 +73,9 @@ interface ReviewPayable {
   category: string | null;
   source: string | null;
   created_at: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  tenant_slug: string | null;
 }
 
 interface ReviewSalesInvoice {
@@ -89,6 +92,9 @@ interface ReviewSalesInvoice {
   currency: string;
   source: string | null;
   created_at: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  tenant_slug: string | null;
 }
 
 interface ReviewQueueData {
@@ -118,14 +124,34 @@ const SOURCE_LABEL: Record<string, string> = {
 
 type Tab = 'payables' | 'sales_invoices' | 'companies' | 'persons';
 
+function tabFromQueryType(value: string | null): Tab {
+  switch (value) {
+    case 'payable':
+    case 'payables':
+      return 'payables';
+    case 'sales_invoice':
+    case 'sales_invoices':
+      return 'sales_invoices';
+    case 'company':
+    case 'companies':
+      return 'companies';
+    case 'person':
+    case 'persons':
+      return 'persons';
+    default:
+      return 'payables';
+  }
+}
+
 export function ReviewQueuePage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>('payables');
   // URL'den scope (?scope=tenant ile geri dön) okunur — DEFAULT 'org'.
   // Smart Import alıcı VKN auto-routing başka tenant'a yazabildiği için
   // kullanıcı normalde tüm org'u görmek ister; özellikle tek-tenant'a kısıtlamak
   // isterse toggle veya ?scope=tenant kullanır.
   const urlParams = new URLSearchParams(window.location.search);
+  const hasTypeParam = urlParams.has('type');
+  const [tab, setTab] = useState<Tab>(() => tabFromQueryType(urlParams.get('type')));
   const [scope, setScope] = useState<'tenant' | 'org'>(
     urlParams.get('scope') === 'tenant' ? 'tenant' : 'org',
   );
@@ -150,15 +176,18 @@ export function ReviewQueuePage() {
     qc.invalidateQueries({ queryKey: ['review-queue'] });
     qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
     qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
+    qc.invalidateQueries({ queryKey: ['review-queue-summary-empty'] });
     qc.invalidateQueries({ queryKey: ['payables'] });
     qc.invalidateQueries({ queryKey: ['sales-invoices'] });
     qc.invalidateQueries({ queryKey: ['sales-invoices-summary'] });
+    qc.invalidateQueries({ queryKey: ['sales-summary'] });
     qc.invalidateQueries({ queryKey: ['payable-summary'] });
     qc.invalidateQueries({ queryKey: ['cari-list'] });
     qc.invalidateQueries({ queryKey: ['cari-summary'] });
     qc.invalidateQueries({ queryKey: ['companies'] });
     qc.invalidateQueries({ queryKey: ['persons'] });
     qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
     qc.invalidateQueries({ queryKey: ['inbox'] });
   };
 
@@ -214,13 +243,20 @@ export function ReviewQueuePage() {
     },
   });
 
-  const counts = {
+  const counts = useMemo(() => ({
     payables: q.data?.payables.length ?? 0,
     sales_invoices: q.data?.sales_invoices.length ?? 0,
     companies: q.data?.companies.length ?? 0,
     persons: q.data?.persons.length ?? 0,
-  };
+  }), [q.data]);
   const total = counts.payables + counts.sales_invoices + counts.companies + counts.persons;
+
+  useEffect(() => {
+    if (hasTypeParam || !q.data || total === 0) return;
+    if (counts[tab] > 0) return;
+    const firstNonEmpty = (Object.keys(counts) as Tab[]).find((key) => counts[key] > 0);
+    if (firstNonEmpty) setTab(firstNonEmpty);
+  }, [counts, hasTypeParam, q.data, tab, total]);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -630,11 +666,19 @@ function ApproveRejectButtons({
   busy: boolean;
   rejectConfirm: string;
 }) {
+  const confirmBool = useConfirmBool();
+
   return (
     <div className="flex items-center gap-2">
       <button
-        onClick={() => {
-          if (confirm(rejectConfirm)) onReject();
+        onClick={async () => {
+          const ok = await confirmBool({
+            title: 'Reddet ve sil',
+            message: rejectConfirm,
+            confirmLabel: 'Reddet ve Sil',
+            variant: 'danger',
+          });
+          if (ok) onReject();
         }}
         disabled={busy}
         className="text-xs bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-700 dark:text-red-300 px-3 py-1.5 rounded flex items-center gap-1 disabled:opacity-50"
@@ -651,6 +695,22 @@ function ApproveRejectButtons({
         Onayla
       </button>
     </div>
+  );
+}
+
+function TenantBadge({
+  tenantName,
+  tenantSlug,
+}: {
+  tenantName?: string | null;
+  tenantSlug?: string | null;
+}) {
+  if (!tenantName && !tenantSlug) return null;
+
+  return (
+    <span className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800 px-2 py-0.5 rounded">
+      &rarr; {tenantSlug ?? tenantName}
+    </span>
   );
 }
 
@@ -682,6 +742,7 @@ function PayableReviewCard({
             <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded">
               {SOURCE_LABEL[item.source ?? ''] ?? item.source ?? 'auto'}
             </span>
+            <TenantBadge tenantName={item.tenant_name} tenantSlug={item.tenant_slug} />
           </div>
           {item.supplier_name && (
             <p className="text-sm text-brand-700 dark:text-slate-300">
@@ -962,6 +1023,7 @@ function SalesInvoiceReviewCard({
             <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded">
               {SOURCE_LABEL[item.source ?? ''] ?? item.source ?? 'auto'}
             </span>
+            <TenantBadge tenantName={item.tenant_name} tenantSlug={item.tenant_slug} />
           </div>
           {item.customer_name && (
             <p className="text-sm text-brand-700 dark:text-slate-300">

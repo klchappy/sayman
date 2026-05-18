@@ -1,21 +1,5 @@
 /**
- * EmptyState — Liste sayfaları için akıllı boş durum komponenti.
- *
- * Sorun: Liste boşken kullanıcı bunun *neden* boş olduğunu bilmiyordu.
- * - Tenant'ta hiç kayıt yok mu?
- * - Aktif bir filtre eşleşeni yok mu?
- * - Arama metni hiçbir kayda uymadı mı?
- * - Otomatik yaratılmış kayıtlar onay bekliyor mu? (PendingReviewEmptyHint)
- *
- * Bu komponent durumu otomatik anlar ve uygun mesajı + CTA'yı gösterir.
- *
- * Kullanım:
- *   <EmptyState
- *     icon={<Coins className="size-12 text-brand-300" />}
- *     entityLabel="fatura"
- *     hasActiveFilter={!!search || status !== 'all'}
- *     onClearFilter={() => { setSearch(''); setStatus('all'); }}
- *   />
+ * EmptyState - liste sayfaları için akıllı boş durum komponenti.
  */
 import { ReactNode } from 'react';
 
@@ -24,6 +8,7 @@ interface EmptyStateProps {
   entityLabel: string;
   hasActiveFilter?: boolean;
   onClearFilter?: () => void;
+  clearFilterLabel?: string;
   filterDescription?: string;
   customMessage?: string;
   customCTA?: ReactNode;
@@ -34,6 +19,7 @@ export function EmptyState({
   entityLabel,
   hasActiveFilter = false,
   onClearFilter,
+  clearFilterLabel = 'Filtreyi temizle ↻',
   filterDescription,
   customMessage,
   customCTA,
@@ -55,7 +41,7 @@ export function EmptyState({
               onClick={onClearFilter}
               className="text-sm text-brand-700 dark:text-slate-300 underline hover:no-underline"
             >
-              Filtreyi temizle ↻
+              {clearFilterLabel}
             </button>
           )}
         </>

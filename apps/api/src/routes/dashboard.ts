@@ -109,7 +109,13 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenantOrAggregate,
         approaching: sql<string>`COUNT(*) FILTER (WHERE ${payableItems.due_date} >= ${today2} AND ${payableItems.due_date} <= ${in7Str} AND ${payableItems.status} != 'paid' AND ${payableItems.status} != 'cancelled')`,
       })
       .from(payableItems)
-      .where(and(tenantScope(req, payableItems.tenant_id), eq(payableItems.is_active, true)));
+      .where(
+        and(
+          tenantScope(req, payableItems.tenant_id),
+          eq(payableItems.is_active, true),
+          eq(payableItems.needs_review, false),
+        ),
+      );
 
     const payables_summary = {
       total: Number(payRollup?.total ?? 0),
@@ -133,6 +139,7 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenantOrAggregate,
         and(
           tenantScope(req, payableItems.tenant_id),
           eq(payableItems.is_active, true),
+          eq(payableItems.needs_review, false),
           sql`${payableItems.status} IN ('pending', 'approaching')`,
           isNotNull(payableItems.due_date),
           lte(payableItems.due_date, t30),
@@ -211,13 +218,13 @@ dashboardRouter.get('/dashboard/summary', requireAuth, requireTenantOrAggregate,
         subsidiary_id: subsidiaries.id,
         subsidiary_name: subsidiaries.name,
         color: subsidiaries.color,
-        total_payables: sql<string>`COALESCE(SUM(${payableItems.amount}) FILTER (WHERE ${payableItems.subsidiary_id} = ${subsidiaries.id} AND ${payableItems.is_active} = true), 0)`,
+        total_payables: sql<string>`COALESCE(SUM(${payableItems.amount}) FILTER (WHERE ${payableItems.subsidiary_id} = ${subsidiaries.id} AND ${payableItems.is_active} = true AND ${payableItems.needs_review} = false), 0)`,
       })
       .from(subsidiaries)
       .leftJoin(payableItems, eq(payableItems.subsidiary_id, subsidiaries.id))
       .where(and(tenantScope(req, subsidiaries.tenant_id), eq(subsidiaries.is_active, true)))
       .groupBy(subsidiaries.id, subsidiaries.name, subsidiaries.color)
-      .orderBy(desc(sql`COALESCE(SUM(${payableItems.amount}) FILTER (WHERE ${payableItems.subsidiary_id} = ${subsidiaries.id} AND ${payableItems.is_active} = true), 0)`))
+      .orderBy(desc(sql`COALESCE(SUM(${payableItems.amount}) FILTER (WHERE ${payableItems.subsidiary_id} = ${subsidiaries.id} AND ${payableItems.is_active} = true AND ${payableItems.needs_review} = false), 0)`))
       .limit(8);
 
     const subsidiary_breakdown = subsidiaryBreakdownRaw.map((r) => ({

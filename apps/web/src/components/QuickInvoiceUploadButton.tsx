@@ -53,6 +53,16 @@ export function QuickInvoiceUploadButton({
       qc.invalidateQueries({ queryKey: ['payables'] });
       qc.invalidateQueries({ queryKey: ['sales-invoices'] });
       qc.invalidateQueries({ queryKey: ['review-queue'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary-empty'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      qc.invalidateQueries({ queryKey: ['sales-summary'] });
+      qc.invalidateQueries({ queryKey: ['payable-summary'] });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['cari-list'] });
+      qc.invalidateQueries({ queryKey: ['cari-summary'] });
+      qc.invalidateQueries({ queryKey: ['inbox'] });
     },
   });
 
@@ -159,7 +169,7 @@ function UploadResultToast({
 
       <div className="flex gap-2">
         <Link
-          to="/review-queue"
+          to="/review-queue?type=payable&scope=org"
           className="flex-1 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-center font-medium"
           onClick={onClose}
         >

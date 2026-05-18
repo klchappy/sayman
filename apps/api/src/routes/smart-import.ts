@@ -12,7 +12,7 @@
  * needs_review=true ile eklenir; payable.company_id otomatik bağlanır.
  */
 import { parse as parseCsv } from 'csv-parse/sync';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Router } from 'express';
 import JSZip from 'jszip';
 import multer from 'multer';
@@ -734,6 +734,16 @@ smartImportRouter.post(
         const duplicates = results.filter((r) => r.ok && r.error === 'duplicate (skipped)').length;
         const failed = results.filter((r) => !r.ok).length;
         const newSuppliers = results.filter((r) => r.supplier_new).length;
+        const createdPayableIds = results
+          .map((r) => r.payable_id)
+          .filter((id): id is string => Boolean(id));
+
+        if (createdPayableIds.length > 0) {
+          await db
+            .update(payableItems)
+            .set({ needs_review: true, updated_at: new Date() })
+            .where(inArray(payableItems.id, createdPayableIds));
+        }
 
         await auditFromRequest(req, {
           organization_id: orgId,

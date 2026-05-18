@@ -203,14 +203,17 @@ function SmartImportSection() {
       qc.invalidateQueries({ queryKey: ['review-queue'] });
       qc.invalidateQueries({ queryKey: ['review-queue-summary-shell'] });
       qc.invalidateQueries({ queryKey: ['review-queue-summary-banner'] });
+      qc.invalidateQueries({ queryKey: ['review-queue-summary-empty'] });
       qc.invalidateQueries({ queryKey: ['payables'] });
       qc.invalidateQueries({ queryKey: ['payable-summary'] });
       qc.invalidateQueries({ queryKey: ['sales-invoices'] });
       qc.invalidateQueries({ queryKey: ['sales-invoices-summary'] });
+      qc.invalidateQueries({ queryKey: ['sales-summary'] });
       qc.invalidateQueries({ queryKey: ['companies'] });
       qc.invalidateQueries({ queryKey: ['cari-list'] });
       qc.invalidateQueries({ queryKey: ['cari-summary'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
       qc.invalidateQueries({ queryKey: ['inbox'] });
     } catch (e) {
       const err = e as { response?: { data?: { error?: string; message?: string } } };
@@ -581,7 +584,7 @@ function ImportResultPanel({
               listesinde görünür.
             </p>
             <a
-              href={result.tenant_routing?.mismatch ? '/review-queue?scope=org' : '/review-queue'}
+              href="/review-queue?type=payable&scope=org"
               className="inline-flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium"
             >
               Onay Bekleyenler'e Git →

@@ -9,6 +9,7 @@ import { getDb, persons, type Person } from '@sayman/db';
 import { requireAuth } from '../../middleware/auth';
 import { auditFromRequest } from '../../lib/audit';
 import { HttpError, requireOrg, requireTenant, shareScopeWhereSQL } from '../../lib/helpers';
+import { LIST_LIMITS, countTotal, listMeta } from '../../lib/list-meta';
 import { restoreHandler } from '../../lib/restore';
 
 const shareScopeSchema = z.union([z.literal('*'), z.array(z.string().min(1)).min(1)]);
@@ -38,8 +39,15 @@ personsRouter.get('/persons', requireAuth, requireOrg, async (req, res, next) =>
     if (req.saymanContext?.tenantSlug && req.saymanContext?.tenantId) {
       where = and(where, shareScopeWhereSQL(req.saymanContext.tenantSlug)) as typeof where;
     }
-    const rows = await db.select().from(persons).where(where).orderBy(desc(persons.created_at));
-    res.json({ data: rows, count: rows.length });
+    const limit = Math.min(Number(req.query.limit ?? LIST_LIMITS.large), LIST_LIMITS.xl);
+    const rows = await db
+      .select()
+      .from(persons)
+      .where(where)
+      .orderBy(desc(persons.created_at))
+      .limit(limit);
+    const total = await countTotal(persons, where);
+    res.json({ data: rows, ...listMeta(rows, total, limit) });
   } catch (err) {
     next(err);
   }

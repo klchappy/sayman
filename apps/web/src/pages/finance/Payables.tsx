@@ -87,16 +87,16 @@ export function PayablesPage() {
   const [showForm, setShowForm] = useState(false);
   const [semanticQuery, setSemanticQuery] = useState('');
   const [semanticInput, setSemanticInput] = useState('');
-  // Default: tüm faturalar görünür (review-pending kayıtlar amber bg ile ayırılır).
-  // Kullanıcı isterse "sadece onaylananlar"a daraltır.
-  const [onlyApproved, setOnlyApproved] = useState(false);
+  // Default: sadece onaylanmış faturalar görünür. Review-pending kayıtlar
+  // Onay Bekleyenler akışında tutulur; kullanıcı isterse bu listeye dahil eder.
+  const [includeReview, setIncludeReview] = useState(false);
 
   const q = useQuery({
-    queryKey: ['payables', active.orgSlug, active.tenantSlug, active.aggregate, onlyApproved],
+    queryKey: ['payables', active.orgSlug, active.tenantSlug, active.aggregate, includeReview],
     enabled: (!!active.tenantSlug || active.aggregate === true) && !semanticQuery,
     queryFn: async () => {
       const res = await api.get<{ data: Payable[] }>(
-        `/payables${onlyApproved ? '?only_approved=1' : ''}`,
+        `/payables${includeReview ? '?include_review=1' : ''}`,
       );
       return res.data.data;
     },
@@ -187,16 +187,16 @@ export function PayablesPage() {
 
       <PendingReviewBanner type="payables" />
 
-      {/* Filtre: default tümü görünür, sadece onaylananlara daralt */}
+      {/* Filtre: default ana liste, review bekleyenleri opsiyonel dahil et */}
       <div className="flex items-center gap-2 mb-3">
         <label className="flex items-center gap-2 text-xs text-brand-600 cursor-pointer">
           <input
             type="checkbox"
-            checked={onlyApproved}
-            onChange={(e) => setOnlyApproved(e.target.checked)}
+            checked={includeReview}
+            onChange={(e) => setIncludeReview(e.target.checked)}
             className="rounded"
           />
-          <span>Sadece onaylanmış faturaları göster (review bekleyenleri gizle)</span>
+          <span>Onay bekleyen faturaları da göster</span>
         </label>
       </div>
 
@@ -260,9 +260,9 @@ export function PayablesPage() {
             {q.data?.length === 0 && (
               <>
                 <p className="text-brand-500 text-sm py-6 text-center">
-                  {onlyApproved
-                    ? 'Onaylanmış fatura yok. "Onay Bekleyenler"de inceleyebilirsin.'
-                    : 'Bu tenant\'ta henüz fatura yok. Yeni Fatura veya Dosya Yükle ile başla.'}
+                  {includeReview
+                    ? 'Bu tenant\'ta henüz fatura yok. Yeni Fatura veya Dosya Yükle ile başla.'
+                    : 'Onaylanmış fatura yok. "Onay Bekleyenler"de inceleyebilirsin.'}
                 </p>
                 <PendingReviewEmptyHint type="payables" />
               </>

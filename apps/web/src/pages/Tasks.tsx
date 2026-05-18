@@ -139,6 +139,7 @@ export function TasksPage() {
                 ? "Açık görev yok. Tamamlanan/iptal edilenleri görmek için 'Tümü' filtresine geç."
                 : 'Sana atanmış görev yok.'
             }
+            clearFilterLabel={filter === 'open' ? 'Tümü filtresine geç' : 'Filtreyi temizle ↻'}
             onClearFilter={() => setFilter('all')}
           />
         )}

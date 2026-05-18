@@ -85,29 +85,26 @@ payablesRouter.get(
   async (req, res, next) => {
     try {
       const db = getDb();
-      // Default: TÜM aktif faturalar (review-pending dahil, amber bg ile ayırılır)
-      // `?only_approved=1` istenirse needs_review=false filtresi uygulanır.
-      // Eski `include_review` parametresi geriye uyumluluk için kabul edilir.
+      // Default: sadece onaylanmış faturalar. Review-pending kayıtlar
+      // /review-queue'da görünür; ana finansal listeye onaydan sonra düşer.
+      const includeReview =
+        req.query.include_review === '1' || req.query.include_review === 'true';
       const onlyApproved =
         req.query.only_approved === '1' || req.query.only_approved === 'true';
-      const legacyIncludeReview =
-        req.query.include_review === '1' || req.query.include_review === 'true';
-      // legacy: include_review=true → onlyApproved=false (zaten default)
-      // legacy: include_review=false (eski default) → onlyApproved=true (eski davranış)
-      const applyApprovedFilter = onlyApproved || (req.query.include_review === '0' || req.query.include_review === 'false');
-      void legacyIncludeReview;
+      const applyApprovedFilter = onlyApproved || !includeReview;
 
       const limit = Math.min(Number(req.query.limit ?? 100), 500);
       // Cursor: önceki sayfanın son satırının created_at ISO timestamp'i
       const cursor = req.query.cursor ? String(req.query.cursor) : null;
 
-      const conditions = [
+      const baseConditions = [
         tenantScope(req, payableItems.tenant_id),
         eq(payableItems.is_active, true),
       ];
       if (applyApprovedFilter) {
-        conditions.push(eq(payableItems.needs_review, false));
+        baseConditions.push(eq(payableItems.needs_review, false));
       }
+      const conditions = [...baseConditions];
       if (cursor) {
         // created_at < cursor — bir önceki sayfa devamı
         conditions.push(sql`${payableItems.created_at} < ${cursor}::timestamptz`);
@@ -123,10 +120,11 @@ payablesRouter.get(
       const hasMore = rows.length > limit;
       const data = hasMore ? rows.slice(0, limit) : rows;
       const nextCursor = hasMore && data.length > 0 ? data[data.length - 1]!.created_at : null;
+      const total = await countTotal(payableItems, and(...baseConditions));
 
       res.json({
         data,
-        count: data.length,
+        ...listMeta(data, total, limit),
         has_more: hasMore,
         next_cursor: nextCursor,
         aggregate: req.aggregateTenantIds ? { tenant_count: req.aggregateTenantIds.length } : null,

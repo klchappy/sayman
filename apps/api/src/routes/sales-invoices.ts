@@ -25,6 +25,7 @@ import { generateText } from '../lib/ai-providers';
 import { getAdapter } from '../lib/erp';
 import { decryptSecret } from '../lib/secret-box';
 import { HttpError, requireTenant, requireTenantOrAggregate, tenantScope as tenantScopeHelper } from '../lib/helpers';
+import { countTotal, listMeta } from '../lib/list-meta';
 import { consumeRateLimit } from '../lib/rate-limit';
 import { restoreHandler } from '../lib/restore';
 import { requireAuth } from '../middleware/auth';
@@ -53,12 +54,13 @@ salesInvoicesRouter.get(
   async (req, res, next) => {
     try {
       const db = getDb();
-      // Default: TÜM aktif satış faturaları (review-pending dahil, amber bg ile ayırılır).
-      // `?only_approved=1` → sadece needs_review=false. Eski `include_review=0` da kabul edilir.
+      // Default: sadece onaylanmış satış faturaları. Review-pending kayıtlar
+      // /review-queue'da görünür; ana finansal listeye onaydan sonra düşer.
+      const includeReview =
+        req.query.include_review === '1' || req.query.include_review === 'true';
       const onlyApproved =
         req.query.only_approved === '1' || req.query.only_approved === 'true';
-      const applyApprovedFilter =
-        onlyApproved || req.query.include_review === '0' || req.query.include_review === 'false';
+      const applyApprovedFilter = onlyApproved || !includeReview;
 
       const limit = Math.min(Number(req.query.limit ?? 100), 500);
       const cursor = req.query.cursor ? String(req.query.cursor) : null;
@@ -66,10 +68,11 @@ salesInvoicesRouter.get(
       const tenantScope = req.aggregateTenantIds
         ? inArray(salesInvoices.tenant_id, req.aggregateTenantIds)
         : eq(salesInvoices.tenant_id, req.activeTenantId!);
-      const conditions = [tenantScope, eq(salesInvoices.is_active, true)];
+      const baseConditions = [tenantScope, eq(salesInvoices.is_active, true)];
       if (applyApprovedFilter) {
-        conditions.push(eq(salesInvoices.needs_review, false));
+        baseConditions.push(eq(salesInvoices.needs_review, false));
       }
+      const conditions = [...baseConditions];
       if (cursor) {
         conditions.push(sql`${salesInvoices.created_at} < ${cursor}::timestamptz`);
       }
@@ -88,9 +91,11 @@ salesInvoicesRouter.get(
       const hasMore = rows.length > limit;
       const data = hasMore ? rows.slice(0, limit) : rows;
       const nextCursor = hasMore && data.length > 0 ? data[data.length - 1]!.created_at : null;
+      const total = await countTotal(salesInvoices, and(...baseConditions));
 
       res.json({
         data,
+        ...listMeta(data, total, limit),
         has_more: hasMore,
         next_cursor: nextCursor,
         aggregate: req.aggregateTenantIds ? { tenant_count: req.aggregateTenantIds.length } : null,
@@ -113,12 +118,12 @@ salesInvoicesRouter.get(
       monthStart.setDate(1);
       const monthStartStr = monthStart.toISOString().slice(0, 10);
 
-      // List ile aynı default davranış: TÜM aktif satış faturaları sayılır
-      // (review-pending dahil). Sadece onaylananları istemek için ?only_approved=1.
+      // List ile aynı default davranış: sadece onaylanmış satış faturaları sayılır.
+      const includeReview =
+        req.query.include_review === '1' || req.query.include_review === 'true';
       const onlyApproved =
         req.query.only_approved === '1' || req.query.only_approved === 'true';
-      const applyApprovedFilter =
-        onlyApproved || req.query.include_review === '0' || req.query.include_review === 'false';
+      const applyApprovedFilter = onlyApproved || !includeReview;
       const conditions = [
         tenantScopeHelper(req, salesInvoices.tenant_id),
         eq(salesInvoices.is_active, true),

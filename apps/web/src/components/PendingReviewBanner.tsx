@@ -63,7 +63,7 @@ export function PendingReviewBanner({ type }: { type: ReviewType }) {
 
   return (
     <Link
-      to={`/review-queue?type=${cfg.reviewType}`}
+      to={`/review-queue?type=${cfg.reviewType}&scope=org`}
       className="block mb-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border-2 border-blue-200 dark:border-blue-700 hover:shadow-md transition-shadow"
     >
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -133,7 +133,7 @@ export function PendingReviewDashboardWidget() {
           </div>
         </div>
         <Link
-          to="/review-queue"
+          to="/review-queue?scope=org"
           className="text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
         >
           Onay Bekleyenler →
@@ -146,7 +146,7 @@ export function PendingReviewDashboardWidget() {
           return (
             <Link
               key={r.key}
-              to={`/review-queue?type=${cfg.reviewType}`}
+              to={`/review-queue?type=${cfg.reviewType}&scope=org`}
               className="bg-white/60 dark:bg-slate-800/60 hover:bg-white dark:hover:bg-slate-800 rounded-lg p-3 transition-colors"
             >
               <div className="flex items-center gap-2 mb-1">
@@ -190,7 +190,7 @@ export function PendingReviewEmptyHint({ type }: { type: ReviewType }) {
   return (
     <div className="mt-4 text-center">
       <Link
-        to={`/review-queue?type=${cfg.reviewType}`}
+        to={`/review-queue?type=${cfg.reviewType}&scope=org`}
         className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
       >
         <span>💡</span>

@@ -438,14 +438,19 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
 
   const create = useMutation({
     mutationFn: async () => {
-      const body: Record<string, unknown> = { name, sector };
-      if (taxNumber.trim()) body.tax_number = taxNumber.trim();
+      const cleanedTaxNumber = taxNumber.replace(/[^0-9]/g, '');
+      const body: Record<string, unknown> = {
+        name,
+        sector,
+        tax_number: cleanedTaxNumber || null,
+      };
       if (slug.trim()) body.slug = slug.trim();
       await api.post('/tenants', body);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tenants-management'] });
       qc.invalidateQueries({ queryKey: ['tenants'] });
+      qc.invalidateQueries({ queryKey: ['tenants-for-menu'] });
       onClose();
     },
     onError: (e) => {

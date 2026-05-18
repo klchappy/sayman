@@ -23,6 +23,21 @@ import { requireAuth } from '../middleware/auth';
 
 export const reviewQueueRouter = Router();
 
+const payableNeedsReviewSql = sql`
+  (
+    pi.needs_review = true
+    OR (
+      pi.needs_review = false
+      AND pi.reviewed_at IS NULL
+      AND c.needs_review = true
+      AND (
+        pi.auto_created_source LIKE 'smart_import%'
+        OR pi.auto_created_source LIKE 'efatura%'
+      )
+    )
+  )
+`;
+
 reviewQueueRouter.get(
   '/review-queue/summary',
   requireAuth,
@@ -39,8 +54,13 @@ reviewQueueRouter.get(
       const scope = String(req.query.scope ?? 'tenant');
       const orgWide = scope === 'org';
 
-      // Tenant filtre SQL parçası — org-wide veya tenant-scoped
-      const tenantFilter = orgWide
+      // Tenant filtre SQL parçaları — summary subquery'lerinde alias'ı açık tut.
+      const tenantFilterPayable = orgWide
+        ? sql`pi.tenant_id IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid AND is_active = true)`
+        : tenantId
+          ? sql`pi.tenant_id = ${tenantId}::uuid`
+          : sql`false`;
+      const tenantFilterSales = orgWide
         ? sql`tenant_id IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid AND is_active = true)`
         : tenantId
           ? sql`tenant_id = ${tenantId}::uuid`
@@ -50,8 +70,15 @@ reviewQueueRouter.get(
         .select({
           companies: sql<string>`(SELECT COUNT(*) FROM companies WHERE organization_id = ${orgId}::uuid AND needs_review = true AND is_active = true)`,
           persons: sql<string>`(SELECT COUNT(*) FROM persons WHERE organization_id = ${orgId}::uuid AND needs_review = true AND is_active = true)`,
-          payables: sql<string>`(SELECT COUNT(*) FROM payable_items WHERE ${tenantFilter} AND needs_review = true AND is_active = true)`,
-          sales_invoices: sql<string>`(SELECT COUNT(*) FROM sales_invoices WHERE ${tenantFilter} AND needs_review = true AND is_active = true)`,
+          payables: sql<string>`(
+            SELECT COUNT(*)
+            FROM payable_items pi
+            LEFT JOIN companies c ON c.id = pi.company_id
+            WHERE ${tenantFilterPayable}
+              AND pi.is_active = true
+              AND ${payableNeedsReviewSql}
+          )`,
+          sales_invoices: sql<string>`(SELECT COUNT(*) FROM sales_invoices WHERE ${tenantFilterSales} AND needs_review = true AND is_active = true)`,
         })
         .from(companies)
         .limit(1);
@@ -80,7 +107,17 @@ reviewQueueRouter.get(
 reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res, next) => {
   try {
     const db = getDb();
-    const typeFilter = String(req.query.type ?? '');
+    const rawTypeFilter = String(req.query.type ?? '');
+    const typeFilter =
+      rawTypeFilter === 'payable'
+        ? 'payables'
+        : rawTypeFilter === 'sales_invoice'
+          ? 'sales_invoices'
+          : rawTypeFilter === 'company'
+            ? 'companies'
+            : rawTypeFilter === 'person'
+              ? 'persons'
+              : rawTypeFilter;
     const orgId = req.activeOrgId!;
     const tenantId = req.activeTenantId ?? null;
     // scope=org → org'daki tüm tenant'larda ara (Smart Import auto-routing
@@ -148,8 +185,8 @@ reviewQueueRouter.get('/review-queue', requireAuth, requireOrg, async (req, res,
         LEFT JOIN companies c ON c.id = pi.company_id
         LEFT JOIN tenants t ON t.id = pi.tenant_id
         WHERE ${tenantFilterPayable}
-          AND pi.needs_review = true
           AND pi.is_active = true
+          AND ${payableNeedsReviewSql}
         ORDER BY pi.created_at DESC
         LIMIT 200
       `).then((r) => (r.rows ?? r) as any[]);
@@ -262,6 +299,26 @@ reviewQueueRouter.post(
       const tenantId = req.activeTenantId ?? null;
 
       if (type === 'company') {
+        // If an older importer linked invoices to a pending supplier but forgot to
+        // mark the invoices themselves as review-pending, keep those invoices in
+        // the review queue after the supplier is approved.
+        await db
+          .update(payableItems)
+          .set({
+            needs_review: true,
+            updated_at: new Date(),
+          })
+          .where(sql`
+            company_id = ${id}::uuid
+            AND is_active = true
+            AND needs_review = false
+            AND reviewed_at IS NULL
+            AND (
+              auto_created_source LIKE 'smart_import%'
+              OR auto_created_source LIKE 'efatura%'
+            )
+          `);
+
         const [row] = await db
           .update(companies)
           .set({
@@ -404,7 +461,7 @@ reviewQueueRouter.delete(
             and(
               eq(payableItems.id, id),
               eq(payableItems.tenant_id, existing.tenant_id),
-              eq(payableItems.needs_review, true),
+              sql`(${payableItems.needs_review} = true OR (${payableItems.reviewed_at} IS NULL AND (${payableItems.auto_created_source} LIKE 'smart_import%' OR ${payableItems.auto_created_source} LIKE 'efatura%')))`,
             ),
           )
           .returning({ id: payableItems.id });
@@ -893,7 +950,7 @@ reviewQueueRouter.post(
             and(
               inArray(payableItems.id, body.ids),
               sql`${payableItems.tenant_id} IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid)`,
-              eq(payableItems.needs_review, true),
+              sql`(${payableItems.needs_review} = true OR (${payableItems.reviewed_at} IS NULL AND (${payableItems.auto_created_source} LIKE 'smart_import%' OR ${payableItems.auto_created_source} LIKE 'efatura%')))`,
             ),
           )
           .returning({ id: payableItems.id });
@@ -979,7 +1036,7 @@ reviewQueueRouter.post(
             and(
               inArray(payableItems.id, body.ids),
               sql`${payableItems.tenant_id} IN (SELECT id FROM tenants WHERE organization_id = ${orgId}::uuid)`,
-              eq(payableItems.needs_review, true),
+              sql`(${payableItems.needs_review} = true OR (${payableItems.reviewed_at} IS NULL AND (${payableItems.auto_created_source} LIKE 'smart_import%' OR ${payableItems.auto_created_source} LIKE 'efatura%')))`,
             ),
           )
           .returning({ id: payableItems.id });
