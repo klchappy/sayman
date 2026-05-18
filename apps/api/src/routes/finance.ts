@@ -50,9 +50,13 @@ const createPayableSchema = z.object({
   status: payableStatusSchema.default('pending'),
   expected_method: paymentMethodSchema.optional().nullable(),
   notes: z.string().optional().nullable(),
+  needs_review: z.boolean().optional(),
+  auto_created_source: z.string().max(64).optional().nullable(),
 });
 
-const updatePayableSchema = createPayableSchema.partial();
+const updatePayableSchema = createPayableSchema
+  .omit({ needs_review: true, auto_created_source: true })
+  .partial();
 
 // Payables status transition state machine
 // draft → pending | approaching | cancelled
@@ -189,6 +193,8 @@ payablesRouter.post('/payables', requireAuth, requireTenant, async (req, res, ne
         status: body.status,
         expected_method: body.expected_method ?? null,
         notes: body.notes ?? null,
+        needs_review: body.needs_review ?? false,
+        auto_created_source: body.auto_created_source ?? null,
         created_by: req.authUserId,
       })
       .returning();

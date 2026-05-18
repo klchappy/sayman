@@ -269,7 +269,7 @@ export function OCRPage() {
                   extracted={extracted}
                   rawText={text}
                   onCreated={(target, id) => {
-                    if (target === 'payable') navigate(`/payables/${id}`);
+                    if (target === 'payable') navigate('/review-queue?type=payable');
                     if (target === 'company') navigate('/master-data/companies');
                   }}
                 />
@@ -404,6 +404,8 @@ function SmartActions({
         issue_date: extracted.issue_date ?? null,
         due_date: extracted.due_date ?? null,
         notes: `OCR ile yaratıldı.\n\n${rawText.slice(0, 1500)}`,
+        needs_review: true,
+        auto_created_source: 'ocr',
       };
       const res = await api.post<{ data: { id: string } }>('/payables', body);
       return res.data.data;
