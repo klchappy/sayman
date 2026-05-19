@@ -218,6 +218,39 @@ supportRouter.get('/support/tickets', requireAuth, requireOrg, async (req, res, 
   }
 });
 
+// --- Org-wide summary (badge için) -----------------------------------------
+// Static routes must be registered before /support/tickets/:id.
+supportRouter.get(
+  '/support/tickets/summary',
+  requireAuth,
+  requireOrg,
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      const isAdmin = ADMIN_ROLES.has(req.effectiveRole ?? '');
+      const conditions = [
+        eq(supportTickets.organization_id, req.activeOrgId!),
+        inArray(supportTickets.status, ['open', 'in_progress']),
+      ];
+      if (!isAdmin && req.authUser?.id) {
+        conditions.push(
+          or(
+            eq(supportTickets.user_id, req.authUser.id),
+            // user_id null = anonim auto_error; kullanıcı herkesinkini görmesin
+          )!,
+        );
+      }
+      const rows = await db
+        .select({ id: supportTickets.id })
+        .from(supportTickets)
+        .where(and(...conditions));
+      res.json({ data: { open_count: rows.length, is_admin_view: isAdmin } });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // --- GET /support/tickets/:id ----------------------------------------------
 
 supportRouter.get('/support/tickets/:id', requireAuth, requireOrg, async (req, res, next) => {
@@ -307,35 +340,3 @@ supportRouter.patch(
   },
 );
 
-// --- Org-wide summary (badge için) -----------------------------------------
-
-supportRouter.get(
-  '/support/tickets/summary',
-  requireAuth,
-  requireOrg,
-  async (req, res, next) => {
-    try {
-      const db = getDb();
-      const isAdmin = ADMIN_ROLES.has(req.effectiveRole ?? '');
-      const conditions = [
-        eq(supportTickets.organization_id, req.activeOrgId!),
-        inArray(supportTickets.status, ['open', 'in_progress']),
-      ];
-      if (!isAdmin && req.authUser?.id) {
-        conditions.push(
-          or(
-            eq(supportTickets.user_id, req.authUser.id),
-            // user_id null = anonim auto_error; kullanıcı herkesinkini görmesin
-          )!,
-        );
-      }
-      const rows = await db
-        .select({ id: supportTickets.id })
-        .from(supportTickets)
-        .where(and(...conditions));
-      res.json({ data: { open_count: rows.length, is_admin_view: isAdmin } });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
