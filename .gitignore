@@ -46,3 +46,6 @@ coverage/
 
 # Claude Code preview config
 .claude/
+
+# QA test runtime output
+qa-reports/

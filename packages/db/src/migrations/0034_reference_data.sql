@@ -76,7 +76,7 @@ INSERT INTO reference_banks (eft_code, swift_code, name, short_name, sector, is_
   ('00010', 'TCZBTR2A', 'T.C. Ziraat Bankası A.Ş.', 'Ziraat Bankası', 'state', true, 'https://www.ziraatbank.com.tr', '0850 220 00 00', 1),
   ('00012', 'TVBATR2A', 'Türkiye Halk Bankası A.Ş.', 'Halkbank', 'state', true, 'https://www.halkbank.com.tr', '0850 222 04 00', 2),
   ('00015', 'TVBATR2A', 'Türkiye Vakıflar Bankası T.A.O.', 'Vakıfbank', 'state', true, 'https://www.vakifbank.com.tr', '0850 222 07 24', 3)
-ON CONFLICT (eft_code) DO NOTHING;
+ON CONFLICT (eft_code) WHERE eft_code IS NOT NULL DO NOTHING;
 
 -- ÖZEL TİCARİ BANKALAR
 INSERT INTO reference_banks (eft_code, swift_code, name, short_name, sector, website, customer_service_phone, sort_order) VALUES
@@ -97,7 +97,7 @@ INSERT INTO reference_banks (eft_code, swift_code, name, short_name, sector, web
   ('00124', 'ALTNTRIS', 'Alternatifbank A.Ş.', 'Alternatifbank', 'commercial', 'https://www.alternatifbank.com.tr', '0850 222 95 95', 24),
   ('00203', 'TSPATRIS', 'Turkland Bank A.Ş.', 'Turkland Bank', 'commercial', 'https://www.tbank.com.tr', '0212 368 34 34', 25),
   ('00109', 'CITITRIS', 'Citibank A.Ş.', 'Citibank', 'foreign', 'https://www.citibank.com.tr', '0212 319 49 00', 26)
-ON CONFLICT (eft_code) DO NOTHING;
+ON CONFLICT (eft_code) WHERE eft_code IS NOT NULL DO NOTHING;
 
 -- KATILIM BANKALARI
 INSERT INTO reference_banks (eft_code, swift_code, name, short_name, sector, is_participation, website, customer_service_phone, sort_order) VALUES
@@ -107,21 +107,21 @@ INSERT INTO reference_banks (eft_code, swift_code, name, short_name, sector, is_
   ('00210', 'VAKFTRIS', 'Vakıf Katılım Bankası A.Ş.', 'Vakıf Katılım', 'participation', true, 'https://www.vakifkatilim.com.tr', '0850 724 09 24', 33),
   ('00209', 'ZRKTTRIS', 'Ziraat Katılım Bankası A.Ş.', 'Ziraat Katılım', 'participation', true, 'https://www.ziraatkatilim.com.tr', '0850 220 50 00', 34),
   ('00211', 'TEKBTRIS', 'Türkiye Emlak Katılım Bankası A.Ş.', 'Emlak Katılım', 'participation', true, 'https://www.emlakkatilim.com.tr', '0850 222 65 65', 35)
-ON CONFLICT (eft_code) DO NOTHING;
+ON CONFLICT (eft_code) WHERE eft_code IS NOT NULL DO NOTHING;
 
 -- KALKINMA VE YATIRIM BANKALARI
 INSERT INTO reference_banks (eft_code, swift_code, name, short_name, sector, is_state_bank, website, customer_service_phone, sort_order) VALUES
   ('00029', 'TKBSTRIS', 'Türkiye Kalkınma ve Yatırım Bankası A.Ş.', 'Kalkınma Bankası', 'development', true, 'https://www.kalkinma.com.tr', '0212 315 35 00', 50),
   ('00013', 'EXTRTRIA', 'Türkiye İhracat Kredi Bankası A.Ş. (Türk Eximbank)', 'Türk Eximbank', 'development', true, 'https://www.eximbank.gov.tr', '0850 200 55 00', 51),
   ('00014', 'ILBKTRIS', 'İller Bankası A.Ş.', 'İller Bankası', 'development', true, 'https://www.ilbank.gov.tr', '0312 508 70 00', 52)
-ON CONFLICT (eft_code) DO NOTHING;
+ON CONFLICT (eft_code) WHERE eft_code IS NOT NULL DO NOTHING;
 
 -- YABANCI BANKALAR
 INSERT INTO reference_banks (eft_code, swift_code, name, short_name, sector, website, sort_order) VALUES
   ('00118', 'DEUTTRIS', 'Deutsche Bank A.Ş.', 'Deutsche Bank', 'foreign', 'https://www.db.com', 60),
   ('00098', 'CHASTRIS', 'JPMorgan Chase Bank N.A. Merkezi Columbus Ohio İstanbul Türkiye Şubesi', 'JPMorgan Chase', 'foreign', 'https://www.jpmorganchase.com', 61),
   ('00115', 'BNPATR2I', 'BNP Paribas A.Ş.', 'BNP Paribas', 'foreign', 'https://www.bnpparibas.com.tr', 62)
-ON CONFLICT (eft_code) DO NOTHING;
+ON CONFLICT (eft_code) WHERE eft_code IS NOT NULL DO NOTHING;
 
 -- ============================================================================
 -- SEED DATA — TÜRKİYE RESMİ KURUMLARI (vergi, SGK, oda, vs.)
